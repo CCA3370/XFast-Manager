@@ -461,10 +461,12 @@ impl Installer {
                 };
                 let safe_relative_path = safe_relative_path.to_string_lossy().replace('\\', "/");
 
-                let option = task
+                let option_source = task
                     .scenery_option()
-                    .filter(|option| option.files.iter().any(|file| file == &safe_relative_path));
-                let (source, internal_root) = match option {
+                    .filter(|option| option.has_destination(&safe_relative_path))
+                    .and_then(|option| option.source_for(&safe_relative_path));
+                let selected_option = task.scenery_option().filter(|_| option_source.is_some());
+                let (source, internal_root) = match selected_option {
                     Some(option) if source.is_dir() => (Path::new(&option.root), None),
                     Some(option) => (source, Some(option.root.as_str())),
                     None => (source, task.archive_internal_root.as_deref()),
@@ -475,17 +477,25 @@ impl Installer {
                             zip,
                             target,
                             &safe_relative_path,
+                            option_source,
                             internal_root,
                             task.password.as_deref(),
                         )
                     })
                 } else if let Some(sevenz) = &ctx.sevenz_package {
-                    self.re_extract_from_7z(sevenz, target, &safe_relative_path, internal_root)
+                    self.re_extract_from_7z(
+                        sevenz,
+                        target,
+                        &safe_relative_path,
+                        option_source,
+                        internal_root,
+                    )
                 } else {
                     self.re_extract_single_file(
                         source,
                         target,
                         &safe_relative_path,
+                        option_source,
                         internal_root,
                         task.extraction_chain.as_ref(),
                         task.password.as_deref(),
@@ -577,13 +587,14 @@ impl Installer {
         source: &Path,
         target: &Path,
         relative_path: &str,
+        option_source: Option<&str>,
         internal_root: Option<&str>,
         extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
         // For directories, just copy the file again
         if source.is_dir() {
-            let source_file = source.join(relative_path);
+            let source_file = source.join(option_source.unwrap_or(relative_path));
             let target_file = target.join(relative_path);
 
             if let Some(parent) = target_file.parent() {
@@ -600,7 +611,14 @@ impl Installer {
         })?;
         if format == crate::archive_input::ArchiveFormat::Zip {
             let zip = ZipPackage::open(source, None)?;
-            return self.re_extract_from_zip(&zip, target, relative_path, internal_root, password);
+            return self.re_extract_from_zip(
+                &zip,
+                target,
+                relative_path,
+                option_source,
+                internal_root,
+                password,
+            );
         }
         let prepared_source = crate::archive_input::prepare_archive_for_read(source, format)?;
         let read_source = prepared_source.read_path();
@@ -609,12 +627,19 @@ impl Installer {
             crate::archive_input::ArchiveFormat::Zip => unreachable!(),
             crate::archive_input::ArchiveFormat::SevenZ => {
                 let package = SevenzPackage::open(source, password)?;
-                self.re_extract_from_7z(&package, target, relative_path, internal_root)
+                self.re_extract_from_7z(
+                    &package,
+                    target,
+                    relative_path,
+                    option_source,
+                    internal_root,
+                )
             }
             crate::archive_input::ArchiveFormat::Rar => self.re_extract_from_rar(
                 read_source,
                 target,
                 relative_path,
+                option_source,
                 internal_root,
                 extraction_chain,
                 password,
@@ -634,16 +659,17 @@ impl Installer {
         zip: &ZipPackage,
         target: &Path,
         relative_path: &str,
+        option_source: Option<&str>,
         internal_root: Option<&str>,
         password: Option<&str>,
     ) -> Result<()> {
         use std::io::copy;
         let mut archive = zip.reader();
-        let destination = Path::new(relative_path);
+        let member = Path::new(option_source.unwrap_or(relative_path));
         let entry = zip_install_entries(zip, internal_root)
             .into_iter()
             .rev()
-            .find(|entry| !entry.source.is_directory && entry.destination == destination)
+            .find(|entry| !entry.source.is_directory && entry.destination == member)
             .with_context(|| format!("File not found in ZIP for install path: {relative_path}"))?;
         let i = entry.source.index;
 
@@ -681,17 +707,19 @@ impl Installer {
         package: &SevenzPackage,
         target: &Path,
         relative_path: &str,
+        option_source: Option<&str>,
         internal_root: Option<&str>,
     ) -> Result<()> {
-        let relative =
-            sanitize_path(Path::new(relative_path)).context("Unsafe path in 7z retry")?;
+        let member = sanitize_path(Path::new(option_source.unwrap_or(relative_path)))
+            .context("Unsafe option path in 7z retry")?;
         let index = sevenz_install_entries(package, internal_root)
             .iter()
             .rev()
-            .find(|(_, path)| path == &relative)
+            .find(|(_, path)| path == &member)
             .map(|(index, _)| *index)
             .with_context(|| format!("7z member not found for retry: {relative_path}"))?;
-        let destination = target.join(relative);
+        let destination = target
+            .join(sanitize_path(Path::new(relative_path)).context("Unsafe path in 7z retry")?);
         let parent = destination.parent().context("Missing 7z retry directory")?;
         fs::create_dir_all(parent)?;
         let mut output = tempfile::NamedTempFile::new_in(parent)?;
@@ -708,21 +736,23 @@ impl Installer {
         archive_path: &Path,
         target: &Path,
         relative_path: &str,
+        option_source: Option<&str>,
         internal_root: Option<&str>,
         _extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
-        let relative =
-            sanitize_path(Path::new(relative_path)).context("Unsafe path in RAR retry")?;
+        let member = sanitize_path(Path::new(option_source.unwrap_or(relative_path)))
+            .context("Unsafe option path in RAR retry")?;
         let name = match internal_root {
             Some(root) => format!(
                 "{}/{}",
                 root.trim_end_matches('/'),
-                relative.to_string_lossy()
+                member.to_string_lossy()
             ),
-            None => relative.to_string_lossy().into_owned(),
+            None => member.to_string_lossy().into_owned(),
         };
-        let destination = target.join(relative);
+        let destination = target
+            .join(sanitize_path(Path::new(relative_path)).context("Unsafe path in RAR retry")?);
         let parent = destination
             .parent()
             .context("Missing RAR retry directory")?;

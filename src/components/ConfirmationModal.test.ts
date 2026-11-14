@@ -66,7 +66,18 @@ it('keeps the scenery enabled and sends only the selected option to installation
       sourcePath: '/downloads/Airport.zip',
       targetPath: '/xplane/Custom Scenery/Airport',
       type: AddonType.Scenery,
-      sceneryOptions: [{ root, name: 'NO747LCF', files: ['Earth nav data/apt.dat'] }],
+      sceneryOptions: [
+        {
+          root,
+          name: 'NO747LCF',
+          files: [
+            {
+              source: 'Earth nav data/apt.dat',
+              destination: 'Earth nav data/apt.dat',
+            },
+          ],
+        },
+      ],
     },
   ])
   const wrapper = mount(ConfirmationModal, {

@@ -1998,7 +1998,7 @@ impl Installer {
             );
         }
 
-        if let Some(option) = task.scenery_option() {
+        if let Some(option) = task.scenery_option().cloned() {
             let stage_parent = atomic
                 .temp_dir()
                 .parent()
@@ -2042,24 +2042,36 @@ impl Installer {
                 )?;
             }
 
-            let files = apply_scenery_option(atomic.temp_dir(), replacements.path(), option)?;
+            let files = apply_scenery_option(atomic.temp_dir(), replacements.path(), &option)?;
             if task.enable_verification {
                 if let Some(mut option_hashes) = option_hashes {
                     let mut base_hashes = ctx.inline_hashes.lock().unwrap();
-                    for file in &files {
-                        let path = file.to_string_lossy().replace('\\', "/");
+                    for destination in &files {
+                        let destination = destination.to_string_lossy().replace('\\', "/");
+                        let source = option
+                            .source_for(&destination)
+                            .context("Missing scenery option mapping")?;
                         let hash = option_hashes
-                            .remove(&path)
+                            .remove(source)
                             .context("Missing scenery option hash")?;
-                        base_hashes.insert(path, hash);
+                        base_hashes.insert(destination, hash);
                     }
                 } else {
                     let collector = crate::hash_collector::HashCollector::new();
                     let hashes = match task.file_hashes.take() {
                         Some(mut base_hashes) if !base_hashes.is_empty() => {
-                            base_hashes.extend(
-                                collector.collect_directory_hashes(replacements.path(), &files)?,
-                            );
+                            let sources = option
+                                .files
+                                .iter()
+                                .map(|file| PathBuf::from(&file.source))
+                                .collect::<Vec<_>>();
+                            for (source, hash) in
+                                collector.collect_directory_hashes(replacements.path(), &sources)?
+                            {
+                                if let Some(destination) = option.destination_for(&source) {
+                                    base_hashes.insert(destination.to_string(), hash);
+                                }
+                            }
                             base_hashes
                         }
                         _ => collector.collect_directory_hashes(atomic.temp_dir(), &[])?,
@@ -2218,9 +2230,12 @@ fn validate_scenery_option_root(
         let package = fs::canonicalize(input)?;
         let base = fs::canonicalize(source)?;
         let replacement = fs::canonicalize(&option.root)?;
+        // Option folders may live inside the scenery itself (for example a
+        // "**Selectable Documents**" folder); only an option that *contains*
+        // the base scenery is unsafe.
         if !base.starts_with(&package)
             || !replacement.starts_with(package)
-            || replacement.starts_with(&base)
+            || replacement == base
             || base.starts_with(replacement)
         {
             anyhow::bail!("Scenery option is outside the package");
@@ -2235,9 +2250,16 @@ fn validate_scenery_option_root(
             .context("Missing base scenery folder in the archive")?;
         let replacement = crate::package_artifacts::normalize_safe_relative_path(&option.root)
             .context("Invalid scenery option folder")?;
-        if replacement.starts_with(&base) || base.starts_with(replacement) {
+        if replacement == base || base.starts_with(&replacement) {
             anyhow::bail!("Scenery option overlaps the base scenery");
         }
+    }
+    for file in &option.files {
+        crate::package_artifacts::normalize_safe_relative_path(&file.source)
+            .context("Invalid scenery option source")?;
+        crate::package_artifacts::normalize_safe_relative_path(&file.destination)
+            .filter(|path| path.starts_with("Earth nav data") && path.components().count() > 1)
+            .context("Invalid scenery option destination")?;
     }
     Ok(())
 }
@@ -2253,27 +2275,35 @@ fn apply_scenery_option(
         .files
         .iter()
         .map(|entry| {
-            normalize_safe_relative_path(entry)
+            let source = normalize_safe_relative_path(&entry.source)
+                .with_context(|| format!("Invalid scenery option source: {}", entry.source))?;
+            let destination = normalize_safe_relative_path(&entry.destination)
                 .filter(|file| file.starts_with("Earth nav data") && file.components().count() > 1)
-                .with_context(|| format!("Invalid scenery option file: {entry}"))
+                .with_context(|| {
+                    format!("Invalid scenery option destination: {}", entry.destination)
+                })?;
+            Ok((source, destination))
         })
         .collect::<Result<Vec<_>>>()?;
     anyhow::ensure!(!files.is_empty(), "Empty scenery option");
 
-    for file in &files {
-        let source = replacements.join(file);
-        let target = base.join(file);
+    for (source, destination) in &files {
+        let from = replacements.join(source);
+        let to = base.join(destination);
         anyhow::ensure!(
-            fs::symlink_metadata(&source).is_ok_and(|entry| entry.is_file())
-                && fs::symlink_metadata(&target).is_ok_and(|entry| entry.is_file()),
+            fs::symlink_metadata(&from).is_ok_and(|entry| entry.is_file())
+                && fs::symlink_metadata(&to).is_ok_and(|entry| entry.is_file()),
             "Scenery option file does not match the base package: {}",
-            file.display()
+            destination.display()
         );
     }
-    for file in &files {
-        fs::copy(replacements.join(file), base.join(file))?;
+    for (source, destination) in &files {
+        fs::copy(replacements.join(source), base.join(destination))?;
     }
-    Ok(files)
+    Ok(files
+        .into_iter()
+        .map(|(_, destination)| destination)
+        .collect())
 }
 
 #[cfg(test)]
@@ -2282,7 +2312,7 @@ mod tests {
 
     #[test]
     fn scenery_option_overwrites_only_matching_navigation_files() {
-        use crate::models::SceneryInstallOption;
+        use crate::models::{SceneryInstallOption, SceneryOptionFile};
 
         let base = tempfile::tempdir().unwrap();
         let replacements = tempfile::tempdir().unwrap();
@@ -2296,7 +2326,16 @@ mod tests {
         let mut option = SceneryInstallOption {
             name: "Variant".into(),
             root: "Package/Variant".into(),
-            files: vec![relative.into(), "Earth nav data/missing.dsf".into()],
+            files: vec![
+                SceneryOptionFile {
+                    source: relative.into(),
+                    destination: relative.into(),
+                },
+                SceneryOptionFile {
+                    source: "Earth nav data/missing.dsf".into(),
+                    destination: "Earth nav data/missing.dsf".into(),
+                },
+            ],
         };
         assert!(apply_scenery_option(base.path(), replacements.path(), &option).is_err());
         assert_eq!(fs::read(base.path().join(relative)).unwrap(), b"default");
@@ -2306,6 +2345,89 @@ mod tests {
         assert_eq!(fs::read(base.path().join(relative)).unwrap(), b"option");
         assert_eq!(fs::read(base.path().join("asset.obj")).unwrap(), b"asset");
         assert!(!base.path().join("What this is.txt").exists());
+    }
+
+    #[test]
+    fn scenery_option_maps_flat_replacements_into_earth_nav_data() {
+        use crate::models::{SceneryInstallOption, SceneryOptionFile};
+
+        let base = tempfile::tempdir().unwrap();
+        let replacements = tempfile::tempdir().unwrap();
+        let tile = "+30+100/+34+108.dsf";
+        let base_tile = format!("Earth nav data/{tile}");
+        for (dir, apt, dsf) in [
+            (base.path(), b"default" as &[u8], b"default tile" as &[u8]),
+            (
+                replacements.path(),
+                b"no aircraft" as &[u8],
+                b"no aircraft tile" as &[u8],
+            ),
+        ] {
+            fs::create_dir_all(dir.join("Earth nav data/+30+100")).unwrap();
+            fs::create_dir_all(dir.join("+30+100")).unwrap();
+            fs::write(dir.join("Earth nav data/apt.dat"), apt).unwrap();
+            fs::write(dir.join(&base_tile), dsf).unwrap();
+            fs::write(dir.join("apt.dat"), apt).unwrap();
+            fs::write(dir.join(tile), dsf).unwrap();
+        }
+        let option = SceneryInstallOption {
+            name: "None_Aircrafts".into(),
+            root: "Package/Scenery/**Selectable Documents**/None_Aircrafts".into(),
+            files: vec![
+                SceneryOptionFile {
+                    source: tile.into(),
+                    destination: base_tile.clone(),
+                },
+                SceneryOptionFile {
+                    source: "apt.dat".into(),
+                    destination: "Earth nav data/apt.dat".into(),
+                },
+            ],
+        };
+        let applied = apply_scenery_option(base.path(), replacements.path(), &option).unwrap();
+        assert_eq!(applied.len(), 2);
+        assert_eq!(
+            fs::read(base.path().join("Earth nav data/apt.dat")).unwrap(),
+            b"no aircraft"
+        );
+        assert_eq!(
+            fs::read(base.path().join(&base_tile)).unwrap(),
+            b"no aircraft tile"
+        );
+        assert_eq!(
+            fs::read(base.path().join("apt.dat")).unwrap(),
+            b"default",
+            "the flat option file must not be installed beside the scenery"
+        );
+    }
+
+    #[test]
+    fn scenery_options_inside_the_scenery_are_allowed() {
+        use crate::models::{SceneryInstallOption, SceneryOptionFile};
+
+        let package = tempfile::tempdir().unwrap();
+        let scenery = package.path().join("A_TAO_ZLXY");
+        let option_root = scenery.join("__Selectable Documents__/None_Aircrafts");
+        fs::create_dir_all(scenery.join("Earth nav data")).unwrap();
+        fs::create_dir_all(&option_root).unwrap();
+
+        let option = SceneryInstallOption {
+            name: "None_Aircrafts".into(),
+            root: option_root.to_string_lossy().into_owned(),
+            files: vec![SceneryOptionFile {
+                source: "apt.dat".into(),
+                destination: "Earth nav data/apt.dat".into(),
+            }],
+        };
+        let mut task = super::super::tests::install_task(AddonType::Scenery, "A_TAO_ZLXY");
+        task.original_input_path = Some(package.path().to_string_lossy().into_owned());
+        validate_scenery_option_root(&task, &scenery, &option).unwrap();
+
+        task.original_input_path = None;
+        task.archive_internal_root = Some("Package/A_TAO_ZLXY".into());
+        let mut archive_option = option.clone();
+        archive_option.root = "Package/A_TAO_ZLXY/__Selectable Documents__/None_Aircrafts".into();
+        validate_scenery_option_root(&task, Path::new("package.zip"), &archive_option).unwrap();
     }
 
     #[test]

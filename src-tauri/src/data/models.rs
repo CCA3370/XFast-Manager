@@ -218,11 +218,42 @@ pub struct InstallTask {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SceneryOptionFile {
+    /// Path relative to the option folder.
+    pub source: String,
+    /// Path relative to the base scenery.
+    pub destination: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SceneryInstallOption {
     pub root: String,
     pub name: String,
-    /// Paths relative to both the option root and the base scenery.
-    pub files: Vec<String>,
+    /// How each option file maps into the scenery's Earth nav data folder.
+    pub files: Vec<SceneryOptionFile>,
+}
+
+impl SceneryInstallOption {
+    pub fn source_for(&self, destination: &str) -> Option<&str> {
+        self.files
+            .iter()
+            .find(|file| file.destination == destination)
+            .map(|file| file.source.as_str())
+    }
+
+    pub fn destination_for(&self, source: &str) -> Option<&str> {
+        self.files
+            .iter()
+            .find(|file| file.source == source)
+            .map(|file| file.destination.as_str())
+    }
+
+    pub fn has_destination(&self, destination: &str) -> bool {
+        self.files
+            .iter()
+            .any(|file| file.destination == destination)
+    }
 }
 
 impl InstallTask {

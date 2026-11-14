@@ -358,7 +358,20 @@ impl Scanner {
             "scanner_timing"
         );
 
-        scenery_options::attach_archive_options(&archive_files, &mut detected);
+        scenery_options::attach_archive_options(
+            package
+                .entries
+                .iter()
+                .filter(|entry| !entry.is_directory)
+                .map(|entry| {
+                    scenery_options::PackageFile::new(
+                        entry.name.clone(),
+                        entry.size,
+                        Some(entry.crc32),
+                    )
+                }),
+            &mut detected,
+        );
 
         // Recursively scan nested archives if depth allows
         if ctx.can_recurse() && !nested_archives.is_empty() {
@@ -610,7 +623,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut sound_packs = AircraftSoundPacks::default();
-        let mut archive_files = Vec::new();
+        let mut option_files = Vec::new();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut has_encrypted = false;
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
@@ -648,7 +661,11 @@ impl Scanner {
             let file_path = file.name().replace('\\', "/");
             if !file.is_dir() {
                 sound_packs.record_file(&file_path);
-                archive_files.push(file_path.clone());
+                option_files.push(scenery_options::PackageFile::new(
+                    file_path.clone(),
+                    file.size(),
+                    Some(file.crc32()),
+                ));
             }
 
             // Skip ignored paths
@@ -867,7 +884,7 @@ impl Scanner {
             }
         }
 
-        scenery_options::attach_archive_options(&archive_files, &mut detected);
+        scenery_options::attach_archive_options(option_files, &mut detected);
         Ok(detected)
     }
 }

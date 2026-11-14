@@ -292,7 +292,7 @@ impl Scanner {
         );
 
         let mut files: Vec<String> = Vec::new();
-        let mut archive_files = Vec::new();
+        let mut option_files = Vec::new();
         let mut sound_packs = AircraftSoundPacks::default();
 
         // Collect all file paths
@@ -301,7 +301,11 @@ impl Scanner {
             let file_path = e.filename.to_string_lossy().replace('\\', "/");
             if !e.is_directory() {
                 sound_packs.record_file(&file_path);
-                archive_files.push(file_path.clone());
+                option_files.push(scenery_options::PackageFile::new(
+                    file_path.clone(),
+                    e.unpacked_size,
+                    Some(e.file_crc),
+                ));
             }
             files.push(file_path);
         }
@@ -513,7 +517,7 @@ impl Scanner {
             "scanner_timing"
         );
 
-        scenery_options::attach_archive_options(&archive_files, &mut detected);
+        scenery_options::attach_archive_options(option_files, &mut detected);
         Ok(detected)
     }
 

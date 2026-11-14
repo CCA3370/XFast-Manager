@@ -302,7 +302,11 @@ export interface InstallTask {
   /** For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY */
   companionPaths?: string[]
   /** Optional replacements bundled alongside a scenery's default files. */
-  sceneryOptions?: { root: string; name: string; files: string[] }[]
+  sceneryOptions?: {
+    root: string
+    name: string
+    files: { source: string; destination: string }[]
+  }[]
   selectedSceneryOption?: string
   /** For Patch: back up files that will be overwritten before merging (revertable) */
   patchBackup?: boolean
