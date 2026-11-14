@@ -433,6 +433,15 @@ const doctorStore = useDoctorStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+let startupUpdateCheckDue = false
+watch(isOnboardingRoute, checkForStartupUpdates)
+
+function checkForStartupUpdates() {
+  if (!startupUpdateCheckDue || isOnboardingRoute.value) return
+  startupUpdateCheckDue = false
+  if (updateStore.autoCheckEnabled) void updateStore.checkForUpdates(false)
+}
+
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 const addonDrawerVisible = computed({
   get: () => addonUpdateDrawerStore.show,
@@ -1139,17 +1148,15 @@ onMounted(async () => {
     when: () => commandPaletteRef.value?.visible ?? false,
   })
 
-  // Check for updates (non-blocking, delayed to avoid affecting startup performance)
+  // Keep the first-run directory form clear of update dialogs.
   setTimeout(() => {
-    updateStore.checkAndShowPostUpdateChangelog()
+    if (!isOnboardingRoute.value) void updateStore.checkAndShowPostUpdateChangelog()
   }, 1500)
 
   setTimeout(() => {
-    if (updateStore.autoCheckEnabled) {
-      logDebug('Auto-checking for updates...', 'app')
-      updateStore.checkForUpdates(false)
-    }
-  }, 3000) // 3 second delay
+    startupUpdateCheckDue = true
+    checkForStartupUpdates()
+  }, 3000)
 
   // Check tracked issue updates in the background
   setTimeout(() => {
