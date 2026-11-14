@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sponsor Button for All Languages** - The赞助 (Sponsor) button now shows in every language. Non-Chinese users are taken to the Patreon shop, while Chinese users keep the original in-app sponsor dialog.
 - **Scenery Installation Options** - Choose a scenery variant before installing, or keep the package's default. Variants stored inside the scenery folder and packages with Chinese option names are offered too; backup copies that would change nothing are left out of the list.
 
 ### Changed

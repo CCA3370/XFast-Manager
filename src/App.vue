@@ -180,12 +180,11 @@
                     </svg>
                   </span>
                 </button>
-                <!-- Sponsor button (Chinese locale only) -->
+                <!-- Sponsor button (always visible; zh opens modal, others open Patreon) -->
                 <button
-                  v-if="locale === 'zh'"
                   class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
                   :title="$t('sponsor.title')"
-                  @click="showSponsor = true"
+                  @click="onSponsorClick"
                 >
                   <div
                     class="absolute inset-0 bg-pink-50 dark:bg-pink-500/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
@@ -511,6 +510,15 @@ const addonDrawerVisible = computed({
 // Always on top state
 const isAlwaysOnTop = ref(false)
 const showSponsor = ref(false)
+
+// Sponsor button: Chinese locale opens the in-app modal; other locales open the Patreon shop.
+function onSponsorClick() {
+  if (locale.value === 'zh') {
+    showSponsor.value = true
+  } else {
+    invoke('open_url', { url: 'https://www.patreon.com/cw/CCA_3370/shop' })
+  }
+}
 
 // Nav expand state
 type NavId =
