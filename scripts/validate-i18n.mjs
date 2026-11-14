@@ -33,9 +33,33 @@ function extractPlaceholders(value) {
   return [...new Set(matches)].sort()
 }
 
+// These labels have the same spelling as English in the specified languages.
+// Record the expected value so a future English copy change is still checked.
+const sharedTranslations = {
+  fr: {
+    'flightPlanDetails.altitude': 'Altitude',
+    'flightPlanDetails.destination': 'Destination',
+    'flightPlanDetails.distance': 'Distance',
+    'flightPlanDetails.via': 'Via',
+    'healthDetails.fields.arch': 'Architecture',
+    'healthDetails.fields.version': 'Version',
+  },
+  de: {
+    'flightPlanDetails.details': 'Details',
+    'healthDetails.fields.plugins': 'Plugins',
+    'healthDetails.fields.version': 'Version',
+  },
+  pt: {
+    'flightPlanDetails.altitude': 'Altitude',
+    'flightPlanDetails.via': 'Via',
+    'healthDetails.fields.plugins': 'Plugins',
+  },
+}
+
 function isSuspiciousUntranslated(locale, key, baseValue, localeValue) {
   if (typeof baseValue !== 'string' || typeof localeValue !== 'string') return false
   if (localeValue !== baseValue) return false
+  if (sharedTranslations[locale]?.[key] === localeValue) return false
 
   const ignoredKeys = new Set([
     'common.test',
