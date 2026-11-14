@@ -13,6 +13,7 @@ struct SceneryContents {
     has_dsf: bool,
     has_assets: bool,
     has_other_files: bool,
+    has_documentation: bool,
 }
 
 impl SceneryContents {
@@ -32,7 +33,7 @@ impl SceneryContents {
                 .file_name()
                 .is_some_and(|name| name.eq_ignore_ascii_case("library.txt"))
         {
-            // Package instructions and licenses do not become scenery replacements.
+            self.has_documentation = true;
         } else {
             self.has_other_files = true;
             self.has_assets |= path.components().count() > 1
@@ -95,12 +96,15 @@ pub(super) fn attach_directory_options(dir: &Path, detected: &mut Vec<DetectedIt
         return;
     }
 
-    let files = walkdir::WalkDir::new(dir)
-        .into_iter()
-        .filter_entry(|entry| !is_ignored_package_artifact_path(entry.path()))
-        .filter_map(Result::ok)
-        .filter(|entry| !entry.file_type().is_dir())
-        .filter_map(|entry| entry.path().strip_prefix(dir).ok().map(Path::to_path_buf));
+    let files = roots.clone().into_iter().flatten().flat_map(|root| {
+        walkdir::WalkDir::new(dir.join(root))
+            .min_depth(1)
+            .into_iter()
+            .filter_entry(|entry| !is_ignored_package_artifact_path(entry.path()))
+            .filter_map(Result::ok)
+            .filter(|entry| !entry.file_type().is_dir())
+            .filter_map(|entry| entry.path().strip_prefix(dir).ok().map(Path::to_path_buf))
+    });
     attach_options(roots, files, detected);
 }
 
@@ -122,7 +126,7 @@ fn attach_options(
         if let Some((root, scenery)) = file
             .ancestors()
             .skip(1)
-            .find_map(|root| contents.get_key_value(root).map(|(key, _)| *key))
+            .find(|root| contents.contains_key(root))
             .and_then(|root| contents.get_mut(root).map(|scenery| (root, scenery)))
         {
             scenery.record(file.strip_prefix(root).expect("ancestor is a prefix"));
@@ -153,12 +157,20 @@ fn attach_options(
             parent
         };
 
-        // An apt.dat alone matches almost every airport. Require a matching DSF
-        // or an explicitly grouped option, and never guess between possible bases.
+        // A DSF tile or apt.dat filename can be shared by independent sceneries.
+        // Without an explicit options folder, require a documented sibling of the
+        // main scenery, identified by the package wrapper's name.
         let mut bases = contents.iter().filter(|(base_root, base)| {
             base.has_assets
                 && base_root.parent() == Some(base_parent)
-                && (option.has_dsf || group)
+                && (group
+                    || (option.has_dsf
+                        && option.has_documentation
+                        && base_root.file_name().is_some_and(|name| {
+                            parent
+                                .file_name()
+                                .is_some_and(|wrapper| wrapper.eq_ignore_ascii_case(name))
+                        })))
                 && option.nav_files.is_subset(&base.nav_files)
         });
         let Some((&base, _)) = bases.next() else {

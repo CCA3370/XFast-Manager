@@ -400,6 +400,8 @@ export default {
     testing: 'Tests',
   },
   modal: {
+    sceneryOption: 'Option de la scène',
+    defaultSceneryOption: 'Par défaut (contenu du paquet)',
     confirmInstallation: "Confirmer l'installation",
     installToXplane: 'Installez les modules complémentaires suivants sur X-Plane',
     targetPath: 'Installer sur',

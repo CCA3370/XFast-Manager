@@ -474,11 +474,19 @@ impl Installer {
                 };
                 let safe_relative_path = safe_relative_path.to_string_lossy().replace('\\', "/");
 
+                let option = task
+                    .scenery_option()
+                    .filter(|option| option.files.iter().any(|file| file == &safe_relative_path));
+                let (source, internal_root) = match option {
+                    Some(option) if source.is_dir() => (Path::new(&option.root), None),
+                    Some(option) => (source, Some(option.root.as_str())),
+                    None => (source, task.archive_internal_root.as_deref()),
+                };
                 match self.re_extract_single_file(
                     source,
                     target,
                     &safe_relative_path,
-                    task.archive_internal_root.as_deref(),
+                    internal_root,
                     task.extraction_chain.as_ref(),
                     task.password.as_deref(),
                 ) {
@@ -700,7 +708,7 @@ impl Installer {
         archive_path: &Path,
         target: &Path,
         relative_path: &str,
-        _internal_root: Option<&str>,
+        internal_root: Option<&str>,
         _extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
@@ -790,7 +798,13 @@ impl Installer {
         }
 
         // Find and copy the specific file
-        let temp_file = temp_dir.path().join(&sanitized_relative);
+        let archive_relative = match internal_root {
+            Some(root) => sanitize_path(Path::new(&root.replace('\\', "/")))
+                .context("Unsafe 7z root in verification metadata")?
+                .join(&sanitized_relative),
+            None => sanitized_relative.clone(),
+        };
+        let temp_file = temp_dir.path().join(archive_relative);
         if !temp_file.exists() {
             return Err(anyhow::anyhow!(
                 "File not found after 7z extraction: {}",

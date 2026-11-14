@@ -375,6 +375,8 @@ export default {
     testing: 'テスト',
   },
   modal: {
+    sceneryOption: 'シーナリーのオプション',
+    defaultSceneryOption: '既定（パッケージの設定）',
     confirmInstallation: 'インストールの確認',
     installToXplane: 'X-Planeに以下のアドオンをインストールします。',
     targetPath: 'インストール先',

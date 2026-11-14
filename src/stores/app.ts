@@ -15,6 +15,7 @@ export interface TaskState {
   overwrite: boolean
   /** Whether large size warning has been confirmed */
   sizeConfirmed: boolean
+  sceneryOption?: string
   /** Backup settings for aircraft tasks */
   backup: {
     liveries: boolean
@@ -473,6 +474,7 @@ export const useAppStore = defineStore('app', () => {
         ...task,
         shouldOverwrite: state.overwrite,
         sizeConfirmed: state.sizeConfirmed,
+        selectedSceneryOption: state.sceneryOption,
         backupLiveries: state.backup.liveries,
         // Only enable config file backup if patterns are configured
         backupConfigFiles: configFilePatterns.value.length > 0 && state.backup.configFiles,

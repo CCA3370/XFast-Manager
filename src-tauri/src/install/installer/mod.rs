@@ -1478,9 +1478,8 @@ impl Installer {
                     }
 
                     // Check for skip request after installation but before verification
-                    if task.addon_type == AddonType::Patch {
-                        // The patch is already committed. A late skip must not
-                        // mark a successful overlay as skipped or clean it up.
+                    if task.addon_type == AddonType::Patch || task.scenery_option().is_some() {
+                        // The staged install has already committed.
                         self.task_control.reset_skip();
                     } else if self.task_control.is_skip_requested() {
                         logger::log_info(
@@ -2250,9 +2249,19 @@ impl Installer {
                 task_size += self.get_lua_bundle_size_from_directory(task, source)?;
             } else if source.is_dir() {
                 task_size += self.get_directory_size(source)?;
+                if let Some(option) = task.scenery_option() {
+                    task_size += self.get_directory_size(Path::new(&option.root))?;
+                }
             } else if source.is_file() {
                 task_size +=
                     self.get_archive_size(source, task.archive_internal_root.as_deref())?;
+                if let Some(option) = task.scenery_option().filter(|_| {
+                    task.extraction_chain.is_none()
+                        && crate::archive_input::detect_archive_format(source)
+                            != Some(crate::archive_input::ArchiveFormat::Rar)
+                }) {
+                    task_size += self.get_archive_size(source, Some(&option.root))?;
+                }
             }
 
             task_sizes.push(task_size);
@@ -2651,6 +2660,7 @@ mod tests {
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
             scenery_options: Vec::new(),
+            selected_scenery_option: None,
             patch_files: Vec::new(),
             patch_plan_id: None,
             patch_backup: false,

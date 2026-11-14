@@ -3021,6 +3021,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let archive = temp.path().join("Airport.zip");
         let mut writer = ::zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        let package_dir = temp.path().join("extracted");
         for (path, contents) in [
             ("Airport/Airport/objects/static.obj", "base asset"),
             ("Airport/Airport/Earth nav data/apt.dat", "default"),
@@ -3034,17 +3035,59 @@ mod tests {
                 "option scenery",
             ),
             ("Airport/NO747LCF/What this is.txt", "Copy over the base"),
+            (
+                "Airport/Options/Alternate/Earth nav data/apt.dat",
+                "alternate",
+            ),
+            ("Airport/Independent/Earth nav data/apt.dat", "independent"),
+            (
+                "Airport/Independent/Earth nav data/+30+130/+34+136.dsf",
+                "independent scenery in the same tile",
+            ),
         ] {
             writer
                 .start_file(path, ::zip::write::SimpleFileOptions::default())
                 .unwrap();
             writer.write_all(contents.as_bytes()).unwrap();
+            let extracted_file = package_dir.join(path);
+            fs::create_dir_all(extracted_file.parent().unwrap()).unwrap();
+            fs::write(extracted_file, contents).unwrap();
         }
         writer.finish().unwrap();
 
         let items = Scanner::new().scan_path(&archive, None).unwrap();
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].display_name, "Airport");
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|item| item.display_name == "Independent"));
+        let base = items
+            .iter()
+            .find(|item| item.display_name == "Airport")
+            .unwrap();
+        assert_eq!(
+            base.archive_internal_root.as_deref(),
+            Some("Airport/Airport")
+        );
+        assert_eq!(base.scenery_options.len(), 2);
+        assert_eq!(base.scenery_options[0].name, "NO747LCF");
+        assert_eq!(
+            base.scenery_options[0].files,
+            [
+                "Earth nav data/+30+130/+34+136.dsf",
+                "Earth nav data/apt.dat"
+            ]
+        );
+        assert_eq!(base.scenery_options[1].root, "Airport/Options/Alternate");
+
+        let items = Scanner::new().scan_path(&package_dir, None).unwrap();
+        assert_eq!(items.len(), 2);
+        let base = items
+            .iter()
+            .find(|item| item.display_name == "Airport")
+            .unwrap();
+        assert_eq!(base.scenery_options.len(), 2);
+        assert_eq!(
+            std::path::Path::new(&base.scenery_options[0].root),
+            package_dir.join("Airport/NO747LCF")
+        );
     }
 
     #[test]

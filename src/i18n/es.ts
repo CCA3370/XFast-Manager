@@ -390,6 +390,8 @@ export default {
     testing: 'Pruebas',
   },
   modal: {
+    sceneryOption: 'Opción del escenario',
+    defaultSceneryOption: 'Predeterminada (según el paquete)',
     confirmInstallation: 'Confirmar instalación',
     installToXplane: 'Instale los siguientes complementos para X-Plane',
     targetPath: 'Instalar en',

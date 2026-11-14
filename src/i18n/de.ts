@@ -392,6 +392,8 @@ export default {
     testing: 'Testen',
   },
   modal: {
+    sceneryOption: 'Szenerieoption',
+    defaultSceneryOption: 'Standard (wie im Paket)',
     confirmInstallation: 'Bestätigen Sie die Installation',
     installToXplane: 'Installieren Sie die folgenden Add-ons für X-Plane',
     targetPath: 'Installieren auf',

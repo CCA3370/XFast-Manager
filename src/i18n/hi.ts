@@ -379,6 +379,8 @@ export default {
     testing: 'परीक्षण',
   },
   modal: {
+    sceneryOption: 'दृश्यावली का विकल्प',
+    defaultSceneryOption: 'डिफ़ॉल्ट (पैकेज के अनुसार)',
     confirmInstallation: 'स्थापना की पुष्टि करें',
     installToXplane: 'निम्नलिखित ऐडऑन X-Plane में स्थापित करें',
     targetPath: 'यहाँ स्थापित करें',

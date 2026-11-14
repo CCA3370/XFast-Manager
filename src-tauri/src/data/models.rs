@@ -194,6 +194,8 @@ pub struct InstallTask {
     /// Optional replacements bundled alongside a scenery's default files.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scenery_options: Vec<SceneryInstallOption>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_scenery_option: Option<String>,
     /// Files selected by the confirmed patch plan, relative to the archive and aircraft roots.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patch_files: Vec<PatchFileWrite>,
@@ -217,6 +219,15 @@ pub struct SceneryInstallOption {
     pub name: String,
     /// Paths relative to both the option root and the base scenery.
     pub files: Vec<String>,
+}
+
+impl InstallTask {
+    pub fn scenery_option(&self) -> Option<&SceneryInstallOption> {
+        let root = self.selected_scenery_option.as_deref()?;
+        self.scenery_options
+            .iter()
+            .find(|option| option.root == root)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

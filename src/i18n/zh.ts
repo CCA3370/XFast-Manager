@@ -355,6 +355,8 @@ export default {
     testing: '测试',
   },
   modal: {
+    sceneryOption: '地景选项',
+    defaultSceneryOption: '默认（原包配置）',
     confirmInstallation: '确认安装',
     installToXplane: '即将安装以下插件到X-Plane',
     targetPath: '安装到',

@@ -370,6 +370,8 @@ export default {
     testing: 'الاختبار',
   },
   modal: {
+    sceneryOption: 'خيار المشهد',
+    defaultSceneryOption: 'الافتراضي (كما في الحزمة)',
     confirmInstallation: 'تأكيد التثبيت',
     installToXplane: 'ثبّت الإضافات التالية إلى X-Plane',
     targetPath: 'تثبيت إلى',

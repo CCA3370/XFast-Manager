@@ -388,6 +388,8 @@ export default {
     testing: 'Тестирование',
   },
   modal: {
+    sceneryOption: 'Вариант сцены',
+    defaultSceneryOption: 'По умолчанию (как в пакете)',
     confirmInstallation: 'Подтвердить установку',
     installToXplane: 'Установить следующие аддоны в X-Plane',
     targetPath: 'Установить в',

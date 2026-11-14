@@ -690,6 +690,7 @@ pub fn build_install_tasks(
         is_xlua_runtime: false,
         companion_paths: Vec::new(),
         scenery_options: Vec::new(),
+        selected_scenery_option: None,
         patch_files: files,
         patch_plan_id: Some(plan_id),
         patch_backup: backup_overwritten,

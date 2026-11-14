@@ -375,6 +375,8 @@ export default {
     testing: '테스트',
   },
   modal: {
+    sceneryOption: '시너리 옵션',
+    defaultSceneryOption: '기본값 (패키지 설정)',
     confirmInstallation: '설치 확인',
     installToXplane: '다음 애드온을 X-Plane에 설치합니다',
     targetPath: '설치 위치',
