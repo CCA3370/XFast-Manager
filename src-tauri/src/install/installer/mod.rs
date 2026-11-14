@@ -190,6 +190,19 @@ pub fn sanitize_path(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Resolve a ZIP entry to the relative path used on disk.
+pub(crate) fn zip_install_relative_path(path: &Path, root: Option<&str>) -> Option<PathBuf> {
+    let portable = path.to_string_lossy().replace('\\', "/");
+    let path = crate::package_artifacts::normalize_safe_relative_path(&portable)?;
+    let relative = match root {
+        Some(root) if !root.is_empty() => path.strip_prefix(root).ok()?,
+        _ => &path,
+    };
+    let destination = sanitize_path(relative)?;
+    (!crate::package_artifacts::is_ignored_package_artifact_path(&destination))
+        .then_some(destination)
+}
+
 /// Optimized file copy with buffering for better performance
 /// Uses a larger buffer (8MB) for faster I/O operations
 fn copy_file_optimized<R: std::io::Read + ?Sized, W: std::io::Write>(

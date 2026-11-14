@@ -323,67 +323,7 @@ impl Installer {
                     }
                 };
 
-                let file_path_str = path.to_string_lossy().replace('\\', "/");
-
-                // Check prefix filter
-                let relative_path = if let Some(prefix) = prefix {
-                    // Ensure prefix ends with '/' for proper directory matching
-                    // This prevents "A330" from matching "A330_variant"
-                    let prefix_with_slash = if prefix.ends_with('/') {
-                        prefix.to_string()
-                    } else {
-                        format!("{}/", prefix)
-                    };
-
-                    // Check if file is inside the prefix directory or is the prefix directory itself
-                    if file_path_str == prefix.trim_end_matches('/') {
-                        // This is the root directory itself, skip it
-                        return None;
-                    }
-
-                    if !file_path_str.starts_with(&prefix_with_slash) {
-                        return None;
-                    }
-
-                    let stripped = file_path_str
-                        .strip_prefix(&prefix_with_slash)
-                        .unwrap_or(&file_path_str);
-                    if stripped.is_empty() {
-                        return None;
-                    }
-                    match sanitize_path(Path::new(stripped)) {
-                        Some(p) => p,
-                        None => {
-                            logger::log_debug(
-                                &format!(
-                                    "Skipping ZIP entry with unsafe path after sanitization: {}",
-                                    stripped
-                                ),
-                                Some("installer"),
-                                None,
-                            );
-                            skipped_count += 1;
-                            return None;
-                        }
-                    }
-                } else {
-                    match sanitize_path(&path) {
-                        Some(p) => p,
-                        None => {
-                            logger::log_debug(
-                                &format!("Skipping ZIP entry with unsafe path: {}", file_path_str),
-                                Some("installer"),
-                                None,
-                            );
-                            skipped_count += 1;
-                            return None;
-                        }
-                    }
-                };
-
-                if crate::package_artifacts::is_ignored_package_artifact_path(&relative_path) {
-                    return None;
-                }
+                let relative_path = zip_install_relative_path(&path, prefix)?;
 
                 Some((i, relative_path, is_dir, is_encrypted, size))
             })

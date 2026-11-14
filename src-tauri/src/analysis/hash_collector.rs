@@ -106,36 +106,24 @@ impl HashCollector {
         for i in 0..archive.len() {
             // Use by_index_raw to avoid triggering decryption errors when reading metadata
             let file = archive.by_index_raw(i)?;
-            let name = file.name().replace('\\', "/");
-
-            // Skip directories
             if file.is_dir() {
                 continue;
             }
 
-            // Apply prefix filter
-            let relative_path = if let Some(ref p) = prefix {
-                if !name.starts_with(p) {
-                    continue;
-                }
-                name.strip_prefix(p)
-                    .and_then(|s| s.strip_prefix('/').or(Some(s)))
-                    .unwrap_or(&name)
-            } else {
-                &name
-            };
-
-            if crate::package_artifacts::is_ignored_package_artifact_archive_path(relative_path) {
+            let Some(path) = file.enclosed_name().and_then(|path| {
+                crate::installer::zip_install_relative_path(&path, prefix.as_deref())
+            }) else {
                 continue;
-            }
+            };
+            let relative_path = path.to_string_lossy().replace('\\', "/");
 
             // Get CRC32 from ZIP central directory
             let crc32 = file.crc32();
 
             hashes.insert(
-                relative_path.to_string(),
+                relative_path.clone(),
                 FileHash {
-                    path: relative_path.to_string(),
+                    path: relative_path,
                     hash: format!("{:08x}", crc32),
                     algorithm: HashAlgorithm::Crc32,
                 },
@@ -379,5 +367,44 @@ mod tests {
 
         assert_eq!(hashes.len(), 1);
         assert!(hashes.contains_key("plane.acf"));
+    }
+
+    #[test]
+    fn zip_hashes_use_the_extracted_path_and_match_only_the_selected_root() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let archive_path = temp.path().join("scenery.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+        for name in [
+            "Airport/**Selectable Documents**/Original/apt.dat",
+            "Airport/Earth nav data/apt.dat",
+            "Airport_Extra/Earth nav data/apt.dat",
+            "Airport/../outside.dat",
+        ] {
+            writer
+                .start_file(name, SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(name.as_bytes()).unwrap();
+        }
+        writer.finish().unwrap();
+
+        let hashes = HashCollector::new()
+            .collect_zip_hashes(&archive_path, Some("Airport/"), None, None)
+            .unwrap();
+
+        let options_dir = if cfg!(windows) {
+            "__Selectable Documents__"
+        } else {
+            "**Selectable Documents**"
+        };
+        let optional_file = format!("{options_dir}/Original/apt.dat");
+        assert_eq!(hashes.len(), 2);
+        assert_eq!(
+            hashes[&optional_file].hash,
+            format!(
+                "{:08x}",
+                crc32fast::hash(b"Airport/**Selectable Documents**/Original/apt.dat")
+            )
+        );
+        assert!(hashes.contains_key("Earth nav data/apt.dat"));
     }
 }

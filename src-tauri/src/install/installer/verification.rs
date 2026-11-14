@@ -622,32 +622,28 @@ impl Installer {
         let file = fs::File::open(archive_path)?;
         let mut archive = ZipArchive::new(file)?;
 
-        // Build full path in archive
-        let archive_path_str = if let Some(root) = internal_root {
-            format!("{}/{}", root.trim_end_matches('/'), relative_path)
-        } else {
-            relative_path.to_string()
-        };
-
-        let archive_path_normalized = archive_path_str.replace('\\', "/");
-
-        // Find the file index first
+        let root = internal_root.map(|root| root.replace('\\', "/"));
+        let destination = Path::new(relative_path);
         let mut file_index = None;
         let mut is_encrypted = false;
         for i in 0..archive.len() {
-            // Use by_index_raw to avoid triggering decryption errors when reading metadata
             let file = archive.by_index_raw(i)?;
-            let name = file.name().replace('\\', "/");
-
-            if name == archive_path_normalized {
+            if !file.is_dir()
+                && file
+                    .enclosed_name()
+                    .and_then(|path| zip_install_relative_path(&path, root.as_deref()))
+                    .as_deref()
+                    == Some(destination)
+            {
                 file_index = Some(i);
                 is_encrypted = file.encrypted();
                 break;
             }
         }
 
-        let i = file_index
-            .ok_or_else(|| anyhow::anyhow!("File not found in ZIP: {}", archive_path_normalized))?;
+        let i = file_index.ok_or_else(|| {
+            anyhow::anyhow!("File not found in ZIP for install path: {}", relative_path)
+        })?;
 
         // Now extract the file
         let target_path = target.join(relative_path);

@@ -970,45 +970,7 @@ impl Installer {
             .filter_map(|i| {
                 // Use by_index_raw to avoid triggering decryption errors when reading metadata
                 let file = archive.by_index_raw(i).ok()?;
-                let path = file.enclosed_name()?.to_path_buf();
-                let file_path_str = path.to_string_lossy().replace('\\', "/");
-
-                // Check prefix filter
-                let relative_path = if let Some(prefix) = prefix {
-                    // Ensure prefix ends with '/' for proper matching
-                    let prefix_with_slash = if prefix.ends_with('/') {
-                        prefix.to_string()
-                    } else {
-                        format!("{}/", prefix)
-                    };
-
-                    // Debug: Log file matching
-                    let matched = file_path_str.strip_prefix(&prefix_with_slash);
-                    crate::logger::log_debug(
-                        &format!(
-                            "File: '{}', Prefix: '{}', Matched: {:?}",
-                            file_path_str,
-                            prefix_with_slash,
-                            matched.is_some()
-                        ),
-                        Some("installer"),
-                        None,
-                    );
-
-                    // Strip prefix and return relative path
-                    file_path_str
-                        .strip_prefix(&prefix_with_slash)
-                        .map(|s| s.to_string())?
-                } else {
-                    file_path_str.clone()
-                };
-
-                if crate::package_artifacts::is_ignored_package_artifact_archive_path(
-                    &relative_path,
-                ) {
-                    return None;
-                }
-
+                let relative_path = zip_install_relative_path(&file.enclosed_name()?, prefix)?;
                 Some((i, relative_path, file.is_dir(), file.encrypted()))
             })
             .collect();
