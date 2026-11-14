@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.zh,
   settingsSetup: directoryMessages.zh,
   healthDetails: healthDetailMessages.zh,
   flightPlanDetails: flightPlanDetailMessages.zh,
@@ -636,7 +638,6 @@ export default {
     autoSortFailed: '自动排序失败',
     moreActions: '更多操作',
     hintFromScan: '检测到地景变化，请从这里进入地景管理器进行排序',
-    hintFromSettings: '已启用地景排序，请从这里进入地景管理器进行排序',
     updatingIndex: '正在更新索引...',
     allContinents: '所有大洲',
     groupByContinent: '按地区',

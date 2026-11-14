@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.fr,
   settingsSetup: directoryMessages.fr,
   healthDetails: healthDetailMessages.fr,
   flightPlanDetails: flightPlanDetailMessages.fr,
@@ -708,7 +710,6 @@ export default {
     autoSortFailed: 'Échec du tri automatique',
     moreActions: 'Plus de mesures',
     hintFromScan: 'Changements de paysage détectés. Ouvrez le Scenery Manager ici pour trier.',
-    hintFromSettings: 'Le tri des paysages est activé. Ouvrez le gestionnaire de scènes ici.',
     updatingIndex: "Mise à jour de l'index...",
     allContinents: 'Tous les continents',
     groupByContinent: 'Par région',

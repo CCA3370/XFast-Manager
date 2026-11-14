@@ -135,7 +135,6 @@ export const STORAGE_KEYS = {
   SCENERY_GROUPS_COLLAPSED: 'sceneryGroupsCollapsed',
   SCENERY_CUSTOM_GROUPS_BY_PATH: 'sceneryCustomGroupsByPath',
   ONBOARDING_COMPLETED: 'onboardingCompleted',
-  SCENERY_AUTO_SORT_HINT_SHOWN: 'sceneryAutoSortHintShown',
   AUTO_CHECK_ENABLED: 'autoCheckEnabled',
   INCLUDE_PRE_RELEASE: 'includePreRelease',
   LAST_CHECK_TIME: 'lastCheckTime',

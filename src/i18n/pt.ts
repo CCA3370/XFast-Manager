@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.pt,
   settingsSetup: directoryMessages.pt,
   healthDetails: healthDetailMessages.pt,
   flightPlanDetails: flightPlanDetailMessages.pt,
@@ -704,7 +706,6 @@ export default {
     moreActions: 'Mais ações',
     hintFromScan:
       'Alterações de cenário detectadas. Abra o Gerenciador de cenários aqui para ordenar.',
-    hintFromSettings: 'A ordenação de cenários está ativada. Abra o Gerenciador de cenários aqui.',
     updatingIndex: 'Atualizando índice...',
     allContinents: 'Todos os continentes',
     groupByContinent: 'Por região',

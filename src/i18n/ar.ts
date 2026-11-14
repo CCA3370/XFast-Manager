@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.ar,
   settingsSetup: directoryMessages.ar,
   healthDetails: healthDetailMessages.ar,
   flightPlanDetails: flightPlanDetailMessages.ar,
@@ -672,7 +674,6 @@ export default {
     autoSortFailed: 'فشل الفرز التلقائي',
     moreActions: 'مزيد من الإجراءات',
     hintFromScan: 'تم اكتشاف تغييرات في المشاهد. افتح مدير المشاهد من هنا لفرزها.',
-    hintFromSettings: 'تم تفعيل فرز المشاهد. افتح مدير المشاهد من هنا.',
     updatingIndex: 'جارٍ تحديث الفهرس...',
     allContinents: 'كل القارات',
     groupByContinent: 'حسب المنطقة',

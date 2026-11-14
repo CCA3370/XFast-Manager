@@ -32,6 +32,7 @@ import {
   type SmartSceneryGroupKind,
 } from '@/utils/scenerySmartGroups'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import SettingToggle from '@/components/SettingToggle.vue'
 import type {
   SceneryManagerEntry,
   SceneryCategory,
@@ -61,6 +62,7 @@ const lockStore = useLockStore()
 const drag = ref(false)
 const isSortingScenery = ref(false)
 const isCreatingIndex = ref(false)
+const savingAutoSort = ref(false)
 const highlightedIndex = ref(-1)
 const currentMatchIndex = ref(0)
 const searchExpandedGroups = ref<Record<string, boolean>>({})
@@ -1693,7 +1695,35 @@ function handleSortSceneryNow() {
   })
 }
 
-async function handleCreateIndex() {
+function confirmAutoSort(enabled: boolean) {
+  if (!enabled) {
+    void saveAutoSort(false)
+    return
+  }
+  modalStore.showConfirm({
+    title: t('settings.sceneryAutoSort'),
+    message: t('settingsPanels.enableSceneryHelp'),
+    confirmText: t('common.confirm'),
+    cancelText: t('common.cancel'),
+    type: 'warning',
+    onConfirm: () => void saveAutoSort(true),
+    onCancel: () => {},
+  })
+}
+
+async function saveAutoSort(enabled: boolean) {
+  if (savingAutoSort.value) return
+  savingAutoSort.value = true
+  try {
+    await appStore.setAutoSortScenery(enabled)
+  } catch (error) {
+    modalStore.showError(error)
+  } finally {
+    savingAutoSort.value = false
+  }
+}
+
+async function handleRebuildIndex() {
   if (isCreatingIndex.value || !appStore.xplanePath) return
 
   isCreatingIndex.value = true
@@ -2871,6 +2901,62 @@ onBeforeUnmount(() => {
 
     <!-- Scenery content (scrollable) -->
     <div v-else ref="scrollContainerRef" class="flex-1 overflow-y-auto">
+      <section
+        class="mb-3 flex flex-wrap items-center justify-between gap-x-5 gap-y-2 rounded-lg border border-gray-200 bg-white/70 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40"
+        :aria-label="t('settingsPanels.scenery')"
+      >
+        <SettingToggle
+          class="min-w-0 flex-1 basis-64"
+          :label="t('settings.sceneryAutoSort')"
+          :description="
+            t(
+              appStore.autoSortScenery
+                ? 'settings.sceneryAutoSortDesc'
+                : 'settingsPanels.sceneryManualHelp',
+            )
+          "
+          :model-value="appStore.autoSortScenery"
+          :disabled="
+            savingAutoSort ||
+            isCreatingIndex ||
+            isSortingScenery ||
+            isUpdatingIndex ||
+            sceneryStore.isSaving
+          "
+          @update:model-value="confirmAutoSort"
+        />
+        <button
+          v-if="!sceneryStore.needsDatabaseReset"
+          type="button"
+          :disabled="
+            isCreatingIndex ||
+            savingAutoSort ||
+            isSortingScenery ||
+            isUpdatingIndex ||
+            sceneryStore.isSaving ||
+            sceneryStore.hasLocalChanges
+          "
+          class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+          :title="
+            t(
+              sceneryStore.indexExists
+                ? 'settings.rebuildIndexTooltip'
+                : 'settings.createIndexTooltip',
+            )
+          "
+          @click="handleRebuildIndex"
+        >
+          {{
+            t(
+              isCreatingIndex
+                ? 'settings.rebuilding'
+                : sceneryStore.indexExists
+                  ? 'settings.rebuildIndex'
+                  : 'settings.createIndex',
+            )
+          }}
+        </button>
+      </section>
       <!-- Database version error - needs reset -->
       <div v-if="sceneryStore.needsDatabaseReset" class="text-center py-12">
         <div class="flex flex-col items-center gap-4">
@@ -2945,47 +3031,6 @@ onBeforeUnmount(() => {
             {{ t('sceneryManager.noIndex') }}
           </p>
         </Transition>
-        <div class="flex justify-center">
-          <button
-            :disabled="isCreatingIndex"
-            class="px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
-            @click="handleCreateIndex"
-          >
-            <svg
-              v-if="!isCreatingIndex"
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              ></path>
-            </svg>
-            <svg
-              v-else
-              class="w-4 h-4 animate-spin [animation-direction:reverse]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              ></path>
-            </svg>
-            <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{
-                isCreatingIndex ? t('settings.creatingIndex') : t('settings.createIndex')
-              }}</span>
-            </Transition>
-          </button>
-        </div>
       </div>
 
       <!-- No scenery found -->

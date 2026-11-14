@@ -1,9 +1,11 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.en,
   settingsSetup: directoryMessages.en,
   healthDetails: healthDetailMessages.en,
   flightPlanDetails: flightPlanDetailMessages.en,
@@ -685,7 +687,6 @@ export default {
     autoSortFailed: 'Auto sort failed',
     moreActions: 'More Actions',
     hintFromScan: 'Scenery changes detected. Open the Scenery Manager here to sort.',
-    hintFromSettings: 'Scenery sorting is enabled. Open the Scenery Manager here.',
     updatingIndex: 'Updating index...',
     allContinents: 'All Continents',
     groupByContinent: 'By Region',

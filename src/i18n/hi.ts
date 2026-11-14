@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.hi,
   settingsSetup: directoryMessages.hi,
   healthDetails: healthDetailMessages.hi,
   flightPlanDetails: flightPlanDetailMessages.hi,
@@ -685,7 +687,6 @@ export default {
     autoSortFailed: 'स्वचालित क्रमबद्धता विफल',
     moreActions: 'और कार्रवाइयाँ',
     hintFromScan: 'दृश्य परिवर्तन पाए गए। उन्हें क्रमबद्ध करने के लिए यहाँ से दृश्य प्रबंधक खोलें।',
-    hintFromSettings: 'दृश्य क्रमबद्धता सक्षम है। यहाँ से दृश्य प्रबंधक खोलें।',
     updatingIndex: 'अनुक्रमणिका अद्यतन हो रही है...',
     allContinents: 'सभी महाद्वीप',
     groupByContinent: 'क्षेत्र अनुसार',

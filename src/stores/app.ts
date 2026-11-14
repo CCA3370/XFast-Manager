@@ -89,8 +89,6 @@ export const useAppStore = defineStore('app', () => {
 
   // Scenery auto-sorting (default: disabled)
   const autoSortScenery = ref(false)
-  const sceneryManagerHintVisible = ref(false)
-  const sceneryManagerHintMessageKey = ref<string | null>(null)
 
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
@@ -324,13 +322,6 @@ export const useAppStore = defineStore('app', () => {
     xplanePath.value = path
   }
 
-  async function loadXplanePath() {
-    const saved = await getItem<string>(STORAGE_KEYS.XPLANE_PATH)
-    if (saved) {
-      xplanePath.value = saved
-    }
-  }
-
   async function togglePreference(type: AddonType) {
     installPreferences.value[type] = !installPreferences.value[type]
     await setItem(STORAGE_KEYS.INSTALL_PREFERENCES, installPreferences.value)
@@ -346,15 +337,22 @@ export const useAppStore = defineStore('app', () => {
     await setItem(STORAGE_KEYS.ATOMIC_INSTALL_ENABLED, atomicInstallEnabled.value)
   }
 
-  async function toggleDeleteSourceAfterInstall() {
-    deleteSourceAfterInstall.value = !deleteSourceAfterInstall.value
-    await setItem(STORAGE_KEYS.DELETE_SOURCE_AFTER_INSTALL, deleteSourceAfterInstall.value)
+  async function setDeleteSourceAfterInstall(enabled: boolean) {
+    await saveSettings({ [STORAGE_KEYS.DELETE_SOURCE_AFTER_INSTALL]: enabled })
+    deleteSourceAfterInstall.value = enabled
   }
 
-  async function toggleAutoSortScenery() {
-    autoSortScenery.value = !autoSortScenery.value
-    await invokeVoidCommand('set_scenery_auto_sort', { enabled: autoSortScenery.value })
-    await setItem(STORAGE_KEYS.AUTO_SORT_SCENERY, autoSortScenery.value)
+  async function setAutoSortScenery(enabled: boolean) {
+    const previous = autoSortScenery.value
+    if (enabled === previous) return
+    await invokeVoidCommand('set_scenery_auto_sort', { enabled })
+    try {
+      await saveSettings({ [STORAGE_KEYS.AUTO_SORT_SCENERY]: enabled })
+    } catch (error) {
+      await invokeVoidCommand('set_scenery_auto_sort', { enabled: previous })
+      throw error
+    }
+    autoSortScenery.value = enabled
   }
 
   async function setXplaneLaunchArgs(args: string) {
@@ -380,15 +378,6 @@ export const useAppStore = defineStore('app', () => {
   async function toggleCrashAnalysisDmpEnabled() {
     crashAnalysisDmpEnabled.value = !crashAnalysisDmpEnabled.value
     await setItem(STORAGE_KEYS.CRASH_ANALYSIS_DMP_ENABLED, crashAnalysisDmpEnabled.value)
-  }
-
-  function showSceneryManagerHint(messageKey: string) {
-    sceneryManagerHintMessageKey.value = messageKey
-    sceneryManagerHintVisible.value = true
-  }
-
-  function dismissSceneryManagerHint() {
-    sceneryManagerHintVisible.value = false
   }
 
   function setConfirmationOpen(open: boolean) {
@@ -676,8 +665,6 @@ export const useAppStore = defineStore('app', () => {
     maxParallelTasks,
     crashAnalysisIgnoreDateCheck,
     crashAnalysisDmpEnabled,
-    sceneryManagerHintVisible,
-    sceneryManagerHintMessageKey,
     isConfirmationOpen,
     isLibraryLinkSubmitting,
     logLevel,
@@ -698,19 +685,16 @@ export const useAppStore = defineStore('app', () => {
     isInitialized,
     initStore,
     setXplanePath,
-    loadXplanePath,
     togglePreference,
     toggleVerificationPreference,
     toggleAtomicInstall,
-    toggleDeleteSourceAfterInstall,
-    toggleAutoSortScenery,
+    setDeleteSourceAfterInstall,
+    setAutoSortScenery,
     setXplaneLaunchArgs,
     toggleParallelInstall,
     setMaxParallelTasks,
     toggleCrashAnalysisIgnoreDateCheck,
     toggleCrashAnalysisDmpEnabled,
-    showSceneryManagerHint,
-    dismissSceneryManagerHint,
     setConfirmationOpen,
     setLibraryLinkSubmitting,
     setLogLevel,

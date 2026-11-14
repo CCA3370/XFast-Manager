@@ -41,37 +41,6 @@
                         <AnimatedText>{{ item.label }}</AnimatedText>
                       </span>
                     </router-link>
-                    <div
-                      v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
-                      class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
-                    >
-                      <div
-                        class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2"
-                      >
-                        <div
-                          class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"
-                        ></div>
-                        <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
-                        <button
-                          class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
-                          @click="store.dismissSceneryManagerHint()"
-                        >
-                          <svg
-                            class="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M6 18L18 6M6 6l12 12"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
                   </div>
 
                   <router-link
@@ -282,37 +251,6 @@
                     <AnimatedText>{{ item.label }}</AnimatedText>
                   </span>
                 </router-link>
-                <div
-                  v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
-                  class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
-                >
-                  <div
-                    class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2"
-                  >
-                    <div
-                      class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"
-                    ></div>
-                    <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
-                    <button
-                      class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
-                      @click="store.dismissSceneryManagerHint()"
-                    >
-                      <svg
-                        class="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <router-link
@@ -1106,16 +1044,6 @@ onMounted(async () => {
   // Log app startup (basic level - always logged)
   logBasic('XFast Manager started', 'app')
   logDebug('Loading app store and initializing', 'app')
-
-  // Non-blocking: load X-Plane path
-  store
-    .loadXplanePath()
-    .then(() => {
-      logDebug(`X-Plane path loaded: ${store.xplanePath || '(not set)'}`, 'app')
-    })
-    .catch((e) => {
-      logError(`Failed to load X-Plane path: ${e}`, 'app')
-    })
 
   logDebug(`Log level: ${store.logLevel}`, 'app')
 

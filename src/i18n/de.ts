@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.de,
   settingsSetup: directoryMessages.de,
   healthDetails: healthDetailMessages.de,
   flightPlanDetails: flightPlanDetailMessages.de,
@@ -702,7 +704,6 @@ export default {
     autoSortFailed: 'Die automatische Sortierung ist fehlgeschlagen',
     moreActions: 'Weitere Aktionen',
     hintFromScan: 'Szenenveränderungen erkannt. Öffnen Sie hier den Scenery Manager zum Sortieren.',
-    hintFromSettings: 'Die Szenensortierung ist aktiviert. Öffnen Sie hier den Scenery Manager.',
     updatingIndex: 'Index wird aktualisiert...',
     allContinents: 'Alle Kontinente',
     groupByContinent: 'Nach Region',

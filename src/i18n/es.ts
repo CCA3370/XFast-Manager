@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.es,
   settingsSetup: directoryMessages.es,
   healthDetails: healthDetailMessages.es,
   flightPlanDetails: flightPlanDetailMessages.es,
@@ -698,8 +700,6 @@ export default {
     moreActions: 'Más acciones',
     hintFromScan:
       'Se detectaron cambios de paisaje. Abra el Administrador de paisajes aquí para ordenar.',
-    hintFromSettings:
-      'La clasificación de paisajes está habilitada. Abra el Administrador de paisajes aquí.',
     updatingIndex: 'Actualizando índice...',
     allContinents: 'Todos los continentes',
     groupByContinent: 'Por región',

@@ -37,6 +37,7 @@ function extractPlaceholders(value) {
 // Record the expected value so a future English copy change is still checked.
 const sharedTranslations = {
   fr: {
+    'settingsPanels.installation': 'Installation',
     'flightPlanDetails.altitude': 'Altitude',
     'flightPlanDetails.destination': 'Destination',
     'flightPlanDetails.distance': 'Distance',
@@ -45,6 +46,7 @@ const sharedTranslations = {
     'healthDetails.fields.version': 'Version',
   },
   de: {
+    'settingsPanels.installation': 'Installation',
     'flightPlanDetails.details': 'Details',
     'healthDetails.fields.plugins': 'Plugins',
     'healthDetails.fields.version': 'Version',

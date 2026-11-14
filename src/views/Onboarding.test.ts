@@ -31,6 +31,14 @@ vi.mock('@/services/logger', () => ({ logError: vi.fn() }))
 const originalPath = '/sim/original'
 const newPath = '/sim/replacement'
 
+function pendingResult<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((finish) => {
+    resolve = finish
+  })
+  return { promise, resolve }
+}
+
 beforeEach(() => {
   vi.resetAllMocks()
   values.clear()
@@ -50,9 +58,29 @@ function setup() {
 }
 
 describe('X-Plane directory', () => {
+  it('uses safe first-run defaults and preserves explicit choices on upgrade', async () => {
+    invoke.mockImplementation(async (command: string) =>
+      command === 'get_platform' ? 'windows' : undefined,
+    )
+    const { store } = setup()
+    await store.initStore()
+    expect(store.atomicInstallEnabled).toBe(true)
+    expect(store.autoSortScenery).toBe(false)
+    expect(store.deleteSourceAfterInstall).toBe(false)
+    expect(values.has(STORAGE_KEYS.ONBOARDING_COMPLETED)).toBe(false)
+
+    values.set(STORAGE_KEYS.ONBOARDING_COMPLETED, 'true')
+    values.set(STORAGE_KEYS.ATOMIC_INSTALL_ENABLED, false)
+    values.set(STORAGE_KEYS.AUTO_SORT_SCENERY, true)
+    const existing = setup().store
+    await existing.initStore()
+    expect(existing.atomicInstallEnabled).toBe(false)
+    expect(existing.autoSortScenery).toBe(true)
+  })
+
   it('ignores earlier validation results even when they arrive after a newer submission', async () => {
     const { store, plugins } = setup()
-    const oldValidation = Promise.withResolvers<boolean>()
+    const oldValidation = pendingResult<boolean>()
     invoke.mockReturnValueOnce(oldValidation.promise).mockResolvedValueOnce(true)
     const wrapper = mount(XplaneDirectoryForm, { global: { plugins } })
     const input = wrapper.get('input')
@@ -129,7 +157,7 @@ describe('X-Plane directory', () => {
     expect(router.currentRoute.value.path).toBe('/onboarding')
     expect(wrapper.get('[role="status"]').text()).toBe(en.settingsSetup.saveFailed)
 
-    const pendingSave = Promise.withResolvers<void>()
+    const pendingSave = pendingResult<void>()
     save.mockReturnValueOnce(pendingSave.promise)
     await wrapper.get('form').trigger('submit')
     await flushPromises()

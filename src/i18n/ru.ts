@@ -1,3 +1,4 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
 import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
@@ -5,6 +6,7 @@ import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.ru,
   settingsSetup: directoryMessages.ru,
   healthDetails: healthDetailMessages.ru,
   flightPlanDetails: flightPlanDetailMessages.ru,
@@ -699,7 +701,6 @@ export default {
     moreActions: 'Дополнительные действия',
     hintFromScan:
       'Обнаружены изменения сценерии. Откройте менеджер сценерии здесь, чтобы отсортировать их.',
-    hintFromSettings: 'Сортировка сценерии включена. Откройте менеджер сценерии здесь.',
     updatingIndex: 'Обновление индекса...',
     allContinents: 'Все континенты',
     groupByContinent: 'По региону',
