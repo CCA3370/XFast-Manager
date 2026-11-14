@@ -72,6 +72,7 @@ export default {
     batchProcess: '批量处理',
     analyzing: '正在分析文件...',
     pleaseWait: '请稍候，正在检测插件结构',
+    preparingInstall: '正在准备安装…',
     installing: '正在安装...',
     copyingToXplane: '正在复制文件到X-Plane目录',
     installationCompleted: '安装完成！',

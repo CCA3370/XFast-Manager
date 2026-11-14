@@ -246,6 +246,9 @@
           <InstallProgressOverlay
             v-else-if="store.isInstalling || store.showCompletion"
             key="installing"
+            :is-preparing="
+              !progressStore.progress || progressStore.progress.phase === 'calculating'
+            "
             :percentage="progressStore.formatted.percentage"
             :task-name="progressStore.formatted.taskName"
             :processed-m-b="progressStore.formatted.processedMB"

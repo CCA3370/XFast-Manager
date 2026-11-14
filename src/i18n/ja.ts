@@ -72,6 +72,7 @@ export default {
     batchProcess: 'バッチ処理',
     analyzing: 'ファイルを分析中...',
     pleaseWait: 'プラグイン構造を検出中です。お待ちください。',
+    preparingInstall: 'インストールを準備しています…',
     installing: 'インストール中...',
     copyingToXplane: 'X-Plane ディレクトリへのファイルのコピー',
     installationCompleted: '無事にインストール完了しました！',

@@ -72,6 +72,7 @@ export default {
     batchProcess: 'Processamento em lote',
     analyzing: 'Analisando arquivos...',
     pleaseWait: 'Aguarde, detectando a estrutura do plugin',
+    preparingInstall: 'Preparando a instalação…',
     installing: 'Instalando...',
     copyingToXplane: 'Copiando arquivos para o diretório do X-Plane',
     installationCompleted: 'Instalação concluída com sucesso!',

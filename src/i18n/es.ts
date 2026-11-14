@@ -72,6 +72,7 @@ export default {
     batchProcess: 'proceso por lotes',
     analyzing: 'Analizando archivos...',
     pleaseWait: 'Espere, detectando la estructura del complemento.',
+    preparingInstall: 'Preparando la instalación…',
     installing: 'Instalando...',
     copyingToXplane: 'Copiar archivos al directorio X-Plane',
     installationCompleted: '¡La instalación se completó con éxito!',

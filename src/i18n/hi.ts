@@ -72,6 +72,7 @@ export default {
     batchProcess: 'सामूहिक प्रक्रिया',
     analyzing: 'फ़ाइलों का विश्लेषण हो रहा है...',
     pleaseWait: 'कृपया प्रतीक्षा करें, प्लगइन संरचना का पता लगाया जा रहा है',
+    preparingInstall: 'इंस्टॉलेशन की तैयारी…',
     installing: 'स्थापित किया जा रहा है...',
     copyingToXplane: 'फ़ाइलें X-Plane निर्देशिका में कॉपी की जा रही हैं',
     installationCompleted: 'स्थापना सफलतापूर्वक पूरी हुई!',

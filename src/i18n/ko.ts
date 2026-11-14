@@ -72,6 +72,7 @@ export default {
     batchProcess: '일괄 처리',
     analyzing: '파일 분석 중...',
     pleaseWait: '잠시만 기다리세요, 플러그인 구조를 감지하는 중입니다',
+    preparingInstall: '설치 준비 중…',
     installing: '설치 중...',
     copyingToXplane: '파일을 X-Plane 디렉터리로 복사하는 중입니다',
     installationCompleted: '설치가 성공적으로 완료되었습니다!',

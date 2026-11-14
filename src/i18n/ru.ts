@@ -72,6 +72,7 @@ export default {
     batchProcess: 'Пакетная обработка',
     analyzing: 'Анализ файлов...',
     pleaseWait: 'Подождите, определяется структура плагина',
+    preparingInstall: 'Подготовка к установке…',
     installing: 'Установка...',
     copyingToXplane: 'Копирование файлов в каталог X-Plane',
     installationCompleted: 'Установка успешно завершена!',

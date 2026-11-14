@@ -72,6 +72,7 @@ export default {
     batchProcess: 'معالجة دفعية',
     analyzing: 'جارٍ تحليل الملفات...',
     pleaseWait: 'يرجى الانتظار، يتم اكتشاف بنية الإضافة',
+    preparingInstall: 'جارٍ التحضير…',
     installing: 'جارٍ التثبيت...',
     copyingToXplane: 'جارٍ نسخ الملفات إلى مجلد X-Plane',
     installationCompleted: 'اكتمل التثبيت بنجاح!',

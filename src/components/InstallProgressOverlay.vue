@@ -448,6 +448,7 @@ const props = defineProps<{
   // New props for task list display
   tasks: InstallTask[]
   currentTaskIndex: number
+  isPreparing: boolean
   // Completion state
   isComplete: boolean
   installResult: InstallResult | null
@@ -545,7 +546,7 @@ const completionStatus = computed<'success' | 'partial' | 'failed'>(() => {
 // Computed: header title
 const headerTitle = computed(() => {
   if (!props.isComplete) {
-    return t('home.installing')
+    return t(props.isPreparing ? 'home.preparingInstall' : 'home.installing')
   }
   if (completionStatus.value === 'success') {
     return t('completion.allSuccess')
@@ -600,6 +601,7 @@ watch(
 
 // Check if a task is currently active (installing) in parallel mode
 function isTaskActive(index: number): boolean {
+  if (props.isPreparing) return false
   if (isParallel.value) {
     return props.activeTasks?.some((at) => at.taskIndex === index) ?? false
   }
