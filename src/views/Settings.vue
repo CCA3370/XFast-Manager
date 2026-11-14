@@ -28,16 +28,7 @@
     </nav>
 
     <div class="min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
-      <Transition
-        mode="out-in"
-        enter-active-class="transition-all duration-200 ease-out"
-        enter-from-class="opacity-0 translate-y-1"
-        enter-to-class="opacity-100 translate-y-0"
-        leave-active-class="transition-all duration-150 ease-in"
-        leave-from-class="opacity-100 translate-y-0"
-        leave-to-class="opacity-0 translate-y-1"
-      >
-        <section v-show="activeGroup === 'xplane'" id="settings-xplane" :class="panel">
+      <section v-show="activeGroup === 'xplane'" id="settings-xplane" :class="panel">
           <XplaneDirectoryForm />
           <CollapsibleSection :title="t('settingsPanels.advanced')">
             <label
@@ -58,8 +49,7 @@
             />
             <p id="launch-args-help" :class="helpStyle">{{ t('settings.xplaneLaunchArgsDesc') }}</p>
           </CollapsibleSection>
-        </section>
-      </Transition>
+      </section>
 
       <section v-show="activeGroup === 'installation'" id="settings-installation" :class="panel">
         <div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onClickOutside, ref } from '@vueuse/core'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { onClickOutside } from '@vueuse/core'
 
 interface Option {
   value: string | number
