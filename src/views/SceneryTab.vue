@@ -60,7 +60,6 @@ const lockStore = useLockStore()
 // Scenery-specific state (migrated from SceneryManager.vue)
 const drag = ref(false)
 const isSortingScenery = ref(false)
-const isCreatingIndex = ref(false)
 const highlightedIndex = ref(-1)
 const currentMatchIndex = ref(0)
 const searchExpandedGroups = ref<Record<string, boolean>>({})
@@ -1693,22 +1692,6 @@ function handleSortSceneryNow() {
   })
 }
 
-async function handleCreateIndex() {
-  if (isCreatingIndex.value || !appStore.xplanePath) return
-
-  isCreatingIndex.value = true
-  try {
-    await invoke('rebuild_scenery_index', { xplanePath: appStore.xplanePath })
-    await sceneryStore.loadData()
-    syncLocalEntries()
-    toastStore.success(t('settings.indexRebuilt'))
-  } catch (e) {
-    modalStore.showError(t('settings.indexRebuildFailed') + ': ' + String(e))
-  } finally {
-    isCreatingIndex.value = false
-  }
-}
-
 // State for database reset
 const isResettingDatabase = ref(false)
 
@@ -2945,47 +2928,6 @@ onBeforeUnmount(() => {
             {{ t('sceneryManager.noIndex') }}
           </p>
         </Transition>
-        <div class="flex justify-center">
-          <button
-            :disabled="isCreatingIndex"
-            class="px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center space-x-2"
-            @click="handleCreateIndex"
-          >
-            <svg
-              v-if="!isCreatingIndex"
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              ></path>
-            </svg>
-            <svg
-              v-else
-              class="w-4 h-4 animate-spin [animation-direction:reverse]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              ></path>
-            </svg>
-            <Transition name="text-fade" mode="out-in">
-              <span :key="locale">{{
-                isCreatingIndex ? t('settings.creatingIndex') : t('settings.createIndex')
-              }}</span>
-            </Transition>
-          </button>
-        </div>
       </div>
 
       <!-- No scenery found -->

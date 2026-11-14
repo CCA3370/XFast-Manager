@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { AddonType, type InstallTask, type InstallResult } from '@/types'
-import { invokeVoidCommand } from '@/services/api'
+import { invokeVoidCommand, tryInvokeCommand } from '@/services/api'
 import { useLockStore } from './lock'
-import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { getItem, saveSettings, setItem, STORAGE_KEYS } from '@/services/storage'
 
 export type LogLevel = 'basic' | 'full' | 'debug'
 
@@ -15,6 +15,7 @@ export interface TaskState {
   overwrite: boolean
   /** Whether large size warning has been confirmed */
   sizeConfirmed: boolean
+  sceneryOption?: string
   /** Backup settings for aircraft tasks */
   backup: {
     liveries: boolean
@@ -88,8 +89,6 @@ export const useAppStore = defineStore('app', () => {
 
   // Scenery auto-sorting (default: disabled)
   const autoSortScenery = ref(false)
-  const sceneryManagerHintVisible = ref(false)
-  const sceneryManagerHintMessageKey = ref<string | null>(null)
 
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
@@ -209,6 +208,8 @@ export const useAppStore = defineStore('app', () => {
   async function initStore(): Promise<void> {
     if (isInitialized.value) return
 
+    isWindows.value = (await tryInvokeCommand<string>('get_platform')) === 'windows'
+
     // Load xplanePath
     const savedPath = await getItem<string>(STORAGE_KEYS.XPLANE_PATH)
     if (savedPath) xplanePath.value = savedPath
@@ -249,6 +250,9 @@ export const useAppStore = defineStore('app', () => {
     const savedAtomicInstall = await getItem<boolean>(STORAGE_KEYS.ATOMIC_INSTALL_ENABLED)
     if (typeof savedAtomicInstall === 'boolean') {
       atomicInstallEnabled.value = savedAtomicInstall
+    } else if (isWindows.value && (await getItem(STORAGE_KEYS.ONBOARDING_COMPLETED)) !== 'true') {
+      await setItem(STORAGE_KEYS.ATOMIC_INSTALL_ENABLED, true)
+      atomicInstallEnabled.value = true
     }
 
     // Load delete source after install setting
@@ -310,16 +314,12 @@ export const useAppStore = defineStore('app', () => {
     ])
   }
 
-  async function setXplanePath(path: string) {
+  async function setXplanePath(path: string, completeOnboarding = false) {
+    await saveSettings({
+      [STORAGE_KEYS.XPLANE_PATH]: path,
+      ...(completeOnboarding ? { [STORAGE_KEYS.ONBOARDING_COMPLETED]: 'true' } : {}),
+    })
     xplanePath.value = path
-    await setItem(STORAGE_KEYS.XPLANE_PATH, path)
-  }
-
-  async function loadXplanePath() {
-    const saved = await getItem<string>(STORAGE_KEYS.XPLANE_PATH)
-    if (saved) {
-      xplanePath.value = saved
-    }
   }
 
   async function togglePreference(type: AddonType) {
@@ -337,15 +337,22 @@ export const useAppStore = defineStore('app', () => {
     await setItem(STORAGE_KEYS.ATOMIC_INSTALL_ENABLED, atomicInstallEnabled.value)
   }
 
-  async function toggleDeleteSourceAfterInstall() {
-    deleteSourceAfterInstall.value = !deleteSourceAfterInstall.value
-    await setItem(STORAGE_KEYS.DELETE_SOURCE_AFTER_INSTALL, deleteSourceAfterInstall.value)
+  async function setDeleteSourceAfterInstall(enabled: boolean) {
+    await saveSettings({ [STORAGE_KEYS.DELETE_SOURCE_AFTER_INSTALL]: enabled })
+    deleteSourceAfterInstall.value = enabled
   }
 
-  async function toggleAutoSortScenery() {
-    autoSortScenery.value = !autoSortScenery.value
-    await invokeVoidCommand('set_scenery_auto_sort', { enabled: autoSortScenery.value })
-    await setItem(STORAGE_KEYS.AUTO_SORT_SCENERY, autoSortScenery.value)
+  async function setAutoSortScenery(enabled: boolean) {
+    const previous = autoSortScenery.value
+    if (enabled === previous) return
+    await invokeVoidCommand('set_scenery_auto_sort', { enabled })
+    try {
+      await saveSettings({ [STORAGE_KEYS.AUTO_SORT_SCENERY]: enabled })
+    } catch (error) {
+      await invokeVoidCommand('set_scenery_auto_sort', { enabled: previous })
+      throw error
+    }
+    autoSortScenery.value = enabled
   }
 
   async function setXplaneLaunchArgs(args: string) {
@@ -371,15 +378,6 @@ export const useAppStore = defineStore('app', () => {
   async function toggleCrashAnalysisDmpEnabled() {
     crashAnalysisDmpEnabled.value = !crashAnalysisDmpEnabled.value
     await setItem(STORAGE_KEYS.CRASH_ANALYSIS_DMP_ENABLED, crashAnalysisDmpEnabled.value)
-  }
-
-  function showSceneryManagerHint(messageKey: string) {
-    sceneryManagerHintMessageKey.value = messageKey
-    sceneryManagerHintVisible.value = true
-  }
-
-  function dismissSceneryManagerHint() {
-    sceneryManagerHintVisible.value = false
   }
 
   function setConfirmationOpen(open: boolean) {
@@ -473,6 +471,7 @@ export const useAppStore = defineStore('app', () => {
         ...task,
         shouldOverwrite: state.overwrite,
         sizeConfirmed: state.sizeConfirmed,
+        selectedSceneryOption: state.sceneryOption,
         backupLiveries: state.backup.liveries,
         // Only enable config file backup if patterns are configured
         backupConfigFiles: configFilePatterns.value.length > 0 && state.backup.configFiles,
@@ -666,8 +665,6 @@ export const useAppStore = defineStore('app', () => {
     maxParallelTasks,
     crashAnalysisIgnoreDateCheck,
     crashAnalysisDmpEnabled,
-    sceneryManagerHintVisible,
-    sceneryManagerHintMessageKey,
     isConfirmationOpen,
     isLibraryLinkSubmitting,
     logLevel,
@@ -688,19 +685,16 @@ export const useAppStore = defineStore('app', () => {
     isInitialized,
     initStore,
     setXplanePath,
-    loadXplanePath,
     togglePreference,
     toggleVerificationPreference,
     toggleAtomicInstall,
-    toggleDeleteSourceAfterInstall,
-    toggleAutoSortScenery,
+    setDeleteSourceAfterInstall,
+    setAutoSortScenery,
     setXplaneLaunchArgs,
     toggleParallelInstall,
     setMaxParallelTasks,
     toggleCrashAnalysisIgnoreDateCheck,
     toggleCrashAnalysisDmpEnabled,
-    showSceneryManagerHint,
-    dismissSceneryManagerHint,
     setConfirmationOpen,
     setLibraryLinkSubmitting,
     setLogLevel,

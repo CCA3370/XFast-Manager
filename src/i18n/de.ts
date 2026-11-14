@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.de,
+  settingsSetup: directoryMessages.de,
   healthDetails: healthDetailMessages.de,
   flightPlanDetails: flightPlanDetailMessages.de,
   flightPlans: {
@@ -73,6 +77,7 @@ export default {
     batchProcess: 'Batch-Prozess',
     analyzing: 'Dateien werden analysiert...',
     pleaseWait: 'Bitte warten Sie, die Plugin-Struktur wird erkannt',
+    preparingInstall: 'Wird vorbereitet…',
     installing: 'Installieren...',
     copyingToXplane: 'Kopieren von Dateien in das X-Plane-Verzeichnis',
     installationCompleted: 'Installation erfolgreich abgeschlossen!',
@@ -392,6 +397,8 @@ export default {
     testing: 'Testen',
   },
   modal: {
+    sceneryOption: 'Szenerieoption',
+    defaultSceneryOption: 'Standard (wie im Paket)',
     confirmInstallation: 'Bestätigen Sie die Installation',
     installToXplane: 'Installieren Sie die folgenden Add-ons für X-Plane',
     targetPath: 'Installieren auf',
@@ -697,7 +704,6 @@ export default {
     autoSortFailed: 'Die automatische Sortierung ist fehlgeschlagen',
     moreActions: 'Weitere Aktionen',
     hintFromScan: 'Szenenveränderungen erkannt. Öffnen Sie hier den Scenery Manager zum Sortieren.',
-    hintFromSettings: 'Die Szenensortierung ist aktiviert. Öffnen Sie hier den Scenery Manager.',
     updatingIndex: 'Index wird aktualisiert...',
     allContinents: 'Alle Kontinente',
     groupByContinent: 'Nach Region',

@@ -41,37 +41,6 @@
                         <AnimatedText>{{ item.label }}</AnimatedText>
                       </span>
                     </router-link>
-                    <div
-                      v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
-                      class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
-                    >
-                      <div
-                        class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2"
-                      >
-                        <div
-                          class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"
-                        ></div>
-                        <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
-                        <button
-                          class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
-                          @click="store.dismissSceneryManagerHint()"
-                        >
-                          <svg
-                            class="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              stroke-width="2"
-                              d="M6 18L18 6M6 6l12 12"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
                   </div>
 
                   <router-link
@@ -180,12 +149,11 @@
                     </svg>
                   </span>
                 </button>
-                <!-- Sponsor button (Chinese locale only) -->
+                <!-- Sponsor button (always visible; zh opens modal, others open Patreon) -->
                 <button
-                  v-if="locale === 'zh'"
                   class="relative p-1.5 rounded-lg group overflow-hidden transition-all duration-300 text-gray-600 dark:text-gray-400 hover:text-pink-500 dark:hover:text-pink-400"
                   :title="$t('sponsor.title')"
-                  @click="showSponsor = true"
+                  @click="onSponsorClick"
                 >
                   <div
                     class="absolute inset-0 bg-pink-50 dark:bg-pink-500/10 rounded-lg transition-all duration-300 transform origin-center scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-50"
@@ -283,37 +251,6 @@
                     <AnimatedText>{{ item.label }}</AnimatedText>
                   </span>
                 </router-link>
-                <div
-                  v-if="store.sceneryManagerHintVisible && store.sceneryManagerHintMessageKey"
-                  class="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-50"
-                >
-                  <div
-                    class="relative min-w-[240px] max-w-[340px] w-max bg-cyan-50 dark:bg-cyan-900/60 border border-cyan-200 dark:border-cyan-700 text-cyan-900 dark:text-cyan-100 text-xs px-3 py-2 rounded-lg shadow-lg flex items-start gap-2"
-                  >
-                    <div
-                      class="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-cyan-50 dark:bg-cyan-900/60 border-l border-t border-cyan-200 dark:border-cyan-700 rotate-45"
-                    ></div>
-                    <span class="leading-4">{{ $t(store.sceneryManagerHintMessageKey) }}</span>
-                    <button
-                      class="ml-1 text-cyan-700/80 dark:text-cyan-200/80 hover:text-cyan-900 dark:hover:text-white"
-                      @click="store.dismissSceneryManagerHint()"
-                    >
-                      <svg
-                        class="w-3.5 h-3.5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <router-link
@@ -496,6 +433,15 @@ const doctorStore = useDoctorStore()
 const router = useRouter()
 const route = useRoute()
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
+let startupUpdateCheckDue = false
+watch(isOnboardingRoute, checkForStartupUpdates)
+
+function checkForStartupUpdates() {
+  if (!startupUpdateCheckDue || isOnboardingRoute.value) return
+  startupUpdateCheckDue = false
+  if (updateStore.autoCheckEnabled) void updateStore.checkForUpdates(false)
+}
+
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 const addonDrawerVisible = computed({
   get: () => addonUpdateDrawerStore.show,
@@ -511,6 +457,15 @@ const addonDrawerVisible = computed({
 // Always on top state
 const isAlwaysOnTop = ref(false)
 const showSponsor = ref(false)
+
+// Sponsor button: Chinese locale opens the in-app modal; other locales open the Patreon shop.
+function onSponsorClick() {
+  if (locale.value === 'zh') {
+    showSponsor.value = true
+  } else {
+    invoke('open_url', { url: 'https://www.patreon.com/cw/CCA_3370/shop' })
+  }
+}
 
 // Nav expand state
 type NavId =
@@ -1099,25 +1054,10 @@ onMounted(async () => {
   logBasic('XFast Manager started', 'app')
   logDebug('Loading app store and initializing', 'app')
 
-  // Non-blocking: load X-Plane path
-  store
-    .loadXplanePath()
-    .then(() => {
-      logDebug(`X-Plane path loaded: ${store.xplanePath || '(not set)'}`, 'app')
-    })
-    .catch((e) => {
-      logError(`Failed to load X-Plane path: ${e}`, 'app')
-    })
-
   logDebug(`Log level: ${store.logLevel}`, 'app')
 
-  // Detect platform and context menu status at startup (once)
+  // Check Explorer integration after app settings have loaded.
   try {
-    logDebug('Detecting platform...', 'app')
-    const platform = await invoke<string>('get_platform')
-    store.isWindows = platform === 'windows'
-    logDebug(`Platform detected: ${platform}`, 'app')
-
     // Check context menu registration status (Windows only)
     if (store.isWindows) {
       store.isContextMenuRegistered = await invoke<boolean>('is_context_menu_registered')
@@ -1136,7 +1076,7 @@ onMounted(async () => {
       }
     }
   } catch (error) {
-    logError(`Failed to detect platform: ${error}`, 'app')
+    logError(`Failed to check context menu status: ${error}`, 'app')
   }
 
   // Non-blocking sync locale to backend (moved from i18n module top-level)
@@ -1208,17 +1148,15 @@ onMounted(async () => {
     when: () => commandPaletteRef.value?.visible ?? false,
   })
 
-  // Check for updates (non-blocking, delayed to avoid affecting startup performance)
+  // Keep the first-run directory form clear of update dialogs.
   setTimeout(() => {
-    updateStore.checkAndShowPostUpdateChangelog()
+    if (!isOnboardingRoute.value) void updateStore.checkAndShowPostUpdateChangelog()
   }, 1500)
 
   setTimeout(() => {
-    if (updateStore.autoCheckEnabled) {
-      logDebug('Auto-checking for updates...', 'app')
-      updateStore.checkForUpdates(false)
-    }
-  }, 3000) // 3 second delay
+    startupUpdateCheckDue = true
+    checkForStartupUpdates()
+  }, 3000)
 
   // Check tracked issue updates in the background
   setTimeout(() => {

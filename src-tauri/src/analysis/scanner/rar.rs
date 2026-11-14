@@ -125,12 +125,10 @@ impl Scanner {
                         Ok(nested_items) => {
                             detected.extend(nested_items);
                         }
-                        Err(e) => {
-                            if e.downcast_ref::<PasswordRequiredError>().is_some() {
-                                return Err(anyhow::anyhow!(NestedPasswordRequiredError {
-                                    parent_archive: archive_path.to_string_lossy().to_string(),
-                                    nested_archive: nested_path.clone(),
-                                }));
+                        Err(error) => {
+                            let e = ctx.nested_scan_error(error, archive_path, &nested_path);
+                            if e.downcast_ref::<NestedPasswordRequiredError>().is_some() {
+                                return Err(e);
                             }
                             crate::logger::log_info(
                                 &format!("Failed to scan nested archive {}: {}", nested_path, e),
@@ -171,75 +169,23 @@ impl Scanner {
         ctx: &mut ScanContext,
         parent_password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        use tempfile::Builder;
-
-        // Create temp directory for extraction
-        let temp_dir = Builder::new()
-            .prefix("xfi_rar_nested_")
-            .tempdir()
-            .context("Failed to create temp directory")?;
-
-        // Extract the RAR archive to temp using the typestate pattern
-        let normalized_parent_path =
-            crate::archive_input::normalize_archive_entry_path(parent_path);
-        let archive_builder = if let Some(pwd) = parent_password {
-            unrar::Archive::with_password(&normalized_parent_path, pwd)
-        } else {
-            unrar::Archive::new(&normalized_parent_path)
-        };
-
-        let mut archive = archive_builder
-            .open_for_processing()
-            .map_err(|e| anyhow::anyhow!("Failed to open RAR for processing: {:?}", e))?;
-
-        while let Some(header) = archive
-            .read_header()
-            .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
-        {
-            archive = if header.entry().is_file() {
-                header
-                    .extract_with_base(temp_dir.path())
-                    .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
-            } else {
-                header
-                    .skip()
-                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-            };
-        }
-
-        // Find the nested archive in extracted files
-        let temp_archive_path = temp_dir.path().join(nested_path);
-
-        if !temp_archive_path.exists() {
-            // Provide detailed error with directory listing
-            let mut available_files = Vec::new();
-            if let Ok(entries) = fs::read_dir(temp_dir.path()) {
-                for entry in entries.flatten().take(10) {
-                    if let Some(name) = entry.file_name().to_str() {
-                        available_files.push(name.to_string());
-                    }
-                }
-            }
-
-            return Err(anyhow::anyhow!(
-                "Nested archive not found after extraction: {}\nExpected at: {:?}\nAvailable files: {}",
-                nested_path,
-                temp_archive_path,
-                if available_files.is_empty() {
-                    "(none)".to_string()
-                } else {
-                    available_files.join(", ")
-                }
-            ));
-        }
-
-        // Get archive format
-        let format = get_archive_format(nested_path)
-            .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
-
+        let format = get_archive_format(nested_path).context("Unsupported nested RAR member")?;
+        crate::installer::sanitize_path(Path::new(nested_path))
+            .context("Unsafe nested RAR member")?;
+        let prepared = prepare_archive_for_read(parent_path, ArchiveFormat::Rar)?;
+        let temp = tempfile::NamedTempFile::with_suffix(&format!(".{format}"))?;
+        crate::archive_input::extract_rar_member(
+            prepared.read_path(),
+            nested_path,
+            temp.path(),
+            parent_password,
+            || Ok(()),
+        )?;
+        let temp_archive_path = temp.path();
         // Check if this nested archive has its own password
-        let nested_password =
-            ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
+        let nested_password = ctx
+            .get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path)
+            .or_else(|| parent_password.map(str::to_owned));
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -252,29 +198,8 @@ impl Scanner {
         ctx.push_archive(nested_info.clone());
 
         // OPTIMIZATION: If nested archive is ZIP, try to load into memory
-        let nested_result = if format == "zip" {
-            crate::logger::log_info(
-                "Optimizing: Loading nested ZIP from RAR into memory for scanning",
-                Some("scanner"),
-            );
-
-            match self.try_scan_zip_from_file_to_memory(&temp_archive_path, parent_path, ctx) {
-                Ok(items) => Ok(items),
-                Err(e) => {
-                    crate::logger::log_info(
-                        &format!("Memory optimization failed, using standard scan: {}", e),
-                        Some("scanner"),
-                    );
-                    // Fallback to standard scan
-                    self.scan_path_with_context(&temp_archive_path, ctx)
-                }
-            }
-        } else {
-            // For non-ZIP, use standard scan
-            self.scan_path_with_context(&temp_archive_path, ctx)
-        };
-
-        // Pop from context chain
+        let nested_result =
+            self.scan_nested_file(temp_archive_path, parent_path, ctx, &nested_info);
         ctx.pop_archive();
 
         // Process results
@@ -282,14 +207,7 @@ impl Scanner {
             Ok(mut items) => {
                 // Update each detected item with extraction chain
                 for item in &mut items {
-                    let mut chain = ExtractionChain {
-                        archives: ctx.parent_chain.clone(),
-                        final_internal_root: item.archive_internal_root.clone(),
-                    };
-                    chain.archives.push(nested_info.clone());
-                    item.path = parent_path.to_string_lossy().to_string();
-                    item.extraction_chain = Some(chain);
-                    item.archive_internal_root = None;
+                    super::attach_nested_chain(item, parent_path, &nested_info);
 
                     // Preserve the detected addon name when available.
                     // Only fall back to the nested archive filename for blank/unknown names.
@@ -374,6 +292,7 @@ impl Scanner {
         );
 
         let mut files: Vec<String> = Vec::new();
+        let mut option_files = Vec::new();
         let mut sound_packs = AircraftSoundPacks::default();
 
         // Collect all file paths
@@ -382,6 +301,11 @@ impl Scanner {
             let file_path = e.filename.to_string_lossy().replace('\\', "/");
             if !e.is_directory() {
                 sound_packs.record_file(&file_path);
+                option_files.push(scenery_options::PackageFile::new(
+                    file_path.clone(),
+                    e.unpacked_size,
+                    Some(e.file_crc),
+                ));
             }
             files.push(file_path);
         }
@@ -568,12 +492,14 @@ impl Scanner {
                 xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
-                    let prefix = if internal_root.ends_with('/') {
-                        internal_root.clone()
-                    } else {
-                        format!("{}/", internal_root)
-                    };
-                    skip_prefixes.push(prefix);
+                    if item.addon_type != AddonType::LuaScript {
+                        let prefix = if internal_root.ends_with('/') {
+                            internal_root.clone()
+                        } else {
+                            format!("{}/", internal_root)
+                        };
+                        skip_prefixes.push(prefix);
+                    }
                 } else if item.addon_type == AddonType::Aircraft {
                     // Aircraft at archive root: skip all other markers in this archive
                     skip_prefixes.push(String::new());
@@ -591,6 +517,7 @@ impl Scanner {
             "scanner_timing"
         );
 
+        scenery_options::attach_archive_options(option_files, &mut detected);
         Ok(detected)
     }
 
@@ -601,48 +528,28 @@ impl Scanner {
         target_file: &str,
         password: Option<&str>,
     ) -> Result<String> {
-        let normalized_archive_path =
-            crate::archive_input::normalize_archive_entry_path(archive_path);
-
-        // Create secure temp directory using tempfile crate
-        let temp_dir = tempfile::Builder::new()
-            .prefix("xfi_rar_read_")
-            .tempdir()
-            .context("Failed to create secure temp directory")?;
-
-        // Extract to temp using the typestate pattern (with password if provided)
-        let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(&normalized_archive_path, pwd)
-        } else {
-            unrar::Archive::new(&normalized_archive_path)
-        };
-
-        let mut archive = archive_builder
-            .open_for_processing()
-            .map_err(|e| anyhow::anyhow!("Failed to open RAR for processing: {:?}", e))?;
-
-        while let Some(header) = archive
-            .read_header()
-            .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
-        {
-            archive = if header.entry().is_file() {
-                header
-                    .extract_with_base(temp_dir.path())
-                    .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
-            } else {
-                header
-                    .skip()
-                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-            };
+        let normalized = crate::archive_input::normalize_archive_entry_path(archive_path);
+        let name = target_file.replace('\\', "/");
+        crate::installer::sanitize_path(Path::new(&name)).context("Unsafe RAR text entry")?;
+        let mut archive = crate::rar_stream::RarStream::open(&normalized, password)?;
+        while let Some(entry) = archive.next()? {
+            if !entry.directory && !entry.redirected && entry.name == name {
+                anyhow::ensure!(entry.size <= 1024 * 1024, "RAR text entry exceeds 1 MiB");
+                let mut bytes = Vec::with_capacity(entry.size as usize);
+                archive.read(|chunk| {
+                    if bytes.len() + chunk.len() > entry.size as usize {
+                        return Err(std::io::Error::other(
+                            "RAR text entry exceeds its declared size",
+                        ));
+                    }
+                    bytes.extend_from_slice(chunk);
+                    Ok(())
+                })?;
+                anyhow::ensure!(bytes.len() as u64 == entry.size, "Truncated RAR text entry");
+                return Ok(String::from_utf8(bytes)?);
+            }
+            archive.skip()?;
         }
-
-        // Sanitize the file path to prevent path traversal using proper sanitization
-        let safe_path = crate::installer::sanitize_path(Path::new(target_file))
-            .ok_or_else(|| anyhow::anyhow!("Unsafe path in RAR archive: {}", target_file))?;
-        let file_path = temp_dir.path().join(safe_path);
-        let content = fs::read_to_string(&file_path).context("Failed to read file from RAR")?;
-
-        // TempDir automatically cleans up when dropped
-        Ok(content)
+        anyhow::bail!("RAR member not found: {name}")
     }
 }

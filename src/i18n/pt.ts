@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.pt,
+  settingsSetup: directoryMessages.pt,
   healthDetails: healthDetailMessages.pt,
   flightPlanDetails: flightPlanDetailMessages.pt,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: 'Processamento em lote',
     analyzing: 'Analisando arquivos...',
     pleaseWait: 'Aguarde, detectando a estrutura do plugin',
+    preparingInstall: 'Preparando a instalação…',
     installing: 'Instalando...',
     copyingToXplane: 'Copiando arquivos para o diretório do X-Plane',
     installationCompleted: 'Instalação concluída com sucesso!',
@@ -389,6 +394,8 @@ export default {
     testing: 'Testes',
   },
   modal: {
+    sceneryOption: 'Opção do cenário',
+    defaultSceneryOption: 'Padrão (conforme o pacote)',
     confirmInstallation: 'Confirmar instalação',
     installToXplane: 'Instalar os seguintes addons no X-Plane',
     targetPath: 'Instalar em',
@@ -699,7 +706,6 @@ export default {
     moreActions: 'Mais ações',
     hintFromScan:
       'Alterações de cenário detectadas. Abra o Gerenciador de cenários aqui para ordenar.',
-    hintFromSettings: 'A ordenação de cenários está ativada. Abra o Gerenciador de cenários aqui.',
     updatingIndex: 'Atualizando índice...',
     allContinents: 'Todos os continentes',
     groupByContinent: 'Por região',

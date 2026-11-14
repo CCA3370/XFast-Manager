@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.ja,
+  settingsSetup: directoryMessages.ja,
   healthDetails: healthDetailMessages.ja,
   flightPlanDetails: flightPlanDetailMessages.ja,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: 'バッチ処理',
     analyzing: 'ファイルを分析中...',
     pleaseWait: 'プラグイン構造を検出中です。お待ちください。',
+    preparingInstall: 'インストールを準備しています…',
     installing: 'インストール中...',
     copyingToXplane: 'X-Plane ディレクトリへのファイルのコピー',
     installationCompleted: '無事にインストール完了しました！',
@@ -375,6 +380,8 @@ export default {
     testing: 'テスト',
   },
   modal: {
+    sceneryOption: 'シーナリーのオプション',
+    defaultSceneryOption: '既定（パッケージの設定）',
     confirmInstallation: 'インストールの確認',
     installToXplane: 'X-Planeに以下のアドオンをインストールします。',
     targetPath: 'インストール先',
@@ -669,7 +676,6 @@ export default {
     autoSortFailed: '自動並べ替えに失敗しました',
     moreActions: 'さらなるアクション',
     hintFromScan: '風景の変化が検出されました。ここでシーナリーマネージャーを開いて並べ替えます。',
-    hintFromSettings: 'シーナリーソートが有効になります。ここでシーナリーマネージャーを開きます。',
     updatingIndex: 'インデックスを更新中...',
     allContinents: 'すべての大陸',
     groupByContinent: '地域別',

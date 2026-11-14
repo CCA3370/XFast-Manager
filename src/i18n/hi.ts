@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.hi,
+  settingsSetup: directoryMessages.hi,
   healthDetails: healthDetailMessages.hi,
   flightPlanDetails: flightPlanDetailMessages.hi,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: 'सामूहिक प्रक्रिया',
     analyzing: 'फ़ाइलों का विश्लेषण हो रहा है...',
     pleaseWait: 'कृपया प्रतीक्षा करें, प्लगइन संरचना का पता लगाया जा रहा है',
+    preparingInstall: 'इंस्टॉलेशन की तैयारी…',
     installing: 'स्थापित किया जा रहा है...',
     copyingToXplane: 'फ़ाइलें X-Plane निर्देशिका में कॉपी की जा रही हैं',
     installationCompleted: 'स्थापना सफलतापूर्वक पूरी हुई!',
@@ -379,6 +384,8 @@ export default {
     testing: 'परीक्षण',
   },
   modal: {
+    sceneryOption: 'दृश्यावली का विकल्प',
+    defaultSceneryOption: 'डिफ़ॉल्ट (पैकेज के अनुसार)',
     confirmInstallation: 'स्थापना की पुष्टि करें',
     installToXplane: 'निम्नलिखित ऐडऑन X-Plane में स्थापित करें',
     targetPath: 'यहाँ स्थापित करें',
@@ -680,7 +687,6 @@ export default {
     autoSortFailed: 'स्वचालित क्रमबद्धता विफल',
     moreActions: 'और कार्रवाइयाँ',
     hintFromScan: 'दृश्य परिवर्तन पाए गए। उन्हें क्रमबद्ध करने के लिए यहाँ से दृश्य प्रबंधक खोलें।',
-    hintFromSettings: 'दृश्य क्रमबद्धता सक्षम है। यहाँ से दृश्य प्रबंधक खोलें।',
     updatingIndex: 'अनुक्रमणिका अद्यतन हो रही है...',
     allContinents: 'सभी महाद्वीप',
     groupByContinent: 'क्षेत्र अनुसार',

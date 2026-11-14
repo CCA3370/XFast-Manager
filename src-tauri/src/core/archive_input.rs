@@ -6,6 +6,8 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
+use crate::archive_reader::{ArchiveFiles, ArchiveReader};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveFormat {
     Zip,
@@ -33,12 +35,40 @@ impl ArchiveFormat {
 
 pub struct PreparedArchive {
     read_path: PathBuf,
-    _temp_file: Option<NamedTempFile>,
+    temp_file: Option<NamedTempFile>,
+    parts: Vec<PathBuf>,
 }
 
 impl PreparedArchive {
     pub fn read_path(&self) -> &Path {
         &self.read_path
+    }
+
+    pub fn is_temporary(&self) -> bool {
+        self.temp_file.is_some()
+    }
+    pub(crate) fn is_split(&self) -> bool {
+        !self.parts.is_empty()
+    }
+
+    pub(crate) fn files(&self) -> Result<ArchiveFiles> {
+        if self.is_temporary() || self.parts.is_empty() {
+            Ok(ArchiveFiles::open([self.read_path.clone()])?)
+        } else {
+            Ok(ArchiveFiles::open(self.parts.iter().cloned())?)
+        }
+    }
+
+    pub(crate) fn reader(&self) -> Result<ArchiveReader> {
+        Ok(self.files()?.reader())
+    }
+
+    pub(crate) fn sevenz_metadata(
+        &self,
+        password: &sevenz_rust2::Password,
+    ) -> Result<sevenz_rust2::Archive> {
+        let mut reader = std::io::BufReader::with_capacity(256 * 1024, self.reader()?);
+        Ok(sevenz_rust2::Archive::read(&mut reader, password)?)
     }
 }
 
@@ -677,8 +707,100 @@ fn concat_parts_to_temp(parts: &[PathBuf], format: ArchiveFormat) -> Result<Prep
 
     Ok(PreparedArchive {
         read_path: temp_file.path().to_path_buf(),
-        _temp_file: Some(temp_file),
+        temp_file: Some(temp_file),
+        parts: parts.to_vec(),
     })
+}
+
+pub(crate) fn extract_rar_member(
+    path: &Path,
+    name: &str,
+    destination: &Path,
+    password: Option<&str>,
+    mut check: impl FnMut() -> std::io::Result<()>,
+) -> Result<()> {
+    let mut archive = crate::rar_stream::RarStream::open(path, password)?;
+    let name = name.replace('\\', "/");
+    while let Some(entry) = archive.next()? {
+        check()?;
+        if !entry.directory && !entry.redirected && entry.name == name {
+            let parent = destination
+                .parent()
+                .context("Missing RAR extraction directory")?;
+            archive_workspace_space(parent, entry.size)?;
+            let mut output = NamedTempFile::new_in(parent)?;
+            let mut remaining = entry.size;
+            archive.read(|bytes| {
+                check()?;
+                remaining = remaining
+                    .checked_sub(bytes.len() as u64)
+                    .ok_or_else(|| std::io::Error::other("RAR member exceeds its declared size"))?;
+                output.write_all(bytes)
+            })?;
+            anyhow::ensure!(remaining == 0, "RAR member was truncated");
+            output.persist(destination)?;
+            return Ok(());
+        }
+        archive.skip()?;
+    }
+    anyhow::bail!("RAR member not found: {name}")
+}
+
+pub(crate) fn archive_workspace_space(path: &Path, required: u64) -> Result<()> {
+    let directory = path
+        .ancestors()
+        .find(|path| path.is_dir())
+        .with_context(|| format!("No writable parent for {}", path.display()))?;
+    let available = fs2::available_space(directory)
+        .with_context(|| format!("Cannot determine free space at {}", directory.display()))?;
+    anyhow::ensure!(
+        available >= required,
+        "Insufficient disk space at {}: {} bytes required, {} bytes available",
+        directory.display(),
+        required,
+        available
+    );
+    Ok(())
+}
+
+pub(crate) fn spool_archive_member(
+    mut input: impl Read,
+    size: u64,
+    format: &str,
+    directory: Option<&Path>,
+    mut check: impl FnMut() -> std::io::Result<()>,
+) -> Result<NamedTempFile> {
+    let default_dir;
+    let directory = match directory {
+        Some(path) => path,
+        None => {
+            default_dir = std::env::temp_dir();
+            &default_dir
+        }
+    };
+    archive_workspace_space(directory, size)?;
+    let mut output = tempfile::Builder::new()
+        .prefix("xfast-nested-")
+        .suffix(&format!(".{format}"))
+        .tempfile_in(directory)?;
+    let mut buffer = vec![0; 256 * 1024];
+    let mut remaining = size;
+    loop {
+        check()?;
+        let read = input.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        anyhow::ensure!(
+            remaining >= read as u64,
+            "Nested archive exceeds its declared size"
+        );
+        output.write_all(&buffer[..read])?;
+        remaining -= read as u64;
+    }
+    anyhow::ensure!(remaining == 0, "Nested archive was truncated");
+    output.flush()?;
+    Ok(output)
 }
 
 pub fn prepare_archive_for_read(path: &Path, format: ArchiveFormat) -> Result<PreparedArchive> {
@@ -699,7 +821,8 @@ pub fn prepare_archive_for_read(path: &Path, format: ArchiveFormat) -> Result<Pr
                 if let Some(first) = parts.first() {
                     return Ok(PreparedArchive {
                         read_path: first.clone(),
-                        _temp_file: None,
+                        temp_file: None,
+                        parts: Vec::new(),
                     });
                 }
             }
@@ -707,19 +830,21 @@ pub fn prepare_archive_for_read(path: &Path, format: ArchiveFormat) -> Result<Pr
         }
     };
 
-    if let Some(parts) = parts {
-        let lower = normalized.to_string_lossy().to_ascii_lowercase();
-        let needs_concat = parts.len() > 1
-            || (format == ArchiveFormat::Zip && !lower.ends_with(".zip"))
-            || (format == ArchiveFormat::SevenZ && !lower.ends_with(".7z"));
-        if needs_concat {
-            return concat_parts_to_temp(&parts, format);
-        }
+    let parts = parts.unwrap_or_default();
+    let is_spanned_zip = format == ArchiveFormat::Zip
+        && parts.first().is_some_and(|part| {
+            part.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| split_zip_z_volume(name).is_some())
+        });
+    if is_spanned_zip {
+        return concat_parts_to_temp(&parts, format);
     }
 
     Ok(PreparedArchive {
-        read_path: normalized,
-        _temp_file: None,
+        read_path: parts.first().cloned().unwrap_or(normalized),
+        temp_file: None,
+        parts,
     })
 }
 
@@ -770,8 +895,9 @@ mod tests {
         let prepared =
             prepare_archive_for_read(&part2, ArchiveFormat::SevenZ).expect("prepare split 7z");
         let mut merged = Vec::new();
-        fs::File::open(prepared.read_path())
-            .expect("open merged archive")
+        prepared
+            .reader()
+            .expect("open split archive")
             .read_to_end(&mut merged)
             .expect("read merged archive");
 

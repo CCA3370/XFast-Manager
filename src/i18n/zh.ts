@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.zh,
+  settingsSetup: directoryMessages.zh,
   healthDetails: healthDetailMessages.zh,
   flightPlanDetails: flightPlanDetailMessages.zh,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: '批量处理',
     analyzing: '正在分析文件...',
     pleaseWait: '请稍候，正在检测插件结构',
+    preparingInstall: '正在准备安装…',
     installing: '正在安装...',
     copyingToXplane: '正在复制文件到X-Plane目录',
     installationCompleted: '安装完成！',
@@ -355,6 +360,8 @@ export default {
     testing: '测试',
   },
   modal: {
+    sceneryOption: '地景选项',
+    defaultSceneryOption: '默认（原包配置）',
     confirmInstallation: '确认安装',
     installToXplane: '即将安装以下插件到X-Plane',
     targetPath: '安装到',
@@ -631,7 +638,6 @@ export default {
     autoSortFailed: '自动排序失败',
     moreActions: '更多操作',
     hintFromScan: '检测到地景变化，请从这里进入地景管理器进行排序',
-    hintFromSettings: '已启用地景排序，请从这里进入地景管理器进行排序',
     updatingIndex: '正在更新索引...',
     allContinents: '所有大洲',
     groupByContinent: '按地区',

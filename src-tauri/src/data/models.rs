@@ -142,6 +142,11 @@ pub struct InstallTask {
     /// Estimated uncompressed size in bytes (for archives)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_size: Option<u64>,
+    /// Source revision observed when analyzing a standalone ZIP.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zip_source: Option<crate::zip_package::FileSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sevenz_source: Option<crate::zip_package::FileSnapshot>,
     /// Size warning message if archive is suspiciously large or has high compression ratio
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_warning: Option<String>,
@@ -169,9 +174,8 @@ pub struct InstallTask {
     /// Whether to backup navdata during clean install (Navdata only)
     #[serde(default = "default_true")]
     pub backup_navdata: bool,
-    /// File hashes collected during scanning (for verification)
-    /// Key: relative path within addon, Value: FileHash
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Verification metadata for this execution, keyed by installed relative path.
+    #[serde(skip)]
     pub file_hashes: Option<HashMap<String, FileHash>>,
     /// Whether hash verification is enabled for this task
     #[serde(default = "default_true")]
@@ -191,6 +195,11 @@ pub struct InstallTask {
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub companion_paths: Vec<String>,
+    /// Optional replacements bundled alongside a scenery's default files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenery_options: Vec<SceneryInstallOption>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_scenery_option: Option<String>,
     /// Files selected by the confirmed patch plan, relative to the archive and aircraft roots.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patch_files: Vec<PatchFileWrite>,
@@ -205,6 +214,55 @@ pub struct InstallTask {
     /// Selected aircraft boundary, rechecked before a patch writes any files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch_aircraft_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneryOptionFile {
+    /// Path relative to the option folder.
+    pub source: String,
+    /// Path relative to the base scenery.
+    pub destination: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneryInstallOption {
+    pub root: String,
+    pub name: String,
+    /// How each option file maps into the scenery's Earth nav data folder.
+    pub files: Vec<SceneryOptionFile>,
+}
+
+impl SceneryInstallOption {
+    pub fn source_for(&self, destination: &str) -> Option<&str> {
+        self.files
+            .iter()
+            .find(|file| file.destination == destination)
+            .map(|file| file.source.as_str())
+    }
+
+    pub fn destination_for(&self, source: &str) -> Option<&str> {
+        self.files
+            .iter()
+            .find(|file| file.source == source)
+            .map(|file| file.destination.as_str())
+    }
+
+    pub fn has_destination(&self, destination: &str) -> bool {
+        self.files
+            .iter()
+            .any(|file| file.destination == destination)
+    }
+}
+
+impl InstallTask {
+    pub fn scenery_option(&self) -> Option<&SceneryInstallOption> {
+        let root = self.selected_scenery_option.as_deref()?;
+        self.scenery_options
+            .iter()
+            .find(|option| option.root == root)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,6 +317,7 @@ pub struct DetectedItem {
     pub is_xlua_runtime: bool,
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     pub companion_paths: Vec<String>,
+    pub scenery_options: Vec<SceneryInstallOption>,
 }
 
 /// Installation progress event sent to frontend

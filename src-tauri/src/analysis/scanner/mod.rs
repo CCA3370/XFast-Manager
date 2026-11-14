@@ -11,9 +11,11 @@ use crate::logger;
 use crate::models::{
     AddonType, DetectedItem, ExtractionChain, NavdataCycle, NavdataInfo, NestedArchiveInfo,
 };
+use crate::zip_package::{ZipReader, ZipSummary};
 
 #[path = "rar.rs"]
 mod rar;
+mod scenery_options;
 #[path = "sevenz.rs"]
 mod sevenz;
 #[path = "zip.rs"]
@@ -62,6 +64,9 @@ pub(super) struct ScanContext {
     parent_chain: Vec<NestedArchiveInfo>,
     /// Password map for archives (key: archive path, value: password)
     passwords: HashMap<String, String>,
+    zip_summary: Option<ZipSummary>,
+    sevenz_summary: Option<ZipSummary>,
+    root_archive: Option<PathBuf>,
 }
 
 impl ScanContext {
@@ -71,6 +76,9 @@ impl ScanContext {
             max_depth: 2,
             parent_chain: Vec::new(),
             passwords: HashMap::new(),
+            zip_summary: None,
+            sevenz_summary: None,
+            root_archive: None,
         }
     }
 
@@ -95,6 +103,18 @@ impl ScanContext {
     /// Get password for a nested archive by checking the password map
     /// Tries multiple key formats: full path, nested path, and filename
     fn get_nested_password(&self, parent_path: &str, nested_path: &str) -> Option<String> {
+        let root = self
+            .root_archive
+            .as_ref()
+            .map(|path| path.to_string_lossy());
+        let chain = self.member_path(nested_path);
+        if let Some(password) = root
+            .as_ref()
+            .and_then(|root| self.passwords.get(&format!("{root}/{chain}")))
+        {
+            return Some(password.clone());
+        }
+
         // Try full nested path: "parent.zip/nested.zip"
         let full_key = format!("{}/{}", parent_path, nested_path);
         if let Some(pwd) = self.passwords.get(&full_key) {
@@ -117,13 +137,49 @@ impl ScanContext {
 
         None
     }
+    fn member_path(&self, path: &str) -> String {
+        self.parent_chain
+            .iter()
+            .map(|member| member.internal_path.as_str())
+            .chain(std::iter::once(path))
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    fn nested_scan_error(
+        &self,
+        error: anyhow::Error,
+        parent: &Path,
+        member: &str,
+    ) -> anyhow::Error {
+        if error
+            .downcast_ref::<NestedPasswordRequiredError>()
+            .is_some()
+        {
+            return error;
+        }
+        if error.downcast_ref::<PasswordRequiredError>().is_some() {
+            return NestedPasswordRequiredError {
+                parent_archive: self
+                    .root_archive
+                    .as_deref()
+                    .unwrap_or(parent)
+                    .to_string_lossy()
+                    .into_owned(),
+                nested_archive: self.member_path(member),
+            }
+            .into();
+        }
+        error
+    }
 }
 
 struct NestedZipScanParams<'a> {
-    parent_archive: &'a mut ::zip::ZipArchive<fs::File>,
+    parent_archive: &'a mut ::zip::ZipArchive<ZipReader>,
     file_index: usize,
     nested_path: &'a str,
     parent_path: &'a Path,
+    input: ZipReader,
     ctx: &'a mut ScanContext,
     parent_password: Option<&'a [u8]>,
     is_encrypted: bool,
@@ -342,16 +398,45 @@ struct VersionFileReadPlan {
     version_file_paths: Vec<String>,
 }
 
-#[derive(Debug, Default)]
-struct VersionFilesReadOutcome {
-    files_content: Option<(Option<String>, Vec<String>)>,
-    timed_out: bool,
+fn attach_nested_chain(item: &mut DetectedItem, parent: &Path, member: &NestedArchiveInfo) {
+    let chain = item
+        .extraction_chain
+        .get_or_insert_with(|| ExtractionChain {
+            archives: Vec::new(),
+            final_internal_root: item.archive_internal_root.take(),
+        });
+    chain.archives.insert(0, member.clone());
+    item.path = parent.to_string_lossy().into_owned();
 }
 
-#[derive(Debug, Default)]
-struct VersionReadOutcome {
-    version_info: Option<crate::models::VersionInfo>,
-    timed_out: bool,
+fn sevenz_version_plan(
+    package: &crate::sevenz_package::SevenzPackage,
+    internal_root: Option<&str>,
+) -> VersionFileReadPlan {
+    plan_version_file_reads(
+        package
+            .archive
+            .files
+            .iter()
+            .filter(|entry| !entry.is_directory() && entry.has_stream())
+            .map(|entry| (entry.name(), entry.size())),
+        internal_root,
+    )
+}
+
+fn sevenz_version_contents(
+    plan: VersionFileReadPlan,
+    texts: &HashMap<String, String>,
+) -> (Option<String>, Vec<String>) {
+    let updater = plan
+        .updater_cfg_path
+        .and_then(|path| texts.get(&path.replace('\\', "/")).cloned());
+    let versions = plan
+        .version_file_paths
+        .iter()
+        .filter_map(|path| texts.get(&path.replace('\\', "/")).cloned())
+        .collect();
+    (updater, versions)
 }
 
 fn classify_version_file_candidate(file_name: &str) -> Option<VersionFileCandidateKind> {
@@ -464,6 +549,12 @@ fn infer_version_from_name(text: &str) -> Option<String> {
 /// with no internal state, so no unsafe impl is needed.
 pub struct Scanner;
 
+pub(crate) struct ScannedInput {
+    pub items: Vec<DetectedItem>,
+    pub zip_summary: Option<ZipSummary>,
+    pub sevenz_summary: Option<ZipSummary>,
+}
+
 impl Scanner {
     pub fn new() -> Self {
         Scanner
@@ -545,16 +636,6 @@ impl Scanner {
         false
     }
 
-    /// Check if a path is inside any of the given directories
-    fn is_path_inside_dirs(file_path: &Path, dirs: &HashSet<PathBuf>) -> bool {
-        for ancestor in file_path.ancestors().skip(1) {
-            if dirs.contains(ancestor) {
-                return true;
-            }
-        }
-        false
-    }
-
     /// Check if a string path is inside any aircraft directory (for archive paths)
     /// Used to skip .xpl files that are embedded inside aircraft packages
     #[inline]
@@ -614,45 +695,29 @@ impl Scanner {
             })
     }
 
-    /// Scan a path (file or directory) and detect all addon types
+    #[cfg(test)]
     pub fn scan_path(&self, path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
-        let original_input_path = path.to_string_lossy().to_string();
-        let mut ctx = ScanContext::new();
-        if let Some(pwd) = password {
-            ctx.passwords
-                .insert(path.to_string_lossy().to_string(), pwd.to_string());
-            let normalized = crate::archive_input::normalize_archive_entry_path(path)
-                .to_string_lossy()
-                .to_string();
-            ctx.passwords
-                .entry(normalized)
-                .or_insert_with(|| pwd.to_string());
-        }
-        let mut items = self.scan_path_with_context(path, &mut ctx)?;
-
-        // Set original_input_path for all detected items
-        for item in &mut items {
-            item.original_input_path = original_input_path.clone();
-        }
-
-        Ok(items)
+        let passwords = password
+            .map(|value| HashMap::from([(path.to_string_lossy().into_owned(), value.to_string())]));
+        self.scan_input(path, passwords.as_ref())
+            .map(|scan| scan.items)
     }
 
-    /// Scan a path with a full passwords map (supports nested archive passwords)
-    /// Unlike scan_path which only accepts a single password for the outer archive,
-    /// this method injects ALL passwords into ScanContext so that nested archive
-    /// passwords (keyed as "parent_path/nested_name") can be found during scanning.
-    pub fn scan_path_with_passwords(
+    /// Scan a path with passwords for both the outer and nested archives.
+    pub(crate) fn scan_input(
         &self,
         path: &Path,
-        passwords: &HashMap<String, String>,
-    ) -> Result<Vec<DetectedItem>> {
+        passwords: Option<&HashMap<String, String>>,
+    ) -> Result<ScannedInput> {
         let original_input_path = path.to_string_lossy().to_string();
-        let mut ctx = ScanContext::new();
+        let mut ctx = ScanContext {
+            root_archive: Some(path.to_path_buf()),
+            ..ScanContext::new()
+        };
         // Insert all provided passwords into context
         // This includes outer archive passwords (key = archive path)
         // and nested archive passwords (key = "parent_path/nested_name")
-        for (key, value) in passwords {
+        for (key, value) in passwords.into_iter().flatten() {
             ctx.passwords.insert(key.clone(), value.clone());
             let normalized = crate::archive_input::normalize_archive_entry_path(Path::new(key))
                 .to_string_lossy()
@@ -668,7 +733,11 @@ impl Scanner {
             item.original_input_path = original_input_path.clone();
         }
 
-        Ok(items)
+        Ok(ScannedInput {
+            items,
+            zip_summary: ctx.zip_summary,
+            sevenz_summary: ctx.sevenz_summary,
+        })
     }
 
     /// Internal method: Scan a path with context (supports nested archives)
@@ -738,8 +807,6 @@ impl Scanner {
         let mut aircraft_dirs: HashSet<PathBuf> = HashSet::new();
         let mut skip_dirs: HashSet<PathBuf> = HashSet::new();
         let mut xlua_roots = XluaRuntimeRoots::default();
-        // Track directories where Lua scripts were found, so subdirectories' .lua files are skipped
-        let mut lua_dirs: HashSet<PathBuf> = HashSet::new();
 
         // Queue for breadth-first traversal: (directory_path, current_depth)
         let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
@@ -872,18 +939,9 @@ impl Scanner {
                     continue;
                 }
 
-                // Lua script detection (lowest priority - only standalone .lua files)
-                // Skip if a parent directory already has .lua files detected
-                if !Self::is_path_inside_dirs(file_path, &lua_dirs)
-                    && !xlua_roots.contains(file_path)
-                {
+                if !xlua_roots.contains(file_path) {
                     if let Some(item) = self.check_lua_script(file_path, dir)? {
-                        // Record this directory so subdirectories' .lua files are skipped
-                        if let Some(parent) = file_path.parent() {
-                            lua_dirs.insert(parent.to_path_buf());
-                        }
                         detected.push(item);
-                        continue;
                     }
                 }
             }
@@ -896,6 +954,7 @@ impl Scanner {
             }
         }
 
+        scenery_options::attach_directory_options(dir, &mut detected);
         Ok(detected)
     }
 
@@ -965,6 +1024,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1062,6 +1122,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1108,6 +1169,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1137,6 +1199,7 @@ impl Scanner {
                 version_info: None,
                 is_xlua_runtime: false,
                 companion_paths: Vec::new(),
+                scenery_options: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -1224,6 +1287,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1275,6 +1339,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1339,6 +1404,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1404,6 +1470,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1470,6 +1537,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1538,6 +1606,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1577,6 +1646,7 @@ impl Scanner {
                 version_info: None,
                 is_xlua_runtime: false,
                 companion_paths: Vec::new(),
+                scenery_options: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -1628,6 +1698,7 @@ impl Scanner {
                 version_info: None,
                 is_xlua_runtime: false,
                 companion_paths: Vec::new(),
+                scenery_options: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -1733,6 +1804,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths,
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1823,6 +1895,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths,
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1856,6 +1929,7 @@ impl Scanner {
             format!("{}/", lua_parent.trim_matches('/'))
         };
 
+        let mut has_other_script = false;
         let mut inferred: HashMap<String, bool> = HashMap::new(); // candidate -> has_nested_entry
 
         for entry in entries {
@@ -1891,6 +1965,9 @@ impl Scanner {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_ascii_lowercase();
+            if first_lower.ends_with(".lua") && !relative.contains('/') {
+                has_other_script = true;
+            }
             if first_lower.ends_with(".lua")
                 || first_lower.ends_with(".txt")
                 || first_lower.ends_with(".md")
@@ -1953,6 +2030,10 @@ impl Scanner {
             if !exact_stem.is_empty() {
                 return exact_stem;
             }
+        }
+
+        if has_other_script {
+            return Vec::new();
         }
 
         result.sort();
@@ -2115,178 +2196,6 @@ impl Scanner {
         None
     }
 
-    fn read_version_files_from_7z_reader<R: std::io::Read + std::io::Seek>(
-        &self,
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
-        internal_root: Option<&str>,
-    ) -> Option<(Option<String>, Vec<String>)> {
-        self.read_version_files_from_7z_reader_with_budget(archive, reader, internal_root, None)
-            .files_content
-    }
-
-    fn read_version_files_from_7z_reader_with_budget<R: std::io::Read + std::io::Seek>(
-        &self,
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
-        internal_root: Option<&str>,
-        solid_scan_budget: Option<std::time::Duration>,
-    ) -> VersionFilesReadOutcome {
-        let plan = plan_version_file_reads(
-            archive.files.iter().filter_map(|entry| {
-                if entry.is_directory() || !entry.has_stream() {
-                    None
-                } else {
-                    Some((entry.name(), entry.size()))
-                }
-            }),
-            internal_root,
-        );
-
-        if plan.updater_cfg_path.is_none() && plan.version_file_paths.is_empty() {
-            return VersionFilesReadOutcome::default();
-        }
-
-        if archive.is_solid {
-            let budget_start = std::time::Instant::now();
-            let updater_cfg_target = plan.updater_cfg_path.clone();
-            let mut updater_cfg_processed = updater_cfg_target.is_none();
-            let mut updater_cfg_content: Option<String> = None;
-            let mut remaining_version_targets: HashSet<String> =
-                plan.version_file_paths.iter().cloned().collect();
-            let mut version_file_contents = Vec::new();
-            let mut timed_out = false;
-
-            let read_result = reader
-                .for_each_entries(|entry, entry_reader| {
-                    if solid_scan_budget
-                        .map(|budget| budget_start.elapsed() >= budget)
-                        .unwrap_or(false)
-                    {
-                        timed_out = true;
-                        return Ok(false);
-                    }
-
-                    let entry_name = entry.name();
-                    let is_updater_cfg = updater_cfg_target.as_deref() == Some(entry_name);
-                    let is_version_file = remaining_version_targets.contains(entry_name);
-
-                    if !is_updater_cfg && !is_version_file {
-                        return Ok(true);
-                    }
-
-                    let mut data = Vec::with_capacity(entry.size.min(10240) as usize);
-                    let content = if entry_reader.read_to_end(&mut data).is_ok() {
-                        String::from_utf8(data).ok()
-                    } else {
-                        None
-                    };
-
-                    if is_updater_cfg {
-                        updater_cfg_processed = true;
-                        updater_cfg_content = content;
-                    } else {
-                        remaining_version_targets.remove(entry_name);
-                        if let Some(content) = content {
-                            version_file_contents.push(content);
-                        }
-                    }
-
-                    let should_continue = updater_cfg_content.is_none()
-                        && !(updater_cfg_processed && remaining_version_targets.is_empty());
-                    Ok(should_continue)
-                })
-                .ok();
-
-            if read_result.is_none() {
-                return VersionFilesReadOutcome {
-                    files_content: None,
-                    timed_out,
-                };
-            }
-
-            if timed_out && updater_cfg_content.is_none() && version_file_contents.is_empty() {
-                return VersionFilesReadOutcome {
-                    files_content: None,
-                    timed_out: true,
-                };
-            }
-
-            if updater_cfg_content.is_some() || !version_file_contents.is_empty() {
-                return VersionFilesReadOutcome {
-                    files_content: Some((updater_cfg_content, version_file_contents)),
-                    timed_out,
-                };
-            }
-
-            return VersionFilesReadOutcome {
-                files_content: None,
-                timed_out,
-            };
-        }
-
-        let updater_cfg_content = plan.updater_cfg_path.as_deref().and_then(|path| {
-            reader
-                .read_file(path)
-                .ok()
-                .and_then(|bytes| String::from_utf8(bytes).ok())
-        });
-
-        if updater_cfg_content.is_some() {
-            return VersionFilesReadOutcome {
-                files_content: Some((updater_cfg_content, Vec::new())),
-                timed_out: false,
-            };
-        }
-
-        let version_file_contents: Vec<String> = plan
-            .version_file_paths
-            .into_iter()
-            .filter_map(|path| {
-                reader
-                    .read_file(&path)
-                    .ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
-            })
-            .collect();
-
-        if !version_file_contents.is_empty() {
-            VersionFilesReadOutcome {
-                files_content: Some((None, version_file_contents)),
-                timed_out: false,
-            }
-        } else {
-            VersionFilesReadOutcome::default()
-        }
-    }
-
-    fn read_version_from_7z_reader_with_budget<R: std::io::Read + std::io::Seek>(
-        &self,
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
-        internal_root: Option<&str>,
-        solid_scan_budget: Option<std::time::Duration>,
-    ) -> VersionReadOutcome {
-        let outcome = self.read_version_files_from_7z_reader_with_budget(
-            archive,
-            reader,
-            internal_root,
-            solid_scan_budget,
-        );
-        let version_info = outcome.files_content.and_then(|version_files_content| {
-            let version =
-                self.parse_version_from_contents(version_files_content.0, version_files_content.1)?;
-            Some(crate::models::VersionInfo {
-                version: Some(version),
-            })
-        });
-
-        VersionReadOutcome {
-            version_info,
-            timed_out: outcome.timed_out,
-        }
-    }
-
     fn infer_version_info_from_archive_context(
         &self,
         item: &DetectedItem,
@@ -2316,60 +2225,111 @@ impl Scanner {
         None
     }
 
-    fn populate_version_info_from_7z_reader<R: std::io::Read + std::io::Seek>(
+    fn populate_version_info_from_7z_package(
         &self,
         detected: &mut [DetectedItem],
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
+        package: &crate::sevenz_package::SevenzPackage,
         archive_path: &Path,
         archive_name_hint: Option<&str>,
     ) {
-        const SOLID_7Z_VERSION_READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
-
-        for item in detected.iter_mut() {
-            if !matches!(item.addon_type, AddonType::Aircraft | AddonType::Plugin) {
-                continue;
-            }
-
-            let version_outcome = self.read_version_from_7z_reader_with_budget(
-                archive,
-                reader,
-                item.archive_internal_root.as_deref(),
-                archive.is_solid.then_some(SOLID_7Z_VERSION_READ_BUDGET),
-            );
-
-            item.version_info = version_outcome.version_info.or_else(|| {
-                if version_outcome.timed_out {
-                    let inferred = self.infer_version_info_from_archive_context(
+        let plans: Vec<_> = detected
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item.addon_type, AddonType::Aircraft | AddonType::Plugin))
+            .map(|(index, item)| {
+                (
+                    index,
+                    sevenz_version_plan(package, item.archive_internal_root.as_deref()),
+                )
+            })
+            .collect();
+        let deadline = package
+            .archive
+            .is_solid
+            .then(|| std::time::Instant::now() + std::time::Duration::from_secs(5));
+        let texts = package.read_texts(
+            plans.iter().flat_map(|(_, plan)| {
+                plan.updater_cfg_path
+                    .iter()
+                    .chain(&plan.version_file_paths)
+                    .cloned()
+            }),
+            deadline,
+        );
+        for (index, plan) in plans {
+            let (updater, versions) = sevenz_version_contents(plan, &texts);
+            let item = &mut detected[index];
+            item.version_info = self
+                .parse_version_from_contents(updater, versions)
+                .map(|version| crate::models::VersionInfo {
+                    version: Some(version),
+                })
+                .or_else(|| {
+                    self.infer_version_info_from_archive_context(
                         item,
                         archive_path,
                         archive_name_hint,
-                    );
-
-                    if inferred.is_some() {
-                        crate::log_debug!(
-                            &format!(
-                                "[TIMING] 7z version read timed out, inferred from filename/context: {}",
-                                item.display_name
-                            ),
-                            "scanner_timing"
-                        );
-                    }
-
-                    inferred
-                } else {
-                    None
-                }
-            });
+                    )
+                });
         }
     }
 
-    /// Read a file from a ZIP archive
+    fn scan_nested_file(
+        &self,
+        path: &Path,
+        logical_parent: &Path,
+        ctx: &mut ScanContext,
+        member: &NestedArchiveInfo,
+    ) -> Result<Vec<DetectedItem>> {
+        match member.format.as_str() {
+            "zip" | "7z" => self.scan_nested_reader(
+                crate::archive_reader::ArchiveReader::open(path)?,
+                logical_parent,
+                ctx,
+                member,
+            ),
+            "rar" => self.scan_rar_with_context(path, ctx, member.password.as_deref()),
+            _ => anyhow::bail!("Unsupported nested archive: {}", member.format),
+        }
+    }
+
+    fn scan_nested_reader(
+        &self,
+        input: crate::archive_reader::ArchiveReader,
+        logical_parent: &Path,
+        ctx: &mut ScanContext,
+        member: &NestedArchiveInfo,
+    ) -> Result<Vec<DetectedItem>> {
+        match member.format.as_str() {
+            "zip" => {
+                let package = crate::zip_package::ZipPackage::from_reader(logical_parent, input)?;
+                self.scan_zip_package(&package, logical_parent, ctx, member.password.as_deref())
+            }
+            "7z" => {
+                let package = crate::sevenz_package::SevenzPackage::from_reader(
+                    input,
+                    member.password.as_deref(),
+                )
+                .map_err(|error| {
+                    sevenz::classify_7z_password(error, logical_parent, member.password.as_deref())
+                })?;
+                self.scan_7z_package(
+                    logical_parent,
+                    &package,
+                    ctx,
+                    member.password.as_deref(),
+                    std::time::Instant::now(),
+                )
+            }
+            _ => anyhow::bail!("Unsupported nested stream: {}", member.format),
+        }
+    }
+
     fn read_file_from_zip(&self, archive_path: &Path, file_path: &str) -> Result<String> {
         use std::io::Read;
 
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip)?;
-        let file = fs::File::open(prepared.read_path())?;
+        let file = prepared.reader()?;
         let mut archive = ::zip::ZipArchive::new(file)?;
 
         let mut zip_file = archive.by_name(file_path)?;
@@ -2382,7 +2342,7 @@ impl Scanner {
     /// List all entries in a ZIP archive
     fn list_zip_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip)?;
-        let file = fs::File::open(prepared.read_path())?;
+        let file = prepared.reader()?;
         let archive = ::zip::ZipArchive::new(file)?;
 
         let entries: Vec<String> = (0..archive.len())
@@ -2405,7 +2365,7 @@ impl Scanner {
     /// List all entries in a 7z archive
     fn list_7z_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ)?;
-        let archive = sevenz_rust2::Archive::open(prepared.read_path())?;
+        let archive = prepared.sevenz_metadata(&sevenz_rust2::Password::empty())?;
         Ok(archive
             .files
             .iter()
@@ -2454,7 +2414,7 @@ impl Scanner {
         use std::io::Read;
 
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip).ok()?;
-        let file = fs::File::open(prepared.read_path()).ok()?;
+        let file = prepared.reader().ok()?;
         let mut archive = ::zip::ZipArchive::new(file).ok()?;
 
         let mut updater_cfg_content: Option<String> = None;
@@ -2555,12 +2515,17 @@ impl Scanner {
         archive_path: &Path,
         internal_root: Option<&str>,
     ) -> Option<(Option<String>, Vec<String>)> {
-        use sevenz_rust2::{ArchiveReader, Password};
-
-        let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ).ok()?;
-        let mut reader = ArchiveReader::open(prepared.read_path(), Password::empty()).ok()?;
-        let archive = reader.archive().clone();
-        self.read_version_files_from_7z_reader(&archive, &mut reader, internal_root)
+        let package = crate::sevenz_package::SevenzPackage::open(archive_path, None).ok()?;
+        let plan = sevenz_version_plan(&package, internal_root);
+        let texts = package.read_texts(
+            plan.updater_cfg_path
+                .iter()
+                .chain(&plan.version_file_paths)
+                .cloned(),
+            None,
+        );
+        let (updater, versions) = sevenz_version_contents(plan, &texts);
+        (updater.is_some() || !versions.is_empty()).then_some((updater, versions))
     }
 
     /// Read version files from a RAR archive
@@ -2696,6 +2661,7 @@ mod tests {
     };
     use std::fs;
     use std::io::{Cursor, Write};
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
     const APT_DAT_FIXTURE: &[u8] = b"I\n1100 Generated by WorldEditor\n\n1 14 1 0 NTTH Huahine\n";
@@ -3012,6 +2978,273 @@ mod tests {
     }
 
     #[test]
+    fn scenery_package_keeps_navigation_override_with_its_base() {
+        use std::io::Write;
+
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("Airport.zip");
+        let mut writer = ::zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        let package_dir = temp.path().join("extracted");
+        for (path, contents) in [
+            ("Airport/Airport/objects/static.obj", "base asset"),
+            ("Airport/Airport/Earth nav data/apt.dat", "default"),
+            (
+                "Airport/Airport/Earth nav data/+30+130/+34+136.dsf",
+                "default scenery",
+            ),
+            ("Airport/NO747LCF/Earth nav data/apt.dat", "option"),
+            (
+                "Airport/NO747LCF/Earth nav data/+30+130/+34+136.dsf",
+                "option scenery",
+            ),
+            ("Airport/NO747LCF/What this is.txt", "Copy over the base"),
+            (
+                "Airport/Options/Alternate/Earth nav data/apt.dat",
+                "alternate",
+            ),
+            ("Airport/Independent/Earth nav data/apt.dat", "independent"),
+            (
+                "Airport/Independent/Earth nav data/+30+130/+34+136.dsf",
+                "independent scenery in the same tile",
+            ),
+        ] {
+            writer
+                .start_file(path, ::zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(contents.as_bytes()).unwrap();
+            let extracted_file = package_dir.join(path);
+            fs::create_dir_all(extracted_file.parent().unwrap()).unwrap();
+            fs::write(extracted_file, contents).unwrap();
+        }
+        writer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&archive, None).unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|item| item.display_name == "Independent"));
+        let base = items
+            .iter()
+            .find(|item| item.display_name == "Airport")
+            .unwrap();
+        assert_eq!(
+            base.archive_internal_root.as_deref(),
+            Some("Airport/Airport")
+        );
+        assert_eq!(base.scenery_options.len(), 2);
+        assert_eq!(base.scenery_options[0].name, "NO747LCF");
+        assert_eq!(
+            base.scenery_options[0]
+                .files
+                .iter()
+                .map(|file| file.destination.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Earth nav data/+30+130/+34+136.dsf",
+                "Earth nav data/apt.dat"
+            ]
+        );
+        assert_eq!(
+            base.scenery_options[0].files[0].source,
+            "Earth nav data/+30+130/+34+136.dsf"
+        );
+        assert_eq!(base.scenery_options[1].root, "Airport/Options/Alternate");
+
+        let items = Scanner::new().scan_path(&package_dir, None).unwrap();
+        assert_eq!(items.len(), 2);
+        let base = items
+            .iter()
+            .find(|item| item.display_name == "Airport")
+            .unwrap();
+        assert_eq!(base.scenery_options.len(), 2);
+        assert_eq!(
+            std::path::Path::new(&base.scenery_options[0].root),
+            package_dir.join("Airport/NO747LCF")
+        );
+    }
+
+    /// Build the same package twice: once as a ZIP and once as an extracted
+    /// folder, so option detection is checked for both input kinds.
+    fn build_scenery_fixture(temp: &Path, entries: &[(&str, &[u8])]) -> (PathBuf, PathBuf) {
+        let archive = temp.join("package.zip");
+        let extracted = temp.join("extracted");
+        let mut writer = ::zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        for (path, contents) in entries {
+            writer
+                .start_file(*path, ::zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(contents).unwrap();
+            // Windows cannot create folders containing '*', so the extracted
+            // copy uses the sanitized name the installer would produce.
+            let file = extracted.join(path.replace('*', "_"));
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, contents).unwrap();
+        }
+        writer.finish().unwrap();
+        (archive, extracted)
+    }
+
+    #[test]
+    fn scenery_package_detects_flat_selectable_documents() {
+        let temp = tempdir().unwrap();
+        let scenery = "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang";
+        let entries: &[(&str, &[u8])] = &[
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/objects/terminal.obj",
+                b"model",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/Earth nav data/apt.dat",
+                b"1 1568 0 0 ZLXY Xianyang Intl.",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/Earth nav data/+30+100/+34+108.dsf",
+                b"default tile",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/V1.1Alpha-User Manual.pdf",
+                b"manual",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/**Selectable Documents**/Original/apt.dat",
+                b"1 1569 0 0 ZLXY Xianyang Intl.",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/**Selectable Documents**/Original/+30+100/+34+108.dsf",
+                b"original tile",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/**Selectable Documents**/None_Aircrafts/apt.dat",
+                b"1 1568 0 0 ZLXY Xianyang Intl.",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/A_TAO_ZLXY_Xi'an Xianyang/**Selectable Documents**/None_Aircrafts/+30+100/+34+108.dsf",
+                b"no aircraft tile",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/y_xi an/objects/city.obj",
+                b"city",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/y_xi an/Earth nav data/+30+100/+34+108.dsf",
+                b"city tile",
+            ),
+            (
+                "TAO_ZLXY_Package_V1.1.1/y_xi an/Earth nav data/+30+100/+34+109.dsf",
+                b"city tile 2",
+            ),
+        ];
+        let (archive, extracted) = build_scenery_fixture(temp.path(), entries);
+
+        for source in [&archive, &extracted] {
+            let items = Scanner::new().scan_path(source, None).unwrap();
+            assert_eq!(items.len(), 2, "{items:?}");
+            assert!(items.iter().any(|item| item.display_name == "y_xi an"));
+            let base = items
+                .iter()
+                .find(|item| item.display_name == scenery.rsplit('/').next().unwrap())
+                .unwrap();
+            assert_eq!(base.scenery_options.len(), 1, "{base:?}");
+            let option = &base.scenery_options[0];
+            assert_eq!(option.name, "None_Aircrafts");
+            assert!(option.root.ends_with("/None_Aircrafts"), "{}", option.root);
+            assert!(option.root.contains("Selectable"), "{}", option.root);
+            assert_eq!(option.files.len(), 2);
+            assert_eq!(option.files[0].source, "+30+100/+34+108.dsf");
+            assert_eq!(
+                option.files[0].destination,
+                "Earth nav data/+30+100/+34+108.dsf"
+            );
+            assert_eq!(option.files[1].source, "apt.dat");
+            assert_eq!(option.files[1].destination, "Earth nav data/apt.dat");
+        }
+    }
+
+    #[test]
+    fn scenery_package_hides_copies_and_accepts_more_option_layouts() {
+        let temp = tempdir().unwrap();
+        let entries: &[(&str, &[u8])] = &[
+            ("Airport/Airport/objects/static.obj", b"model"),
+            ("Airport/Airport/Earth nav data/apt.dat", b"default"),
+            (
+                "Airport/Airport/Earth nav data/+30+130/+34+136.dsf",
+                b"default tile",
+            ),
+            ("Airport/Options/Copy/Earth nav data/apt.dat", b"default"),
+            (
+                "Airport/Options/Copy/Earth nav data/+30+130/+34+136.dsf",
+                b"default tile",
+            ),
+            ("Airport/Options/High Detail/apt.dat", b"high detail"),
+            (
+                "Airport/Options/High Detail/+30+130/+34+136.dsf",
+                b"high detail tile",
+            ),
+            ("Airport/可选配置/Original/apt.dat", b"original"),
+            (
+                "Airport/可选配置/Original/+30+130/+34+136.dsf",
+                b"original tile",
+            ),
+            ("Airport/可选配置/去机模/apt.dat", b"no models"),
+            (
+                "Airport/可选配置/去机模/+30+130/+34+136.dsf",
+                b"no models tile",
+            ),
+        ];
+        let (archive, extracted) = build_scenery_fixture(temp.path(), entries);
+
+        for source in [&archive, &extracted] {
+            let items = Scanner::new().scan_path(source, None).unwrap();
+            assert_eq!(items.len(), 1, "{items:?}");
+            let names = items[0]
+                .scenery_options
+                .iter()
+                .map(|option| option.name.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(names, ["High Detail", "去机模"], "{names:?}");
+            let flat = &items[0].scenery_options[1];
+            assert_eq!(flat.files[1].source, "apt.dat");
+            assert_eq!(flat.files[1].destination, "Earth nav data/apt.dat");
+        }
+    }
+
+    #[test]
+    fn sevenz_package_detects_flat_options_and_ignores_identical_copies() {
+        let temp = tempdir().unwrap();
+        let source = temp.path().join("source");
+        let base = source.join("Airport/Airport");
+        let group = base.join("可选配置");
+        for folder in [group.join("Copy"), group.join("去机模")] {
+            fs::create_dir_all(folder.join("+30+100")).unwrap();
+        }
+        fs::create_dir_all(base.join("Earth nav data/+30+100")).unwrap();
+        fs::create_dir_all(base.join("objects")).unwrap();
+        fs::write(base.join("Earth nav data/apt.dat"), b"default").unwrap();
+        fs::write(
+            base.join("Earth nav data/+30+100/+34+108.dsf"),
+            b"default tile",
+        )
+        .unwrap();
+        fs::write(base.join("objects/static.obj"), b"model").unwrap();
+        for (name, contents) in [
+            ("Copy/apt.dat", b"default" as &[u8]),
+            ("Copy/+30+100/+34+108.dsf", b"default tile"),
+            ("去机模/apt.dat", b"no models"),
+            ("去机模/+30+100/+34+108.dsf", b"no models tile"),
+        ] {
+            fs::write(group.join(name), contents).unwrap();
+        }
+
+        let archive = temp.path().join("package.7z");
+        sevenz_rust2::compress_to_path(&source, &archive).unwrap();
+        let items = Scanner::new().scan_path(&archive, None).unwrap();
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0].scenery_options.len(), 1, "{items:?}");
+        let option = &items[0].scenery_options[0];
+        assert_eq!(option.name, "去机模");
+        assert_eq!(option.files[0].source, "+30+100/+34+108.dsf");
+        assert_eq!(option.files[1].source, "apt.dat");
+    }
+
+    #[test]
     fn directory_scan_detects_apt_only_scenery() {
         let temp = tempdir().expect("failed to create tempdir");
         let scenery_root = temp.path().join("NTTH_Scenery_Pack");
@@ -3029,6 +3262,91 @@ mod tests {
         assert_eq!(items[0].addon_type, AddonType::Scenery);
         assert_eq!(items[0].display_name, "NTTH_Scenery_Pack");
         assert_eq!(items[0].path, scenery_root.to_string_lossy());
+    }
+
+    #[test]
+    fn mixed_archive_scan_keeps_both_layers_and_the_final_install_root() -> anyhow::Result<()> {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
+        use zip::write::SimpleFileOptions;
+
+        let temp = tempdir()?;
+        let inner = temp.path().join("content.zip");
+        crate::zip_package::write_zip(
+            &inner,
+            &[("Example/Earth nav data/apt.dat", APT_DAT_FIXTURE)],
+        );
+        let middle = temp.path().join("bundle.7z");
+        let mut sevenz = ArchiveWriter::create(&middle)?;
+        sevenz.push_archive_entry(
+            ArchiveEntry::new_file("files/content.zip"),
+            Some(fs::File::open(&inner)?),
+        )?;
+        sevenz.finish()?;
+        let outer = temp.path().join("bundle.zip");
+        let mut zip = ::zip::ZipWriter::new(fs::File::create(&outer)?);
+        zip.start_file(
+            "bundle.7z",
+            SimpleFileOptions::default()
+                .compression_method(::zip::CompressionMethod::Stored)
+                .large_file(true),
+        )?;
+        std::io::copy(&mut fs::File::open(middle)?, &mut zip)?;
+        zip.finish()?;
+        let items = Scanner::new().scan_path(&outer, None)?;
+        let scenery = items
+            .iter()
+            .find(|item| item.addon_type == AddonType::Scenery)
+            .unwrap();
+        let chain = scenery.extraction_chain.as_ref().unwrap();
+        assert_eq!(
+            chain
+                .archives
+                .iter()
+                .map(|layer| layer.internal_path.as_str())
+                .collect::<Vec<_>>(),
+            ["bundle.7z", "files/content.zip"]
+        );
+        assert_eq!(chain.final_internal_root.as_deref(), Some("Example"));
+        assert_eq!(scenery.path, outer.to_string_lossy());
+        Ok(())
+    }
+
+    #[test]
+    fn nested_password_request_uses_the_complete_chain() -> anyhow::Result<()> {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, Password};
+        let temp = tempdir()?;
+        let inner = temp.path().join("locked.7z");
+        let mut writer = ArchiveWriter::create(&inner)?;
+        writer.set_content_methods(vec![
+            sevenz_rust2::encoder_options::AesEncoderOptions::new(Password::from("test")).into(),
+            sevenz_rust2::EncoderMethod::LZMA2.into(),
+        ]);
+        writer.set_encrypt_header(true);
+        writer.push_archive_entry(
+            ArchiveEntry::new_file("Example/Earth nav data/apt.dat"),
+            Some(APT_DAT_FIXTURE),
+        )?;
+        writer.finish()?;
+
+        let middle = temp.path().join("wrapper.zip");
+        let outer = temp.path().join("outer.zip");
+        crate::zip_package::write_zip(&middle, &[("files/locked.7z", &fs::read(inner)?)]);
+        crate::zip_package::write_zip(&outer, &[("wrapper.zip", &fs::read(middle)?)]);
+        let scanner = Scanner::new();
+        let result = scanner.scan_input(&outer, None).err().unwrap();
+        let password = result
+            .downcast_ref::<super::NestedPasswordRequiredError>()
+            .unwrap();
+        assert_eq!(password.nested_archive, "wrapper.zip/files/locked.7z");
+        let passwords = std::collections::HashMap::from([(
+            format!("{}/{}", outer.display(), password.nested_archive),
+            "test".to_string(),
+        )]);
+        let scan = scanner.scan_input(&outer, Some(&passwords))?;
+        assert_eq!(scan.items.len(), 1);
+        let chain = scan.items[0].extraction_chain.as_ref().unwrap();
+        assert_eq!(chain.archives[1].password.as_deref(), Some("test"));
+        Ok(())
     }
 
     #[test]

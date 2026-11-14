@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.ko,
+  settingsSetup: directoryMessages.ko,
   healthDetails: healthDetailMessages.ko,
   flightPlanDetails: flightPlanDetailMessages.ko,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: '일괄 처리',
     analyzing: '파일 분석 중...',
     pleaseWait: '잠시만 기다리세요, 플러그인 구조를 감지하는 중입니다',
+    preparingInstall: '설치 준비 중…',
     installing: '설치 중...',
     copyingToXplane: '파일을 X-Plane 디렉터리로 복사하는 중입니다',
     installationCompleted: '설치가 성공적으로 완료되었습니다!',
@@ -375,6 +380,8 @@ export default {
     testing: '테스트',
   },
   modal: {
+    sceneryOption: '시너리 옵션',
+    defaultSceneryOption: '기본값 (패키지 설정)',
     confirmInstallation: '설치 확인',
     installToXplane: '다음 애드온을 X-Plane에 설치합니다',
     targetPath: '설치 위치',
@@ -674,7 +681,6 @@ export default {
     autoSortFailed: '자동 정렬에 실패했습니다',
     moreActions: '추가 작업',
     hintFromScan: '시너리 변경이 감지되었습니다. 정렬하려면 여기에서 시너리 관리자를 여세요.',
-    hintFromSettings: '시너리 정렬이 활성화되어 있습니다. 여기에서 시너리 관리자를 여세요.',
     updatingIndex: '인덱스 업데이트 중...',
     allContinents: '모든 대륙',
     groupByContinent: '지역별',

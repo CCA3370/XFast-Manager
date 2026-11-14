@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.ru,
+  settingsSetup: directoryMessages.ru,
   healthDetails: healthDetailMessages.ru,
   flightPlanDetails: flightPlanDetailMessages.ru,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: 'Пакетная обработка',
     analyzing: 'Анализ файлов...',
     pleaseWait: 'Подождите, определяется структура плагина',
+    preparingInstall: 'Подготовка к установке…',
     installing: 'Установка...',
     copyingToXplane: 'Копирование файлов в каталог X-Plane',
     installationCompleted: 'Установка успешно завершена!',
@@ -388,6 +393,8 @@ export default {
     testing: 'Тестирование',
   },
   modal: {
+    sceneryOption: 'Вариант сцены',
+    defaultSceneryOption: 'По умолчанию (как в пакете)',
     confirmInstallation: 'Подтвердить установку',
     installToXplane: 'Установить следующие аддоны в X-Plane',
     targetPath: 'Установить в',
@@ -694,7 +701,6 @@ export default {
     moreActions: 'Дополнительные действия',
     hintFromScan:
       'Обнаружены изменения сценерии. Откройте менеджер сценерии здесь, чтобы отсортировать их.',
-    hintFromSettings: 'Сортировка сценерии включена. Откройте менеджер сценерии здесь.',
     updatingIndex: 'Обновление индекса...',
     allContinents: 'Все континенты',
     groupByContinent: 'По региону',

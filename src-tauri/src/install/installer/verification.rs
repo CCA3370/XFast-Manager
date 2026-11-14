@@ -69,7 +69,7 @@ impl Installer {
         task: &InstallTask,
         ctx: &ProgressContext,
     ) -> Result<Option<crate::models::VerificationStats>> {
-        let target = Path::new(&task.target_path);
+        let target = Self::verification_target(task)?;
 
         // Phase 1: Basic marker file verification (10% of verification progress)
         ctx.set_verification_progress(0.0);
@@ -120,14 +120,8 @@ impl Installer {
 
         // Get expected hashes (must be available at this point)
         // Note: For 7z archives, hashes should have been computed during extraction if verification was enabled
-        let expected_hashes: HashMap<_, _> = match &task.file_hashes {
-            Some(hashes) if !hashes.is_empty() => hashes
-                .iter()
-                .filter(|(path, _)| {
-                    !crate::package_artifacts::is_ignored_package_artifact_archive_path(path)
-                })
-                .map(|(path, hash)| (path.clone(), hash.clone()))
-                .collect(),
+        let expected_hashes = match &task.file_hashes {
+            Some(hashes) if !hashes.is_empty() => hashes,
             _ => {
                 // No hashes available - this can happen for:
                 // 1. 7z/RAR archives (hashes computed during extraction)
@@ -140,14 +134,6 @@ impl Installer {
                 return Ok(None);
             }
         };
-
-        if expected_hashes.is_empty() {
-            logger::log_info(
-                "Only operating-system metadata was present in the verification list",
-                Some("installer"),
-            );
-            return Ok(None);
-        }
 
         let total_expected = expected_hashes.len();
 
@@ -170,7 +156,7 @@ impl Installer {
         let ctx_clone = ctx.clone();
         let mut failed_files = verifier.verify_files_with_progress(
             target,
-            &expected_hashes,
+            expected_hashes,
             move |verified, total| {
                 if total > 0 {
                     // Map verified/total to 15% -> 70% range
@@ -191,7 +177,7 @@ impl Installer {
         let mut retried_count = 0;
 
         // Phase 3: Retry failed files (up to 3 times) (70% -> 95%)
-        if !failed_files.is_empty() {
+        if !failed_files.is_empty() && task.extraction_chain.is_none() {
             logger::log_info(
                 &format!(
                     "Retrying {} failed files (max 3 attempts)",
@@ -206,7 +192,7 @@ impl Installer {
             );
 
             retried_count = failed_files.len();
-            failed_files = self.retry_failed_files(task, failed_files, &expected_hashes)?;
+            failed_files = self.retry_failed_files(task, ctx, failed_files, expected_hashes)?;
 
             ctx.set_verification_progress(95.0);
         } else {
@@ -251,6 +237,17 @@ impl Installer {
         };
 
         Ok(Some(stats))
+    }
+
+    pub(super) fn verification_target(task: &InstallTask) -> Result<&Path> {
+        let target = Path::new(&task.target_path);
+        if task.addon_type == AddonType::LuaScript {
+            target
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Lua target path has no parent: {:?}", target))
+        } else {
+            Ok(target)
+        }
     }
 
     /// Verify marker files (existing logic, extracted)
@@ -384,7 +381,7 @@ impl Installer {
             }
             crate::models::AddonType::LuaScript => {
                 // For Lua scripts, check that the file exists
-                if !target.exists() {
+                if !target.is_file() {
                     return Err(anyhow::anyhow!(
                         "Installation verification failed: Lua script not found: {:?}",
                         target
@@ -410,12 +407,21 @@ impl Installer {
     fn retry_failed_files(
         &self,
         task: &InstallTask,
+        ctx: &ProgressContext,
         mut failed_files: Vec<crate::models::FileVerificationResult>,
         expected_hashes: &std::collections::HashMap<String, crate::models::FileHash>,
     ) -> Result<Vec<crate::models::FileVerificationResult>> {
         const MAX_RETRIES: u8 = 3;
         let source = super::task_source_path(task);
-        let target = Path::new(&task.target_path);
+        let source = if task.addon_type == AddonType::LuaScript
+            && crate::archive_input::detect_archive_format(source).is_none()
+            && source.is_file()
+        {
+            source.parent().context("Lua source path has no parent")?
+        } else {
+            source
+        };
+        let target = Self::verification_target(task)?;
 
         // Reuse verifier instance across retries for better performance
         let verifier = crate::verifier::FileVerifier::new();
@@ -455,14 +461,47 @@ impl Installer {
                 };
                 let safe_relative_path = safe_relative_path.to_string_lossy().replace('\\', "/");
 
-                match self.re_extract_single_file(
-                    source,
-                    target,
-                    &safe_relative_path,
-                    task.archive_internal_root.as_deref(),
-                    task.extraction_chain.as_ref(),
-                    task.password.as_deref(),
-                ) {
+                let option_source = task
+                    .scenery_option()
+                    .filter(|option| option.has_destination(&safe_relative_path))
+                    .and_then(|option| option.source_for(&safe_relative_path));
+                let selected_option = task.scenery_option().filter(|_| option_source.is_some());
+                let (source, internal_root) = match selected_option {
+                    Some(option) if source.is_dir() => (Path::new(&option.root), None),
+                    Some(option) => (source, Some(option.root.as_str())),
+                    None => (source, task.archive_internal_root.as_deref()),
+                };
+                let retry = if let Some(zip) = &ctx.zip_package {
+                    zip.check_source().and_then(|()| {
+                        self.re_extract_from_zip(
+                            zip,
+                            target,
+                            &safe_relative_path,
+                            option_source,
+                            internal_root,
+                            task.password.as_deref(),
+                        )
+                    })
+                } else if let Some(sevenz) = &ctx.sevenz_package {
+                    self.re_extract_from_7z(
+                        sevenz,
+                        target,
+                        &safe_relative_path,
+                        option_source,
+                        internal_root,
+                    )
+                } else {
+                    self.re_extract_single_file(
+                        source,
+                        target,
+                        &safe_relative_path,
+                        option_source,
+                        internal_root,
+                        task.extraction_chain.as_ref(),
+                        task.password.as_deref(),
+                    )
+                };
+                match retry {
                     Ok(_) => {
                         failed.retry_count = retry_attempt;
                         re_extracted_files.push(failed.path.clone());
@@ -548,13 +587,14 @@ impl Installer {
         source: &Path,
         target: &Path,
         relative_path: &str,
+        option_source: Option<&str>,
         internal_root: Option<&str>,
         extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
         // For directories, just copy the file again
         if source.is_dir() {
-            let source_file = source.join(relative_path);
+            let source_file = source.join(option_source.unwrap_or(relative_path));
             let target_file = target.join(relative_path);
 
             if let Some(parent) = target_file.parent() {
@@ -569,30 +609,37 @@ impl Installer {
         let format = crate::archive_input::detect_archive_format(source).ok_or_else(|| {
             anyhow::anyhow!("Unsupported archive format for retry: {}", source.display())
         })?;
+        if format == crate::archive_input::ArchiveFormat::Zip {
+            let zip = ZipPackage::open(source, None)?;
+            return self.re_extract_from_zip(
+                &zip,
+                target,
+                relative_path,
+                option_source,
+                internal_root,
+                password,
+            );
+        }
         let prepared_source = crate::archive_input::prepare_archive_for_read(source, format)?;
         let read_source = prepared_source.read_path();
 
         match format {
-            crate::archive_input::ArchiveFormat::Zip => self.re_extract_from_zip(
-                read_source,
-                target,
-                relative_path,
-                internal_root,
-                extraction_chain,
-                password,
-            ),
-            crate::archive_input::ArchiveFormat::SevenZ => self.re_extract_from_7z(
-                read_source,
-                target,
-                relative_path,
-                internal_root,
-                extraction_chain,
-                password,
-            ),
+            crate::archive_input::ArchiveFormat::Zip => unreachable!(),
+            crate::archive_input::ArchiveFormat::SevenZ => {
+                let package = SevenzPackage::open(source, password)?;
+                self.re_extract_from_7z(
+                    &package,
+                    target,
+                    relative_path,
+                    option_source,
+                    internal_root,
+                )
+            }
             crate::archive_input::ArchiveFormat::Rar => self.re_extract_from_rar(
                 read_source,
                 target,
                 relative_path,
+                option_source,
                 internal_root,
                 extraction_chain,
                 password,
@@ -609,45 +656,22 @@ impl Installer {
     /// 3. If a nested ZIP itself is corrupted, the entire task would fail anyway
     fn re_extract_from_zip(
         &self,
-        archive_path: &Path,
+        zip: &ZipPackage,
         target: &Path,
         relative_path: &str,
+        option_source: Option<&str>,
         internal_root: Option<&str>,
-        _extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
         use std::io::copy;
-        use zip::ZipArchive;
-
-        let file = fs::File::open(archive_path)?;
-        let mut archive = ZipArchive::new(file)?;
-
-        // Build full path in archive
-        let archive_path_str = if let Some(root) = internal_root {
-            format!("{}/{}", root.trim_end_matches('/'), relative_path)
-        } else {
-            relative_path.to_string()
-        };
-
-        let archive_path_normalized = archive_path_str.replace('\\', "/");
-
-        // Find the file index first
-        let mut file_index = None;
-        let mut is_encrypted = false;
-        for i in 0..archive.len() {
-            // Use by_index_raw to avoid triggering decryption errors when reading metadata
-            let file = archive.by_index_raw(i)?;
-            let name = file.name().replace('\\', "/");
-
-            if name == archive_path_normalized {
-                file_index = Some(i);
-                is_encrypted = file.encrypted();
-                break;
-            }
-        }
-
-        let i = file_index
-            .ok_or_else(|| anyhow::anyhow!("File not found in ZIP: {}", archive_path_normalized))?;
+        let mut archive = zip.reader();
+        let member = Path::new(option_source.unwrap_or(relative_path));
+        let entry = zip_install_entries(zip, internal_root)
+            .into_iter()
+            .rev()
+            .find(|entry| !entry.source.is_directory && entry.destination == member)
+            .with_context(|| format!("File not found in ZIP for install path: {relative_path}"))?;
+        let i = entry.source.index;
 
         // Now extract the file
         let target_path = target.join(relative_path);
@@ -660,7 +684,7 @@ impl Installer {
         // Extract file
         let mut outfile = fs::File::create(&target_path)?;
 
-        if is_encrypted {
+        if entry.source.encrypted {
             if let Some(pwd) = password {
                 let mut decrypted = archive
                     .by_index_decrypt(i, pwd.as_bytes())
@@ -677,189 +701,69 @@ impl Installer {
         Ok(())
     }
 
-    /// Re-extract single file from 7z (requires full re-extraction to temp)
-    /// Note: 7z library doesn't support single-file extraction, so we extract the entire archive
-    /// to a temp directory and then copy the specific file. This is inefficient but necessary.
+    /// Re-extract a single installed 7z member using its block.
     fn re_extract_from_7z(
         &self,
-        archive_path: &Path,
+        package: &SevenzPackage,
         target: &Path,
         relative_path: &str,
-        _internal_root: Option<&str>,
-        _extraction_chain: Option<&crate::models::ExtractionChain>,
-        password: Option<&str>,
+        option_source: Option<&str>,
+        internal_root: Option<&str>,
     ) -> Result<()> {
-        use tempfile::TempDir;
-
-        let sanitized_relative = sanitize_path(Path::new(relative_path))
-            .ok_or_else(|| anyhow::anyhow!("Unsafe path in archive: {}", relative_path))?;
-
-        // 7z doesn't support single-file extraction easily
-        // Extract to temp, then copy the specific file
-        let temp_dir = TempDir::new()?;
-        let mut skipped_count = 0usize;
-
-        // Extract entire archive to temp
-        if let Some(pwd) = password {
-            let mut reader =
-                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::from(pwd))
-                    .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader
-                .for_each_entries(|entry, reader| {
-                    let entry_path = match sanitize_path(Path::new(entry.name())) {
-                        Some(path) => path,
-                        None => {
-                            skipped_count += 1;
-                            logger::log_debug(
-                                &format!("Skipping 7z entry with unsafe path: {}", entry.name()),
-                                Some("installer"),
-                                None,
-                            );
-                            return Ok(true);
-                        }
-                    };
-                    let dest_path = temp_dir.path().join(&entry_path);
-                    if entry.is_directory() {
-                        std::fs::create_dir_all(&dest_path)?;
-                    } else {
-                        if let Some(parent) = dest_path.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        let mut file = std::fs::File::create(&dest_path)?;
-                        std::io::copy(reader, &mut file)?;
-                    }
-                    Ok(true)
-                })
-                .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
-        } else {
-            let mut reader =
-                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::empty())
-                    .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
-            reader
-                .for_each_entries(|entry, reader| {
-                    let entry_path = match sanitize_path(Path::new(entry.name())) {
-                        Some(path) => path,
-                        None => {
-                            skipped_count += 1;
-                            logger::log_debug(
-                                &format!("Skipping 7z entry with unsafe path: {}", entry.name()),
-                                Some("installer"),
-                                None,
-                            );
-                            return Ok(true);
-                        }
-                    };
-                    let dest_path = temp_dir.path().join(&entry_path);
-                    if entry.is_directory() {
-                        std::fs::create_dir_all(&dest_path)?;
-                    } else {
-                        if let Some(parent) = dest_path.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        let mut file = std::fs::File::create(&dest_path)?;
-                        std::io::copy(reader, &mut file)?;
-                    }
-                    Ok(true)
-                })
-                .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
-        }
-
-        if skipped_count > 0 {
-            logger::log_info(
-                &format!(
-                    "Skipped {} unsafe 7z entries during re-extract",
-                    skipped_count
-                ),
-                Some("installer"),
-            );
-        }
-
-        // Find and copy the specific file
-        let temp_file = temp_dir.path().join(&sanitized_relative);
-        if !temp_file.exists() {
-            return Err(anyhow::anyhow!(
-                "File not found after 7z extraction: {}",
-                relative_path
-            ));
-        }
-
-        let target_file = target.join(&sanitized_relative);
-        if let Some(parent) = target_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        fs::copy(&temp_file, &target_file)?;
-
+        let member = sanitize_path(Path::new(option_source.unwrap_or(relative_path)))
+            .context("Unsafe option path in 7z retry")?;
+        let index = sevenz_install_entries(package, internal_root)
+            .iter()
+            .rev()
+            .find(|(_, path)| path == &member)
+            .map(|(index, _)| *index)
+            .with_context(|| format!("7z member not found for retry: {relative_path}"))?;
+        let destination = target
+            .join(sanitize_path(Path::new(relative_path)).context("Unsafe path in 7z retry")?);
+        let parent = destination.parent().context("Missing 7z retry directory")?;
+        fs::create_dir_all(parent)?;
+        let mut output = tempfile::NamedTempFile::new_in(parent)?;
+        package.copy_index(index, &mut output, || {
+            check_archive_cancelled(&self.task_control)
+        })?;
+        package.check_source()?;
+        output.persist(&destination)?;
         Ok(())
     }
 
-    /// Re-extract single file from RAR (requires full re-extraction to temp)
     fn re_extract_from_rar(
         &self,
         archive_path: &Path,
         target: &Path,
         relative_path: &str,
+        option_source: Option<&str>,
         internal_root: Option<&str>,
         _extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
-        // Create secure temp directory
-        let temp_dir = tempfile::Builder::new()
-            .prefix("xfi_rar_retry_")
-            .tempdir()
-            .context("Failed to create temp directory for RAR retry")?;
-
-        // Extract using the typestate pattern (with password if provided)
-        let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(archive_path, pwd)
-        } else {
-            unrar::Archive::new(archive_path)
+        let member = sanitize_path(Path::new(option_source.unwrap_or(relative_path)))
+            .context("Unsafe option path in RAR retry")?;
+        let name = match internal_root {
+            Some(root) => format!(
+                "{}/{}",
+                root.trim_end_matches('/'),
+                member.to_string_lossy()
+            ),
+            None => member.to_string_lossy().into_owned(),
         };
-
-        let mut arch = archive_builder
-            .open_for_processing()
-            .map_err(|e| anyhow::anyhow!("Failed to open RAR for retry: {:?}", e))?;
-
-        // Extract all files to temp directory
-        while let Some(header) = arch
-            .read_header()
-            .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
-        {
-            arch = if header.entry().is_file() {
-                header
-                    .extract_with_base(temp_dir.path())
-                    .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
-            } else {
-                header
-                    .skip()
-                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-            };
-        }
-
-        // Determine the source path in temp directory
-        let source_file = if let Some(root) = internal_root {
-            let root_normalized = root.replace('\\', "/");
-            temp_dir.path().join(&root_normalized).join(relative_path)
-        } else {
-            temp_dir.path().join(relative_path)
-        };
-
-        if !source_file.exists() {
-            return Err(anyhow::anyhow!(
-                "File not found after RAR extraction: {}",
-                relative_path
-            ));
-        }
-
-        // Copy to target
-        let target_file = target.join(relative_path);
-        if let Some(parent) = target_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        fs::copy(&source_file, &target_file)
-            .context(format!("Failed to copy RAR file: {}", relative_path))?;
-
+        let destination = target
+            .join(sanitize_path(Path::new(relative_path)).context("Unsafe path in RAR retry")?);
+        let parent = destination
+            .parent()
+            .context("Missing RAR retry directory")?;
+        fs::create_dir_all(parent)?;
+        crate::archive_input::extract_rar_member(
+            archive_path,
+            &name,
+            &destination,
+            password,
+            || check_archive_cancelled(&self.task_control),
+        )?;
         Ok(())
     }
 

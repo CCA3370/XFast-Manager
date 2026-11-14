@@ -3,6 +3,8 @@
 mod app_dirs;
 #[path = "core/archive_input.rs"]
 mod archive_input;
+#[path = "core/archive_reader.rs"]
+mod archive_reader;
 #[path = "core/cache.rs"]
 mod cache;
 #[path = "core/error.rs"]
@@ -15,14 +17,20 @@ mod package_artifacts;
 mod path_utils;
 #[path = "core/performance.rs"]
 mod performance;
+#[path = "core/rar_stream.rs"]
+mod rar_stream;
 #[path = "core/registry.rs"]
 mod registry;
+#[path = "core/sevenz_package.rs"]
+mod sevenz_package;
 #[path = "core/startup_migrations.rs"]
 mod startup_migrations;
 #[path = "core/task_control.rs"]
 mod task_control;
 #[path = "core/vercel_api.rs"]
 mod vercel_api;
+#[path = "core/zip_package.rs"]
+mod zip_package;
 
 // Data
 #[path = "data/database/mod.rs"]

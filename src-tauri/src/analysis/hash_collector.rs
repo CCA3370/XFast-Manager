@@ -1,11 +1,11 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crate::models::{FileHash, HashAlgorithm, InstallTask};
+use crate::models::{FileHash, HashAlgorithm};
 
 pub struct HashCollector;
 
@@ -14,164 +14,13 @@ impl HashCollector {
         HashCollector
     }
 
-    fn should_collect_hashes(&self, task: &InstallTask) -> bool {
-        task.extraction_chain.is_none()
-    }
-
-    /// Collect hashes for a task based on source type
-    pub fn collect_hashes(&self, task: &InstallTask) -> Result<HashMap<String, FileHash>> {
-        if !self.should_collect_hashes(task) {
-            crate::logger::log_info(
-                &format!(
-                    "Skipping hash collection for nested archive task: {}",
-                    task.display_name
-                ),
-                Some("hash_collector"),
-            );
-            return Ok(HashMap::new());
-        }
-
-        let source = task
-            .resolved_source_path
-            .as_deref()
-            .map(Path::new)
-            .unwrap_or_else(|| Path::new(&task.source_path));
-
-        if source.is_dir() {
-            // Direct directory: compute SHA256 for all files
-            self.collect_directory_hashes(source)
-        } else if source.is_file() {
-            // Archive: extract hashes based on format
-            let ext = source.extension().and_then(|s| s.to_str()).unwrap_or("");
-
-            match ext {
-                "zip" => self.collect_zip_hashes(
-                    source,
-                    task.archive_internal_root.as_deref(),
-                    task.extraction_chain.as_ref(),
-                    task.password.as_deref(),
-                ),
-                "7z" => {
-                    // 7z: Return empty map, compute during extraction
-                    crate::logger::log_info(
-                        "7z archives: hashes will be computed during extraction",
-                        Some("hash_collector"),
-                    );
-                    Ok(HashMap::new())
-                }
-                "rar" => self.collect_rar_hashes(
-                    source,
-                    task.archive_internal_root.as_deref(),
-                    task.extraction_chain.as_ref(),
-                    task.password.as_deref(),
-                ),
-                _ => Ok(HashMap::new()),
-            }
-        } else {
-            Ok(HashMap::new())
-        }
-    }
-
-    /// Collect CRC32 hashes from ZIP archive
-    /// Note: For nested archives (extraction_chain), this collects hashes from the outermost ZIP only.
-    /// The final_internal_root is used to filter files, but nested ZIPs are not traversed.
-    /// This is a known limitation - nested ZIP hash collection would require extracting intermediate layers.
-    fn collect_zip_hashes(
-        &self,
-        archive_path: &Path,
-        internal_root: Option<&str>,
-        extraction_chain: Option<&crate::models::ExtractionChain>,
-        _password: Option<&str>,
-    ) -> Result<HashMap<String, FileHash>> {
-        use zip::ZipArchive;
-
-        let file = fs::File::open(archive_path)?;
-        let mut archive = ZipArchive::new(file)?;
-        let mut hashes = HashMap::new();
-
-        // Determine the prefix to filter files
-        let prefix = if let Some(chain) = extraction_chain {
-            // For nested archives, use final_internal_root
-            // Note: This only works if the nested structure is flat (no actual nesting)
-            // True nested ZIPs (outer.zip containing inner.zip) are not fully supported
-            chain
-                .final_internal_root
-                .as_ref()
-                .map(|s| s.replace('\\', "/"))
-        } else {
-            // For simple archives, use internal_root
-            internal_root.map(|s| s.replace('\\', "/"))
-        };
-
-        for i in 0..archive.len() {
-            // Use by_index_raw to avoid triggering decryption errors when reading metadata
-            let file = archive.by_index_raw(i)?;
-            let name = file.name().replace('\\', "/");
-
-            // Skip directories
-            if file.is_dir() {
-                continue;
-            }
-
-            // Apply prefix filter
-            let relative_path = if let Some(ref p) = prefix {
-                if !name.starts_with(p) {
-                    continue;
-                }
-                name.strip_prefix(p)
-                    .and_then(|s| s.strip_prefix('/').or(Some(s)))
-                    .unwrap_or(&name)
-            } else {
-                &name
-            };
-
-            if crate::package_artifacts::is_ignored_package_artifact_archive_path(relative_path) {
-                continue;
-            }
-
-            // Get CRC32 from ZIP central directory
-            let crc32 = file.crc32();
-
-            hashes.insert(
-                relative_path.to_string(),
-                FileHash {
-                    path: relative_path.to_string(),
-                    hash: format!("{:08x}", crc32),
-                    algorithm: HashAlgorithm::Crc32,
-                },
-            );
-        }
-
-        crate::logger::log_info(
-            &format!("Collected {} CRC32 hashes from ZIP", hashes.len()),
-            Some("hash_collector"),
-        );
-
-        Ok(hashes)
-    }
-
-    /// Collect CRC32 hashes from RAR archive
-    /// Note: unrar crate doesn't provide CRC32 in listing mode
-    /// Hash verification for RAR archives is disabled
-    fn collect_rar_hashes(
-        &self,
-        _archive_path: &Path,
-        _internal_root: Option<&str>,
-        _extraction_chain: Option<&crate::models::ExtractionChain>,
-        _password: Option<&str>,
-    ) -> Result<HashMap<String, FileHash>> {
-        // Note: unrar crate doesn't provide CRC32 in listing mode
-        // We'll compute hashes during extraction instead
-        crate::logger::log_info(
-            "RAR archives: hashes will be computed during extraction (unrar limitation)",
-            Some("hash_collector"),
-        );
-        Ok(HashMap::new())
-    }
-
     /// Collect SHA256 hashes from directory
     /// Uses parallel processing for better performance on large directories
-    fn collect_directory_hashes(&self, source_dir: &Path) -> Result<HashMap<String, FileHash>> {
+    pub(crate) fn collect_directory_hashes(
+        &self,
+        source_dir: &Path,
+        bundle_entries: &[PathBuf],
+    ) -> Result<HashMap<String, FileHash>> {
         use rayon::prelude::*;
         use walkdir::WalkDir;
 
@@ -185,6 +34,11 @@ impl HashCollector {
                     .strip_prefix(source_dir)
                     .map_or(true, |relative| {
                         !crate::package_artifacts::is_ignored_package_artifact_path(relative)
+                            && (bundle_entries.is_empty()
+                                || bundle_entries.iter().any(|bundle_entry| {
+                                    relative.starts_with(bundle_entry)
+                                        || bundle_entry.starts_with(relative)
+                                }))
                     })
             })
             .filter_map(|e| e.ok())
@@ -221,6 +75,11 @@ impl HashCollector {
                     );
                 }
                 Err(e) => {
+                    if !bundle_entries.is_empty() {
+                        return Err(e).with_context(|| {
+                            format!("Failed to hash Lua bundle file: {relative_str}")
+                        });
+                    }
                     crate::logger::log_error(
                         &format!("Failed to compute hash for {}: {}", relative_str, e),
                         Some("hash_collector"),
@@ -259,72 +118,6 @@ impl HashCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{AddonType, InstallTask};
-    use std::io::Write;
-    use zip::write::SimpleFileOptions;
-
-    fn make_task(extraction_chain: Option<crate::models::ExtractionChain>) -> InstallTask {
-        InstallTask {
-            id: "task".to_string(),
-            addon_type: AddonType::Aircraft,
-            source_path: "archive.zip".to_string(),
-            resolved_source_path: None,
-            original_input_path: None,
-            target_path: "Aircraft/Test".to_string(),
-            display_name: "Test".to_string(),
-            conflict_exists: None,
-            archive_internal_root: None,
-            extraction_chain,
-            should_overwrite: false,
-            password: None,
-            estimated_size: None,
-            size_warning: None,
-            size_confirmed: false,
-            existing_navdata_info: None,
-            new_navdata_info: None,
-            existing_version_info: None,
-            new_version_info: None,
-            backup_liveries: true,
-            backup_config_files: true,
-            config_file_patterns: vec![],
-            backup_navdata: true,
-            file_hashes: None,
-            enable_verification: true,
-            livery_aircraft_type: None,
-            livery_aircraft_found: false,
-            flywithlua_installed: false,
-            is_xlua_runtime: false,
-            companion_paths: vec![],
-            patch_files: Vec::new(),
-            patch_plan_id: None,
-            patch_backup: false,
-            patch_backup_dir: None,
-            patch_aircraft_root: None,
-        }
-    }
-
-    #[test]
-    fn should_collect_hashes_for_regular_task() {
-        let collector = HashCollector::new();
-        let task = make_task(None);
-
-        assert!(collector.should_collect_hashes(&task));
-    }
-
-    #[test]
-    fn should_skip_hash_collection_for_nested_archive_task() {
-        let collector = HashCollector::new();
-        let task = make_task(Some(crate::models::ExtractionChain {
-            archives: vec![crate::models::NestedArchiveInfo {
-                internal_path: "nested.7z".to_string(),
-                password: None,
-                format: "7z".to_string(),
-            }],
-            final_internal_root: None,
-        }));
-
-        assert!(!collector.should_collect_hashes(&task));
-    }
 
     #[test]
     fn directory_hashes_exclude_operating_system_metadata() {
@@ -346,38 +139,10 @@ mod tests {
         fs::write(source.path().join("Aircraft/plane.acf"), b"aircraft").unwrap();
 
         let hashes = HashCollector::new()
-            .collect_directory_hashes(source.path())
+            .collect_directory_hashes(source.path(), &[])
             .unwrap();
 
         assert_eq!(hashes.len(), 1);
         assert!(hashes.contains_key("Aircraft/plane.acf"));
-    }
-
-    #[test]
-    fn zip_hashes_exclude_operating_system_metadata() {
-        let temp = tempfile::TempDir::new().unwrap();
-        let archive_path = temp.path().join("aircraft.zip");
-        let archive_file = fs::File::create(&archive_path).unwrap();
-        let mut writer = zip::ZipWriter::new(archive_file);
-        let options = SimpleFileOptions::default();
-
-        for (path, contents) in [
-            ("Aircraft/plane.acf", b"aircraft".as_slice()),
-            ("Aircraft/.DS_Store", b"metadata".as_slice()),
-            ("Aircraft/__MACOSX/._plane.acf", b"metadata".as_slice()),
-            ("Aircraft/Thumbs.db", b"metadata".as_slice()),
-            ("Aircraft/desktop.ini", b"metadata".as_slice()),
-        ] {
-            writer.start_file(path, options).unwrap();
-            writer.write_all(contents).unwrap();
-        }
-        writer.finish().unwrap();
-
-        let hashes = HashCollector::new()
-            .collect_zip_hashes(&archive_path, Some("Aircraft"), None, None)
-            .unwrap();
-
-        assert_eq!(hashes.len(), 1);
-        assert!(hashes.contains_key("plane.acf"));
     }
 }

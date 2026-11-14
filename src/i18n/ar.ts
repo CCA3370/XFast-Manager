@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.ar,
+  settingsSetup: directoryMessages.ar,
   healthDetails: healthDetailMessages.ar,
   flightPlanDetails: flightPlanDetailMessages.ar,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: 'معالجة دفعية',
     analyzing: 'جارٍ تحليل الملفات...',
     pleaseWait: 'يرجى الانتظار، يتم اكتشاف بنية الإضافة',
+    preparingInstall: 'جارٍ التحضير…',
     installing: 'جارٍ التثبيت...',
     copyingToXplane: 'جارٍ نسخ الملفات إلى مجلد X-Plane',
     installationCompleted: 'اكتمل التثبيت بنجاح!',
@@ -370,6 +375,8 @@ export default {
     testing: 'الاختبار',
   },
   modal: {
+    sceneryOption: 'خيار المشهد',
+    defaultSceneryOption: 'الافتراضي (كما في الحزمة)',
     confirmInstallation: 'تأكيد التثبيت',
     installToXplane: 'ثبّت الإضافات التالية إلى X-Plane',
     targetPath: 'تثبيت إلى',
@@ -667,7 +674,6 @@ export default {
     autoSortFailed: 'فشل الفرز التلقائي',
     moreActions: 'مزيد من الإجراءات',
     hintFromScan: 'تم اكتشاف تغييرات في المشاهد. افتح مدير المشاهد من هنا لفرزها.',
-    hintFromSettings: 'تم تفعيل فرز المشاهد. افتح مدير المشاهد من هنا.',
     updatingIndex: 'جارٍ تحديث الفهرس...',
     allContinents: 'كل القارات',
     groupByContinent: 'حسب المنطقة',

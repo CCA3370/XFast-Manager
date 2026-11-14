@@ -1,9 +1,13 @@
+import { settingsPanelMessages } from './settingsPanels.ts'
+import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
 
 export default {
+  settingsPanels: settingsPanelMessages.fr,
+  settingsSetup: directoryMessages.fr,
   healthDetails: healthDetailMessages.fr,
   flightPlanDetails: flightPlanDetailMessages.fr,
   flightPlans: {
@@ -72,6 +76,7 @@ export default {
     batchProcess: 'Processus par lots',
     analyzing: 'Analyse des fichiers...',
     pleaseWait: 'Veuillez patienter, détection de la structure du plugin',
+    preparingInstall: 'Préparation de l’installation…',
     installing: 'Installation...',
     copyingToXplane: 'Copie de fichiers dans le répertoire X-Plane',
     installationCompleted: 'Installation terminée avec succès !',
@@ -400,6 +405,8 @@ export default {
     testing: 'Tests',
   },
   modal: {
+    sceneryOption: 'Option de la scène',
+    defaultSceneryOption: 'Par défaut (contenu du paquet)',
     confirmInstallation: "Confirmer l'installation",
     installToXplane: 'Installez les modules complémentaires suivants sur X-Plane',
     targetPath: 'Installer sur',
@@ -703,7 +710,6 @@ export default {
     autoSortFailed: 'Échec du tri automatique',
     moreActions: 'Plus de mesures',
     hintFromScan: 'Changements de paysage détectés. Ouvrez le Scenery Manager ici pour trier.',
-    hintFromSettings: 'Le tri des paysages est activé. Ouvrez le gestionnaire de scènes ici.',
     updatingIndex: "Mise à jour de l'index...",
     allContinents: 'Tous les continents',
     groupByContinent: 'Par région',

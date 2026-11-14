@@ -47,6 +47,26 @@ export async function setItem<T>(key: string, value: T): Promise<void> {
   await store!.set(key, value)
 }
 
+/** Flush settings that must survive an immediate restart, restoring cached values on error. */
+export async function saveSettings(values: Record<string, string | boolean>): Promise<void> {
+  if (!store) await initStorage()
+  const settings = store!
+  const previous = new Map<string, unknown>()
+  try {
+    for (const [key, value] of Object.entries(values)) {
+      previous.set(key, await settings.get(key))
+      await settings.set(key, value)
+    }
+    await settings.save()
+  } catch (error) {
+    for (const [key, value] of previous) {
+      if (value === undefined) await settings.delete(key)
+      else await settings.set(key, value)
+    }
+    throw error
+  }
+}
+
 /**
  * Remove a value from storage.
  *
@@ -115,7 +135,6 @@ export const STORAGE_KEYS = {
   SCENERY_GROUPS_COLLAPSED: 'sceneryGroupsCollapsed',
   SCENERY_CUSTOM_GROUPS_BY_PATH: 'sceneryCustomGroupsByPath',
   ONBOARDING_COMPLETED: 'onboardingCompleted',
-  SCENERY_AUTO_SORT_HINT_SHOWN: 'sceneryAutoSortHintShown',
   AUTO_CHECK_ENABLED: 'autoCheckEnabled',
   INCLUDE_PRE_RELEASE: 'includePreRelease',
   LAST_CHECK_TIME: 'lastCheckTime',

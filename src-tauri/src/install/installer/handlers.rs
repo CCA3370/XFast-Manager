@@ -1,86 +1,23 @@
 use super::*;
 
-fn resolve_extracted_nested_archive_path(
-    extract_target: &Path,
-    internal_path: &str,
-) -> Result<PathBuf> {
-    let relative = sanitize_path(Path::new(internal_path))
-        .ok_or_else(|| anyhow::anyhow!("Unsafe nested archive path: {}", internal_path))?;
-    Ok(extract_target.join(relative))
+fn check_nested_output_space(target: &Path, sizes: impl Iterator<Item = u64>) -> Result<()> {
+    crate::archive_input::archive_workspace_space(target, sizes.fold(0u64, u64::saturating_add))
 }
 
-fn load_nested_zip_layers_from_bytes(
-    mut current_archive_data: Vec<u8>,
-    remaining_chain: &[crate::models::NestedArchiveInfo],
-    password: Option<&str>,
-) -> Result<(Vec<u8>, Option<Vec<u8>>)> {
-    use std::io::{Cursor, Read};
-    use zip::ZipArchive;
+enum NestedInput<'a> {
+    Path(&'a Path),
+    Range(crate::archive_reader::ArchiveReader),
+    Temp(tempfile::NamedTempFile),
+}
 
-    let mut current_password_bytes = password.map(|pwd| pwd.as_bytes().to_vec());
-
-    for archive_info in remaining_chain {
-        if archive_info.format != "zip" {
-            return Err(anyhow::anyhow!(
-                "Non-ZIP layer encountered in memory optimization"
-            ));
-        }
-
-        let cursor = Cursor::new(&current_archive_data);
-        let mut archive = ZipArchive::new(cursor)?;
-        let nested_path_normalized = archive_info.internal_path.replace('\\', "/");
-        let mut nested_data = Vec::new();
-        let mut found = false;
-        let mut decryption_error: Option<String> = None;
-
-        for i in 0..archive.len() {
-            let file_name = {
-                let raw_file = archive.by_index_raw(i)?;
-                raw_file.name().replace('\\', "/")
-            };
-
-            if file_name != nested_path_normalized {
-                continue;
-            }
-
-            let mut file = if let Some(ref pwd) = current_password_bytes {
-                match archive.by_index_decrypt(i, pwd) {
-                    Ok(file) => file,
-                    Err(_) => {
-                        decryption_error = Some(format!(
-                            "Failed to decrypt nested ZIP at {}",
-                            archive_info.internal_path
-                        ));
-                        break;
-                    }
-                }
-            } else {
-                archive.by_index(i)?
-            };
-
-            file.read_to_end(&mut nested_data)?;
-            found = true;
-            break;
-        }
-
-        if let Some(err) = decryption_error {
-            return Err(anyhow::anyhow!(err));
-        }
-
-        if !found {
-            return Err(anyhow::anyhow!(
-                "Nested ZIP not found in memory: {}",
-                archive_info.internal_path
-            ));
-        }
-
-        current_archive_data = nested_data;
-        if let Some(ref next_pwd) = archive_info.password {
-            current_password_bytes = Some(next_pwd.as_bytes().to_vec());
+impl NestedInput<'_> {
+    fn path(&self) -> Option<&Path> {
+        match self {
+            Self::Path(path) => Some(path),
+            Self::Range(_) => None,
+            Self::Temp(file) => Some(file.path()),
         }
     }
-
-    Ok((current_archive_data, current_password_bytes))
 }
 
 impl Installer {
@@ -266,7 +203,10 @@ impl Installer {
 
     /// Build the list of Lua bundle entries to install:
     /// the script itself plus detected companion paths.
-    fn get_lua_bundle_entries(task: &InstallTask, target: &Path) -> Result<Vec<PathBuf>> {
+    pub(super) fn get_lua_bundle_entries(
+        task: &InstallTask,
+        target: &Path,
+    ) -> Result<Vec<PathBuf>> {
         use std::collections::HashSet;
 
         let script_name = target
@@ -315,42 +255,6 @@ impl Installer {
     }
 
     /// Copy selected Lua bundle entries from a source directory to Scripts with progress tracking.
-    fn copy_lua_bundle_from_directory_with_progress(
-        &self,
-        source_dir: &Path,
-        scripts_dir: &Path,
-        bundle_entries: &[PathBuf],
-        ctx: &ProgressContext,
-        should_overwrite: bool,
-    ) -> Result<()> {
-        for entry in bundle_entries {
-            let source_path = source_dir.join(entry);
-            if !source_path.exists() {
-                logger::log_info(
-                    &format!(
-                        "Lua bundle entry not found in source directory, skipping: {:?}",
-                        source_path
-                    ),
-                    Some("installer"),
-                );
-                continue;
-            }
-
-            let target_path = scripts_dir.join(entry);
-            if !should_overwrite && target_path.exists() {
-                self.remove_existing_target_path(&target_path)?;
-            }
-
-            if source_path.is_dir() {
-                self.copy_directory_with_progress(&source_path, &target_path, ctx)?;
-            } else {
-                self.copy_single_file_with_progress(&source_path, &target_path, ctx)?;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Copy selected Lua bundle entries from a staging directory to Scripts.
     /// This phase intentionally avoids progress updates because archive extraction
     /// has already reported byte progress.
@@ -493,17 +397,38 @@ impl Installer {
         Ok(companions)
     }
 
+    fn prepare_lua_bundle(
+        task: &InstallTask,
+        source_dir: &Path,
+        bundle_entries: &[PathBuf],
+    ) -> Result<Option<HashMap<String, crate::models::FileHash>>> {
+        let script = source_dir.join(&bundle_entries[0]);
+        if !script.is_file() {
+            anyhow::bail!(
+                "Lua script not found in installation source: {}",
+                script.display()
+            );
+        }
+        if task.enable_verification {
+            crate::hash_collector::HashCollector::new()
+                .collect_directory_hashes(source_dir, bundle_entries)
+                .map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Install Lua script task (script + detected companions).
     fn install_lua_task_with_companions(
         &self,
-        task: &InstallTask,
-        source: &Path,
-        target: &Path,
+        task: &mut InstallTask,
         ctx: &ProgressContext,
-        password: Option<&str>,
     ) -> Result<()> {
         use tempfile::TempDir;
 
+        let source = super::task_source_path(task);
+        let target = Path::new(&task.target_path);
+        let password = task.password.as_deref();
         let scripts_dir = target
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Lua target path has no parent: {:?}", target))?;
@@ -514,15 +439,11 @@ impl Installer {
 
         let mut bundle_entries = Self::get_lua_bundle_entries(task, target)?;
 
-        if !task.should_overwrite {
-            self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
-        }
-
         // Archive source (including nested archive chain): extract to staging first.
         if source.is_file()
             && (task.extraction_chain.is_some() || Self::is_supported_archive_file(source))
         {
-            let staging = TempDir::new()
+            let staging = TempDir::new_in(scripts_dir)
                 .context("Failed to create temp staging directory for Lua install")?;
 
             if let Some(ref chain) = task.extraction_chain {
@@ -540,7 +461,6 @@ impl Installer {
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    task.file_hashes.as_ref(),
                 )?;
             }
 
@@ -567,6 +487,7 @@ impl Installer {
                 bundle_entries = resolved_entries;
             }
 
+            task.file_hashes = Self::prepare_lua_bundle(task, staging.path(), &bundle_entries)?;
             if !task.should_overwrite {
                 self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
             }
@@ -580,58 +501,60 @@ impl Installer {
             return Ok(());
         }
 
-        // Direct file source: copy from the .lua parent directory.
-        if source.is_file() {
-            let source_dir = source
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("Lua source file has no parent directory"))?;
-            self.copy_lua_bundle_from_directory_with_progress(
-                source_dir,
-                scripts_dir,
-                &bundle_entries,
-                ctx,
-                task.should_overwrite,
-            )?;
-            return Ok(());
+        let plan = ctx
+            .directory_plan
+            .as_ref()
+            .context("Missing Lua file list")?;
+        if !task.should_overwrite {
+            for entry in &bundle_entries {
+                if plan.base.source.join(entry).exists() {
+                    self.remove_existing_target_path(&scripts_dir.join(entry))?;
+                }
+            }
         }
-
-        // Directory source (fallback): copy directly from source directory.
-        if source.is_dir() {
-            self.copy_lua_bundle_from_directory_with_progress(
-                source,
-                scripts_dir,
-                &bundle_entries,
-                ctx,
-                task.should_overwrite,
-            )?;
-            return Ok(());
-        }
-
-        Err(anyhow::anyhow!(
-            "Source path is not a regular file or directory: {}",
-            source.display()
-        ))
+        task.file_hashes =
+            Some(self.copy_planned_directory(&plan.base, scripts_dir, ctx, plan.verify)?);
+        Ok(())
     }
 
     /// Install a single task with progress tracking
     pub(super) fn install_task_with_progress(
         &self,
-        task: &InstallTask,
+        task: &mut InstallTask,
         ctx: &ProgressContext,
         atomic_install_enabled: bool,
         xplane_path: &str,
     ) -> Result<()> {
+        if let Some(zip) = &ctx.zip_package {
+            zip.check_source()?;
+            if task.enable_verification
+                && task.extraction_chain.is_none()
+                && task.addon_type != AddonType::LuaScript
+            {
+                task.file_hashes = Some(zip_expected_hashes(
+                    zip,
+                    task.archive_internal_root.as_deref(),
+                ));
+            }
+        }
+        if task.addon_type == AddonType::LuaScript {
+            ctx.inline_hash_collection_enabled
+                .store(false, Ordering::SeqCst);
+            return self.install_lua_task_with_companions(task, ctx);
+        }
+
+        if task.selected_scenery_option.is_some()
+            && (task.addon_type != AddonType::Scenery || task.scenery_option().is_none())
+        {
+            anyhow::bail!("Invalid scenery installation option");
+        }
+
         let source = super::task_source_path(task);
         let target = Path::new(&task.target_path);
         let password = task.password.as_deref();
-        let compute_inline_7z_hashes = should_compute_inline_7z_hashes(
-            task.enable_verification,
-            task.extraction_chain.is_some(),
-        );
-
         ctx.inline_hash_collection_enabled.store(
-            compute_inline_7z_hashes,
-            std::sync::atomic::Ordering::SeqCst,
+            task.selected_scenery_option.is_none() && task.enable_verification,
+            Ordering::SeqCst,
         );
 
         // Patch tasks must always stage, validate and back up before writing,
@@ -646,7 +569,7 @@ impl Installer {
             {
                 return Err(anyhow::anyhow!("Invalid patch installation task"));
             }
-            return self.install_task_atomic(task, source, target, ctx, password, xplane_path);
+            return self.install_task_atomic(task, ctx, xplane_path);
         }
 
         // Create parent directory if it doesn't exist
@@ -663,14 +586,22 @@ impl Installer {
             "installer_timing"
         );
 
-        // Lua scripts are treated as a file bundle: script + detected companions.
-        // Handle them with a dedicated path so archives install into Scripts root
-        // (not into a "script.lua/" directory).
-        if task.addon_type == AddonType::LuaScript {
-            self.install_lua_task_with_companions(task, source, target, ctx, password)?;
-            return Ok(());
+        if task.selected_scenery_option.is_some() {
+            return self.install_task_atomic(task, ctx, xplane_path);
         }
 
+        if atomic_install_enabled && task.extraction_chain.is_some() {
+            return self.install_task_atomic(task, ctx, xplane_path);
+        }
+        if task.extraction_chain.is_none() && !atomic_install_enabled {
+            crate::archive_input::archive_workspace_space(
+                target.parent().unwrap_or(target),
+                ctx.task_sizes
+                    .get(ctx.current_task_index)
+                    .copied()
+                    .unwrap_or_default(),
+            )?;
+        }
         // Check if this is a nested archive installation
         if let Some(ref chain) = task.extraction_chain {
             crate::log_debug!(
@@ -704,30 +635,49 @@ impl Installer {
                 "[TIMING] Using atomic installation mode",
                 "installer_timing"
             );
-            self.install_task_atomic(task, source, target, ctx, password, xplane_path)?;
+            self.install_task_atomic(task, ctx, xplane_path)?;
         } else {
+            let clean = !task.should_overwrite && target.exists();
             // Regular installation (non-nested, non-atomic)
-            if !task.should_overwrite && target.exists() {
+            if clean {
                 crate::log_debug!(
                     "[TIMING] Clean install mode for regular archive",
                     "installer_timing"
                 );
                 // Clean install mode: delete old folder first
-                self.handle_clean_install_with_progress(task, source, target, ctx, password)?;
+                let restored =
+                    self.handle_clean_install_with_progress(task, source, target, ctx, password)?;
+                if let Some(hashes) = &mut task.file_hashes {
+                    for name in restored {
+                        hashes.remove(&name);
+                    }
+                }
             } else {
                 crate::log_debug!(
                     "[TIMING] Direct overwrite mode for regular archive",
                     "installer_timing"
                 );
                 // Direct overwrite mode: just install/extract files directly
-                self.install_content_with_progress_and_hashes(
+                self.install_content_with_progress(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    task.file_hashes.as_ref(),
                 )?;
+            }
+            // The ZIP decoder validates every stream as it is written. When
+            // no staging or backup restore follows, the output is already verified.
+            if ctx.zip_package.is_some()
+                && (!clean || !matches!(task.addon_type, AddonType::Aircraft | AddonType::Navdata))
+            {
+                if let Some(hashes) = &task.file_hashes {
+                    if !hashes.is_empty() {
+                        ctx.inline_verified.store(true, Ordering::SeqCst);
+                        ctx.inline_verified_count
+                            .store(hashes.len() as u64, Ordering::SeqCst);
+                    }
+                }
             }
         }
 
@@ -743,38 +693,21 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
-        self.install_content_with_progress_and_hashes(
-            source,
-            target,
-            internal_root,
-            ctx,
-            password,
-            None,
-        )
-    }
-
-    /// Install content with progress tracking and optional expected hashes for inline verification
-    fn install_content_with_progress_and_hashes(
-        &self,
-        source: &Path,
-        target: &Path,
-        internal_root: Option<&str>,
-        ctx: &ProgressContext,
-        password: Option<&str>,
-        expected_hashes: Option<&HashMap<String, crate::models::FileHash>>,
-    ) -> Result<()> {
-        if source.is_dir() {
+        if ctx
+            .directory_plan
+            .as_ref()
+            .is_some_and(|plan| plan.base.source == source)
+            || source.is_dir()
+        {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
-            if Self::is_supported_archive_file(source) {
-                self.extract_archive_with_progress(
-                    source,
-                    target,
-                    internal_root,
-                    ctx,
-                    password,
-                    expected_hashes,
-                )?;
+            if ctx
+                .zip_package
+                .as_ref()
+                .is_some_and(|zip| zip.source_path == source)
+                || Self::is_supported_archive_file(source)
+            {
+                self.extract_archive_with_progress(source, target, internal_root, ctx, password)?;
             } else {
                 self.copy_single_file_with_progress(source, target, ctx)?;
             }
@@ -794,8 +727,6 @@ impl Installer {
         Ok(())
     }
 
-    /// Install content with extraction chain (for nested archives)
-    /// Optimized version: ZIP archives are extracted directly from memory when possible
     fn install_content_with_extraction_chain(
         &self,
         source: &Path,
@@ -804,522 +735,231 @@ impl Installer {
         ctx: &ProgressContext,
         outermost_password: Option<&str>,
     ) -> Result<()> {
-        // For multi-layer chains (including single-layer nested archives),
-        // check if we can use the memory-optimized path
-        // IMPORTANT: Must also check that the outermost archive (source) is a ZIP file
-        let source_is_zip = crate::archive_input::detect_archive_format(source)
-            == Some(crate::archive_input::ArchiveFormat::Zip);
-        let all_nested_zip = chain.archives.iter().all(|a| a.format == "zip");
+        use crate::archive_input::{detect_archive_format, ArchiveFormat};
 
-        if source_is_zip && all_nested_zip {
-            // Optimized path: Extract nested ZIPs directly from memory
-            self.install_nested_zip_from_memory(source, target, chain, ctx, outermost_password)
-        } else {
-            // Fallback path: Use temp directory for 7z/RAR
-            self.install_nested_with_temp(source, target, chain, ctx, outermost_password)
-        }
-    }
-
-    /// Optimized installation for nested ZIP archives (memory-only, no temp files)
-    fn install_nested_zip_from_memory(
-        &self,
-        source: &Path,
-        target: &Path,
-        chain: &crate::models::ExtractionChain,
-        ctx: &ProgressContext,
-        outermost_password: Option<&str>,
-    ) -> Result<()> {
-        use std::io::{Cursor, Read};
-        use zip::ZipArchive;
-
-        crate::logger::log_info(
-            &format!(
-                "Using optimized memory extraction for {} nested ZIP layers",
-                chain.archives.len()
-            ),
-            Some("installer"),
-        );
-
-        let prepared_source = crate::archive_input::prepare_archive_for_read(
-            source,
-            crate::archive_input::ArchiveFormat::Zip,
-        )?;
-
-        // Open the outermost archive
-        let file = fs::File::open(prepared_source.read_path())?;
-        let mut current_archive_data = Vec::new();
-        file.take(u64::MAX).read_to_end(&mut current_archive_data)?;
-
-        // Store password as bytes to avoid taint flow from string into logging sinks
-        let mut current_password_bytes: Option<Vec<u8>> =
-            outermost_password.map(|p| p.as_bytes().to_vec());
-
-        // Navigate through all layers
-        for archive_info in chain.archives.iter() {
-            let cursor = Cursor::new(&current_archive_data);
-            let mut archive = ZipArchive::new(cursor)?;
-
-            // Read nested archive into memory
-            let nested_path = &archive_info.internal_path;
-            let nested_path_normalized = nested_path.replace('\\', "/");
-            let mut nested_data = Vec::new();
-
-            // Search for the nested archive
-            let mut found = false;
-            let mut decryption_error: Option<String> = None;
-
-            for i in 0..archive.len() {
-                // First, check if this is the file we're looking for using raw access
-                let file_name = {
-                    let raw_file = archive.by_index_raw(i)?;
-                    raw_file.name().replace('\\', "/")
-                };
-
-                if file_name != nested_path_normalized {
-                    continue; // Not the file we're looking for
-                }
-
-                // Found the file, now try to read it
-                let mut file = if let Some(ref pwd) = current_password_bytes {
-                    match archive.by_index_decrypt(i, pwd) {
-                        Ok(f) => f,
-                        Err(_e) => {
-                            // Avoid logging potentially sensitive details from the underlying error
-                            decryption_error = Some(format!(
-                                "Failed to decrypt nested archive at {}",
-                                nested_path
-                            ));
-                            break; // Stop searching, we found the file but can't decrypt
-                        }
-                    }
-                } else {
-                    archive.by_index(i)?
-                };
-
-                file.read_to_end(&mut nested_data)?;
-                found = true;
-                break;
-            }
-
-            if let Some(err) = decryption_error {
-                return Err(anyhow::anyhow!(err));
-            }
-
-            if !found {
-                return Err(anyhow::anyhow!(
-                    "Nested archive not found in ZIP: {}",
-                    nested_path
-                ));
-            }
-
-            // Update for next iteration
-            current_archive_data = nested_data;
-            // Update password for next layer if specified
-            // If the nested archive has its own password, use it
-            // Otherwise, keep the current (parent) password for try-through
-            if let Some(ref next_pwd) = archive_info.password {
-                current_password_bytes = Some(next_pwd.as_bytes().to_vec());
-            }
-            // Note: if archive_info.password is None, we keep current_password_bytes
-            // as-is, since many nested archives share the same password as the parent
-        }
-
-        // Now extract the final (innermost) archive
-        let cursor = Cursor::new(current_archive_data);
-        let mut archive = ZipArchive::new(cursor)?;
-
-        let pwd_bytes = current_password_bytes.as_deref();
-        // Extract all files with final_internal_root filter
-        self.extract_zip_from_archive(
-            &mut archive,
-            target,
-            chain.final_internal_root.as_deref(),
-            ctx,
-            pwd_bytes,
-        )?;
-
-        Ok(())
-    }
-
-    /// Extract files from an in-memory ZIP archive
-    fn extract_zip_from_archive<R: std::io::Read + std::io::Seek>(
-        &self,
-        archive: &mut zip::ZipArchive<R>,
-        target: &Path,
-        internal_root: Option<&str>,
-        _ctx: &ProgressContext,
-        password: Option<&[u8]>,
-    ) -> Result<()> {
-        let internal_root_normalized = internal_root.map(|s| s.replace('\\', "/"));
-        let prefix = internal_root_normalized.as_deref();
-
-        // Debug: Log extraction parameters
-        crate::logger::log_debug(
-            &format!(
-                "extract_zip_from_archive: target={:?}, internal_root={:?}, archive_len={}",
+        if chain.archives.is_empty() {
+            return self.extract_archive_with_progress(
+                source,
                 target,
-                internal_root,
-                archive.len()
-            ),
-            Some("installer"),
-            None,
-        );
-
-        // Collect all file entries
-        let entries: Vec<_> = (0..archive.len())
-            .filter_map(|i| {
-                // Use by_index_raw to avoid triggering decryption errors when reading metadata
-                let file = archive.by_index_raw(i).ok()?;
-                let path = file.enclosed_name()?.to_path_buf();
-                let file_path_str = path.to_string_lossy().replace('\\', "/");
-
-                // Check prefix filter
-                let relative_path = if let Some(prefix) = prefix {
-                    // Ensure prefix ends with '/' for proper matching
-                    let prefix_with_slash = if prefix.ends_with('/') {
-                        prefix.to_string()
-                    } else {
-                        format!("{}/", prefix)
-                    };
-
-                    // Debug: Log file matching
-                    let matched = file_path_str.strip_prefix(&prefix_with_slash);
-                    crate::logger::log_debug(
-                        &format!(
-                            "File: '{}', Prefix: '{}', Matched: {:?}",
-                            file_path_str,
-                            prefix_with_slash,
-                            matched.is_some()
-                        ),
-                        Some("installer"),
-                        None,
-                    );
-
-                    // Strip prefix and return relative path
-                    file_path_str
-                        .strip_prefix(&prefix_with_slash)
-                        .map(|s| s.to_string())?
-                } else {
-                    file_path_str.clone()
-                };
-
-                if crate::package_artifacts::is_ignored_package_artifact_archive_path(
-                    &relative_path,
-                ) {
-                    return None;
-                }
-
-                Some((i, relative_path, file.is_dir(), file.encrypted()))
-            })
-            .collect();
-
-        // Debug: Log collected entries
-        crate::logger::log_debug(
-            &format!("Collected {} entries after filtering", entries.len()),
-            Some("installer"),
-            None,
-        );
-
-        // Create directories first
-        for (_, relative_path, is_dir, _) in &entries {
-            if *is_dir {
-                let dir_path = target.join(relative_path);
-                fs::create_dir_all(&dir_path)?;
-            }
-        }
-
-        // Extract files sequentially
-        // Note: Parallel extraction for in-memory archives is complex because
-        // ZipArchive requires mutable access. For file-based archives, we can
-        // open multiple handles, but for in-memory Cursor, we cannot easily clone.
-        // Sequential extraction is still fast due to in-memory access.
-        if entries.iter().any(|(_, _, _, encrypted)| *encrypted) {
-            // Sequential extraction for encrypted files
-            for (i, relative_path, is_dir, is_encrypted) in entries {
-                if is_dir {
-                    continue;
-                }
-
-                let target_path = target.join(&relative_path);
-                if let Some(parent) = target_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-
-                let mut file = if is_encrypted {
-                    if let Some(pwd) = password {
-                        archive
-                            .by_index_decrypt(i, pwd)
-                            .map_err(|e| anyhow::anyhow!("Failed to decrypt file: {}", e))?
-                    } else {
-                        return Err(anyhow::anyhow!("Password required for encrypted file"));
-                    }
-                } else {
-                    archive.by_index(i)?
-                };
-
-                let mut output = fs::File::create(&target_path)?;
-                std::io::copy(&mut file, &mut output)?;
-
-                // Set permissions on Unix
-                #[cfg(unix)]
-                if let Some(mode) = file.unix_mode() {
-                    use std::os::unix::fs::PermissionsExt;
-                    fs::set_permissions(&target_path, fs::Permissions::from_mode(mode))?;
-                }
-            }
-        } else {
-            // Sequential extraction for non-encrypted files
-            for (i, relative_path, is_dir, _) in entries {
-                if is_dir {
-                    continue;
-                }
-
-                let target_path = target.join(&relative_path);
-                if let Some(parent) = target_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-
-                let mut file = archive.by_index(i)?;
-                let mut output = fs::File::create(&target_path)?;
-                std::io::copy(&mut file, &mut output)?;
-
-                #[cfg(unix)]
-                if let Some(mode) = file.unix_mode() {
-                    use std::os::unix::fs::PermissionsExt;
-                    fs::set_permissions(&target_path, fs::Permissions::from_mode(mode))?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Fallback installation for nested archives with temp directory (for 7z/RAR)
-    /// Optimized for mixed formats: uses memory for ZIP layers when possible
-    fn install_nested_with_temp(
-        &self,
-        source: &Path,
-        target: &Path,
-        chain: &crate::models::ExtractionChain,
-        ctx: &ProgressContext,
-        outermost_password: Option<&str>,
-    ) -> Result<()> {
-        use tempfile::TempDir;
-
-        crate::logger::log_info(
-            &format!("Using temp directory extraction for {} nested layers (mixed format optimization enabled)", chain.archives.len()),
-            Some("installer"),
-        );
-
-        // Create temp directory for intermediate extractions
-        let temp_base =
-            TempDir::new().context("Failed to create temp directory for nested extraction")?;
-
-        let mut current_source = source.to_path_buf();
-        let mut current_password = outermost_password;
-
-        // Extract each layer in the chain
-        for (index, archive_info) in chain.archives.iter().enumerate() {
-            let is_last = index == chain.archives.len() - 1;
-            let extract_target = temp_base.path().join(format!("layer_{}", index));
-
-            fs::create_dir_all(&extract_target).context(format!(
-                "Failed to create extraction target: {:?}",
-                extract_target
-            ))?;
-
-            crate::logger::log_info(
-                &format!(
-                    "Extracting container for layer {} to {:?} to locate {} ({})",
-                    index, extract_target, archive_info.internal_path, archive_info.format
-                ),
-                Some("installer"),
-            );
-
-            self.extract_archive_with_progress(
-                &current_source,
-                &extract_target,
-                None,
+                chain.final_internal_root.as_deref(),
                 ctx,
-                current_password,
-                None,
-            )?;
-
-            let nested_archive_path = resolve_extracted_nested_archive_path(
-                &extract_target,
-                &archive_info.internal_path,
-            )?;
-
-            if !nested_archive_path.exists() {
-                let mut available_files = Vec::new();
-                if let Ok(entries) = fs::read_dir(&extract_target) {
-                    for entry in entries.flatten().take(10) {
-                        if let Some(name) = entry.file_name().to_str() {
-                            available_files.push(name.to_string());
-                        }
-                    }
-                }
-
-                return Err(anyhow::anyhow!(
-                    "Nested archive not found after extraction: {}\nExpected at: {:?}\nExtracted to: {:?}\nAvailable files: {}",
-                    archive_info.internal_path,
-                    nested_archive_path,
-                    extract_target,
-                    if available_files.is_empty() {
-                        "(none)".to_string()
+                outermost_password,
+            );
+        }
+        let mut input = NestedInput::Path(source);
+        let mut password = outermost_password;
+        let mut format = detect_archive_format(source).context("Unknown outer archive format")?;
+        let workspace = target
+            .parent()
+            .filter(|parent| parent.is_dir())
+            .unwrap_or(target);
+        fs::create_dir_all(workspace)?;
+        for member in &chain.archives {
+            check_archive_cancelled(&self.task_control)?;
+            sanitize_path(Path::new(&member.internal_path))
+                .context("Unsafe nested archive member")?;
+            let next_format = match member.format.as_str() {
+                "zip" => ArchiveFormat::Zip,
+                "7z" => ArchiveFormat::SevenZ,
+                "rar" => ArchiveFormat::Rar,
+                _ => anyhow::bail!("Unsupported nested archive: {}", member.format),
+            };
+            ctx.emit_progress(Some(member.internal_path.clone()), InstallPhase::Installing);
+            let nested = match format {
+                ArchiveFormat::Zip => {
+                    let zip = self.nested_zip_package(&input, ctx)?;
+                    let index = zip
+                        .entries
+                        .iter()
+                        .find(|entry| {
+                            !entry.is_directory
+                                && entry.name == member.internal_path.replace('\\', "/")
+                        })
+                        .with_context(|| {
+                            format!("Nested archive not found: {}", member.internal_path)
+                        })?
+                        .index;
+                    let mut archive = zip.reader();
+                    let range = if next_format != ArchiveFormat::Rar
+                        && !matches!(input, NestedInput::Temp(_))
+                    {
+                        crate::zip_package::stored_member(&mut archive, &zip.input(), index)?
                     } else {
-                        available_files.join(", ")
-                    }
-                ));
-            }
-
-            let nested_password = archive_info.password.as_deref().or(current_password);
-
-            if archive_info.format == "zip"
-                && chain.archives[(index + 1)..]
-                    .iter()
-                    .all(|remaining| remaining.format == "zip")
-            {
-                crate::logger::log_info(
-                    &format!("Optimizing: Loading ZIP layer {} into memory", index),
-                    Some("installer"),
-                );
-
-                match self.try_extract_zip_from_memory(
-                    &nested_archive_path,
-                    target,
-                    &chain.archives[(index + 1)..],
-                    chain.final_internal_root.as_deref(),
-                    ctx,
-                    nested_password,
-                ) {
-                    Ok(()) => {
-                        crate::logger::log_info(
-                            "Memory optimization successful for remaining ZIP layers",
-                            Some("installer"),
-                        );
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        crate::logger::log_info(
-                            &format!(
-                                "Memory optimization failed, falling back to temp extraction: {}",
-                                e
-                            ),
-                            Some("installer"),
-                        );
+                        None
+                    };
+                    let mut file = if zip.entries[index].encrypted {
+                        archive.by_index_decrypt(
+                            index,
+                            password
+                                .context("Password required for nested archive")?
+                                .as_bytes(),
+                        )?
+                    } else {
+                        archive.by_index(index)?
+                    };
+                    let size = file.size();
+                    if let Some(reader) = range {
+                        let mut buffer = vec![0; STREAM_BUFFER_SIZE];
+                        let copied =
+                            copy_with_buffer(&mut file, &mut std::io::sink(), &mut buffer, |_| {
+                                check_archive_cancelled(&self.task_control)
+                            })?;
+                        anyhow::ensure!(copied == size, "Nested archive was truncated");
+                        NestedInput::Range(reader)
+                    } else {
+                        NestedInput::Temp(crate::archive_input::spool_archive_member(
+                            file,
+                            size,
+                            &member.format,
+                            Some(workspace),
+                            || check_archive_cancelled(&self.task_control),
+                        )?)
                     }
                 }
-            }
-
-            if is_last {
-                crate::logger::log_info(
-                    &format!(
-                        "Extracting final nested archive {} ({}) to {:?}",
-                        archive_info.internal_path, archive_info.format, target
-                    ),
-                    Some("installer"),
-                );
-
-                self.extract_archive_with_progress(
-                    &nested_archive_path,
-                    target,
-                    chain.final_internal_root.as_deref(),
-                    ctx,
-                    nested_password,
-                    None,
-                )?;
-
-                return Ok(());
-            }
-
-            current_source = nested_archive_path;
-            current_password = nested_password;
+                ArchiveFormat::SevenZ => {
+                    let package = self.nested_sevenz_package(&input, ctx, password)?;
+                    let name = member.internal_path.replace('\\', "/");
+                    let index = package
+                        .index(&name)
+                        .with_context(|| format!("7z member not found: {name}"))?;
+                    let range = if next_format != ArchiveFormat::Rar
+                        && !matches!(input, NestedInput::Temp(_))
+                    {
+                        package.stored_member(index)?
+                    } else {
+                        None
+                    };
+                    if let Some(range) = range {
+                        package.copy_index(index, &mut std::io::sink(), || {
+                            check_archive_cancelled(&self.task_control)
+                        })?;
+                        NestedInput::Range(range)
+                    } else {
+                        crate::archive_input::archive_workspace_space(
+                            workspace,
+                            package.archive.files[index].size,
+                        )?;
+                        let mut temp = tempfile::Builder::new()
+                            .prefix("xfast-nested-")
+                            .suffix(&format!(".{}", member.format))
+                            .tempfile_in(workspace)?;
+                        package.copy_index(index, &mut temp, || {
+                            check_archive_cancelled(&self.task_control)
+                        })?;
+                        NestedInput::Temp(temp)
+                    }
+                }
+                ArchiveFormat::Rar => {
+                    let path = input.path().context("RAR requires a file-backed source")?;
+                    let prepared = crate::archive_input::prepare_archive_for_read(path, format)?;
+                    let temp = tempfile::Builder::new()
+                        .prefix("xfast-nested-")
+                        .suffix(&format!(".{}", member.format))
+                        .tempfile_in(workspace)?;
+                    crate::archive_input::extract_rar_member(
+                        prepared.read_path(),
+                        &member.internal_path,
+                        temp.path(),
+                        password,
+                        || check_archive_cancelled(&self.task_control),
+                    )?;
+                    NestedInput::Temp(temp)
+                }
+            };
+            input = nested;
+            format = next_format;
+            password = member.password.as_deref().or(password);
         }
 
-        Err(anyhow::anyhow!("Nested extraction chain is empty"))
+        match format {
+            ArchiveFormat::Zip => {
+                let zip = self.nested_zip_package(&input, ctx)?;
+                let root = chain.final_internal_root.as_deref();
+                let entries = zip_install_entries(&zip, root);
+                check_nested_output_space(target, entries.iter().map(|entry| entry.source.size))?;
+                self.extract_zip_with_progress(&zip, target, root, ctx, password)?;
+                if ctx.inline_hash_collection_enabled.load(Ordering::SeqCst) {
+                    let hashes = zip_expected_hashes(&zip, root);
+                    if !hashes.is_empty() {
+                        ctx.inline_verified_count
+                            .store(hashes.len() as u64, Ordering::SeqCst);
+                        ctx.inline_verified.store(true, Ordering::SeqCst);
+                    }
+                }
+                Ok(())
+            }
+            ArchiveFormat::SevenZ => {
+                let package = self.nested_sevenz_package(&input, ctx, password)?;
+                let root = chain.final_internal_root.as_deref();
+                let entries = sevenz_install_entries(&package, root);
+                check_nested_output_space(
+                    target,
+                    entries
+                        .iter()
+                        .map(|(index, _)| package.archive.files[*index].size),
+                )?;
+                self.extract_7z_with_progress(&package, target, root, ctx, input.path())
+            }
+            ArchiveFormat::Rar => {
+                let path = input.path().context("RAR requires a file-backed source")?;
+                self.extract_rar_with_progress(
+                    path,
+                    target,
+                    chain.final_internal_root.as_deref(),
+                    ctx,
+                    password,
+                )
+            }
+        }
     }
 
-    /// Try to extract remaining ZIP layers from memory (optimization for mixed formats)
-    fn try_extract_zip_from_memory(
+    fn nested_zip_package(
         &self,
-        zip_path: &Path,
-        target: &Path,
-        remaining_chain: &[crate::models::NestedArchiveInfo],
-        final_internal_root: Option<&str>,
+        input: &NestedInput<'_>,
+        ctx: &ProgressContext,
+    ) -> Result<Arc<ZipPackage>> {
+        match input {
+            NestedInput::Range(reader) => Ok(Arc::new(ZipPackage::from_reader(
+                Path::new(""),
+                reader.clone(),
+            )?)),
+            _ => {
+                let path = input.path().expect("file-backed ZIP");
+                if let Some(zip) = ctx
+                    .zip_package
+                    .as_ref()
+                    .filter(|zip| zip.source_path == path)
+                {
+                    return Ok(Arc::clone(zip));
+                }
+                Ok(Arc::new(ZipPackage::open(path, None)?))
+            }
+        }
+    }
+
+    fn nested_sevenz_package(
+        &self,
+        input: &NestedInput<'_>,
         ctx: &ProgressContext,
         password: Option<&str>,
-    ) -> Result<()> {
-        use std::io::{Cursor, Read};
-        use zip::ZipArchive;
-
-        // Check file size before loading into memory (limit: 200MB)
-        let metadata = fs::metadata(zip_path)?;
-        if metadata.len() > MAX_MEMORY_ZIP_SIZE {
-            return Err(anyhow::anyhow!(
-                "ZIP file too large for memory optimization ({} MB > 200 MB)",
-                metadata.len() / 1024 / 1024
-            ));
-        }
-
-        let mut zip_data = Vec::new();
-        let mut file = fs::File::open(zip_path)?;
-        file.read_to_end(&mut zip_data)?;
-
-        let (current_archive_data, current_password_opt) =
-            load_nested_zip_layers_from_bytes(zip_data, remaining_chain, password)?;
-
-        let cursor = Cursor::new(current_archive_data);
-        let mut archive = ZipArchive::new(cursor)?;
-
-        self.extract_zip_from_archive(
-            &mut archive,
-            target,
-            final_internal_root,
-            ctx,
-            current_password_opt.as_deref(),
-        )?;
-
-        Ok(())
-    }
-
-    /// Move all contents from source directory to target directory
-    #[allow(dead_code)]
-    fn move_directory_contents(&self, source: &Path, target: &Path) -> Result<()> {
-        for entry in fs::read_dir(source)
-            .context(format!("Failed to read source directory: {:?}", source))?
-        {
-            let entry = entry?;
-            let source_path = entry.path();
-            let file_name = entry.file_name();
-            let target_path = target.join(&file_name);
-
-            if source_path.is_dir() {
-                // Try to rename (move) the directory
-                if fs::rename(&source_path, &target_path).is_err() {
-                    // Fallback: copy and delete
-                    self.copy_directory_with_progress(
-                        &source_path,
-                        &target_path,
-                        &ProgressContext::new(self.app_handle.clone(), 1),
-                    )?;
-                    remove_dir_all_robust(&source_path).context(format!(
-                        "Failed to remove source directory: {:?}",
-                        source_path
-                    ))?;
+    ) -> Result<Arc<SevenzPackage>> {
+        match input {
+            NestedInput::Range(reader) => Ok(Arc::new(SevenzPackage::from_reader(
+                reader.clone(),
+                password,
+            )?)),
+            _ => {
+                let path = input.path().expect("file-backed 7z");
+                if let Some(package) = ctx
+                    .sevenz_package
+                    .as_ref()
+                    .filter(|package| package.source_path.as_deref() == Some(path))
+                {
+                    return Ok(Arc::clone(package));
                 }
-            } else {
-                // Try to rename (move) the file
-                if fs::rename(&source_path, &target_path).is_err() {
-                    // Fallback: copy and delete
-                    fs::copy(&source_path, &target_path)
-                        .context(format!("Failed to copy file: {:?}", source_path))?;
-                    fs::remove_file(&source_path)
-                        .context(format!("Failed to remove source file: {:?}", source_path))?;
-                }
+                Ok(Arc::new(SevenzPackage::open(path, password)?))
             }
         }
-        Ok(())
     }
 
     /// Handle clean install with extraction chain (for nested archives)
@@ -1479,7 +1119,7 @@ impl Installer {
         target: &Path,
         ctx: &ProgressContext,
         password: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
         match task.addon_type {
             AddonType::Aircraft => {
                 // For Aircraft: backup liveries and prefs, delete, install, restore
@@ -1495,7 +1135,7 @@ impl Installer {
                         config_patterns: &task.config_file_patterns,
                     },
                 };
-                self.handle_aircraft_clean_install_with_progress(params)?;
+                return self.handle_aircraft_clean_install_with_progress(params);
             }
             AddonType::Navdata => {
                 // For Navdata: backup matching old files before installing new ones
@@ -1513,24 +1153,23 @@ impl Installer {
                 if target.exists() {
                     self.remove_existing_target_path(target)?;
                 }
-                self.install_content_with_progress_and_hashes(
+                self.install_content_with_progress(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    task.file_hashes.as_ref(),
                 )?;
             }
         }
-        Ok(())
+        Ok(Vec::new())
     }
 
     /// Aircraft clean install with progress tracking
     fn handle_aircraft_clean_install_with_progress(
         &self,
         params: AircraftProgressInstallParams<'_>,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
         let AircraftProgressInstallParams {
             source,
             target,
@@ -1598,13 +1237,16 @@ impl Installer {
 
         // Step 6: Cleanup temp backup directory ONLY if restore was verified
         if restore_verified {
-            if let Some(backup_data) = backup {
+            if let Some(backup_data) = &backup {
                 let _ = fs::remove_dir_all(&backup_data.temp_dir);
             }
         }
 
         install_result?;
-        Ok(())
+        Ok(backup
+            .into_iter()
+            .flat_map(|backup| backup.pref_files.into_iter().map(|(name, _)| name))
+            .collect())
     }
 
     /// Backup aircraft liveries folder and config files
@@ -1850,6 +1492,7 @@ impl Installer {
                 let size = fs::metadata(backup_path)?.len();
                 fs::copy(backup_path, &target_path)
                     .context(format!("Failed to restore pref file: {}", filename))?;
+                ctx.inline_hashes.lock().unwrap().remove(filename);
 
                 // Update progress for each config file with filename for real-time display
                 ctx.add_bytes(size);
@@ -2241,76 +1884,21 @@ impl Installer {
         Ok(())
     }
 
-    /// Cleanup a task by removing its target directory
-    /// Used when a task is cancelled or skipped
-    pub(super) fn cleanup_task(&self, task: &InstallTask) -> Result<()> {
-        // A patch target is an existing aircraft, never a disposable install
-        // directory. Patch writes are rolled back by their own transaction.
-        if task.addon_type == AddonType::Patch {
-            return Ok(());
-        }
-        let target = Path::new(&task.target_path);
-
-        logger::log_info(
-            &format!("Cleaning up task: {}", task.display_name),
-            Some("installer"),
-        );
-
-        // Lua cleanup should remove script + companions, even if the script file itself
-        // wasn't created yet but companions were partially copied.
-        if task.addon_type == AddonType::LuaScript {
-            if let Some(scripts_dir) = target.parent() {
-                let bundle_entries = Self::get_lua_bundle_entries(task, target)?;
-                self.remove_lua_bundle_targets(scripts_dir, &bundle_entries)?;
-            } else if target.exists() {
-                self.remove_existing_target_path(target)?;
-            }
-
-            logger::log_info(
-                &format!("Cleanup completed: {}", task.display_name),
-                Some("installer"),
-            );
-            return Ok(());
-        }
-
-        if !target.exists() {
-            return Ok(());
-        }
-
-        // For Navdata, we should NOT delete the entire Custom Data folder
-        // Just log a warning
-        if matches!(task.addon_type, AddonType::Navdata) {
-            logger::log_info(
-                "Navdata cleanup skipped - Custom Data folder preserved",
-                Some("installer"),
-            );
-            return Ok(());
-        }
-
-        // For other types, delete the target directory
-        self.remove_existing_target_path(target)
-            .context(format!("Failed to cleanup task path: {:?}", target))?;
-
-        logger::log_info(
-            &format!("Cleanup completed: {}", task.display_name),
-            Some("installer"),
-        );
-
-        Ok(())
-    }
-
     /// Install a task using atomic installation mode
     fn install_task_atomic(
         &self,
-        task: &InstallTask,
-        source: &Path,
-        target: &Path,
+        task: &mut InstallTask,
         ctx: &ProgressContext,
-        password: Option<&str>,
         xplane_path: &str,
     ) -> Result<()> {
         use crate::atomic_installer::AtomicInstaller;
 
+        let source = super::task_source_path(task);
+        let target = Path::new(&task.target_path);
+        let password = task.password.as_deref();
+        if let Some(option) = task.scenery_option() {
+            validate_scenery_option_root(task, source, option)?;
+        }
         let patch_root = if matches!(task.addon_type, AddonType::Patch) {
             let root = task.patch_aircraft_root.as_deref().ok_or_else(|| {
                 anyhow::anyhow!("Patch task is missing its selected aircraft boundary")
@@ -2357,6 +1945,14 @@ impl Installer {
             ctx.total_tasks,
             ctx.current_task_index,
             task_percentage,
+            if task.extraction_chain.is_some() {
+                0
+            } else {
+                ctx.task_sizes
+                    .get(ctx.current_task_index)
+                    .copied()
+                    .unwrap_or_default()
+            },
         )?;
 
         // In parallel mode, wire up the atomic installer to delegate through
@@ -2375,13 +1971,23 @@ impl Installer {
             Some("installer"),
         );
 
-        self.install_content_with_progress(
-            source,
-            atomic.temp_dir(),
-            task.archive_internal_root.as_deref(),
-            ctx,
-            password,
-        )?;
+        if let Some(chain) = &task.extraction_chain {
+            self.install_content_with_extraction_chain(
+                source,
+                atomic.temp_dir(),
+                chain,
+                ctx,
+                password,
+            )?;
+        } else {
+            self.install_content_with_progress(
+                source,
+                atomic.temp_dir(),
+                task.archive_internal_root.as_deref(),
+                ctx,
+                password,
+            )?;
+        }
 
         if let Some(root) = patch_root {
             return crate::patch::apply_staged_patch(
@@ -2392,6 +1998,114 @@ impl Installer {
             );
         }
 
+        if let Some(option) = task.scenery_option().cloned() {
+            let stage_parent = atomic
+                .temp_dir()
+                .parent()
+                .context("Missing staging parent")?;
+            let replacements = tempfile::tempdir_in(stage_parent)?;
+            let mut option_hashes = None;
+            if let Some(directory) = &ctx.directory_plan {
+                let plan = directory
+                    .option
+                    .as_ref()
+                    .context("Missing scenery option file list")?;
+                option_hashes = Some(self.copy_planned_directory(
+                    plan,
+                    replacements.path(),
+                    ctx,
+                    directory.verify,
+                )?);
+            } else if source.is_dir() {
+                self.copy_directory_with_progress(
+                    Path::new(&option.root),
+                    replacements.path(),
+                    ctx,
+                )?;
+            } else if let Some(chain) = &task.extraction_chain {
+                let mut chain = chain.clone();
+                chain.final_internal_root = Some(option.root.clone());
+                self.install_content_with_extraction_chain(
+                    source,
+                    replacements.path(),
+                    &chain,
+                    ctx,
+                    password,
+                )?;
+            } else {
+                self.extract_archive_with_progress(
+                    source,
+                    replacements.path(),
+                    Some(&option.root),
+                    ctx,
+                    password,
+                )?;
+            }
+
+            let files = apply_scenery_option(atomic.temp_dir(), replacements.path(), &option)?;
+            if task.enable_verification {
+                if let Some(mut option_hashes) = option_hashes {
+                    let mut base_hashes = ctx.inline_hashes.lock().unwrap();
+                    for destination in &files {
+                        let destination = destination.to_string_lossy().replace('\\', "/");
+                        let source = option
+                            .source_for(&destination)
+                            .context("Missing scenery option mapping")?;
+                        let hash = option_hashes
+                            .remove(source)
+                            .context("Missing scenery option hash")?;
+                        base_hashes.insert(destination, hash);
+                    }
+                } else {
+                    let collector = crate::hash_collector::HashCollector::new();
+                    let hashes = match task.file_hashes.take() {
+                        Some(mut base_hashes) if !base_hashes.is_empty() => {
+                            let sources = option
+                                .files
+                                .iter()
+                                .map(|file| PathBuf::from(&file.source))
+                                .collect::<Vec<_>>();
+                            for (source, hash) in
+                                collector.collect_directory_hashes(replacements.path(), &sources)?
+                            {
+                                if let Some(destination) = option.destination_for(&source) {
+                                    base_hashes.insert(destination.to_string(), hash);
+                                }
+                            }
+                            base_hashes
+                        }
+                        _ => collector.collect_directory_hashes(atomic.temp_dir(), &[])?,
+                    };
+                    task.file_hashes = Some(hashes);
+                }
+            }
+            if self.task_control.is_cancelled() {
+                anyhow::bail!("Installation cancelled");
+            }
+            if self.task_control.is_skip_requested() {
+                self.task_control.reset_skip();
+                anyhow::bail!("Skipped by user");
+            }
+        }
+
+        if let Some(zip) = &ctx.zip_package {
+            zip.check_source()?;
+            if task.extraction_chain.is_none() && task.scenery_option().is_none() {
+                if let Some(hashes) = task
+                    .file_hashes
+                    .as_ref()
+                    .filter(|hashes| !hashes.is_empty())
+                {
+                    ctx.inline_verified_count
+                        .store(hashes.len() as u64, Ordering::SeqCst);
+                    ctx.inline_verified.store(true, Ordering::SeqCst);
+                }
+            }
+        }
+        if let Some(sevenz) = &ctx.sevenz_package {
+            sevenz.check_source()?;
+        }
+        check_archive_cancelled(&self.task_control)?;
         // Step 2: Perform atomic installation based on scenario
         if !target.exists() {
             // Scenario 1: Fresh installation
@@ -2402,7 +2116,15 @@ impl Installer {
             if matches!(task.addon_type, AddonType::Navdata) {
                 atomic.install_clean_navdata_with_backup(task.backup_navdata)?;
             } else {
-                atomic.install_clean(task)?;
+                let mut restored = Vec::new();
+                atomic.install_clean(task, |name| restored.push(name.to_owned()))?;
+                let mut inline = ctx.inline_hashes.lock().unwrap();
+                for name in restored {
+                    inline.remove(&name);
+                    if let Some(hashes) = &mut task.file_hashes {
+                        hashes.remove(&name);
+                    }
+                }
             }
         } else {
             // Scenario 3: Overwrite installation (should_overwrite=true means merge)
@@ -2495,75 +2217,262 @@ impl Installer {
     }
 }
 
+fn validate_scenery_option_root(
+    task: &InstallTask,
+    source: &Path,
+    option: &crate::models::SceneryInstallOption,
+) -> Result<()> {
+    if source.is_dir() {
+        let input = task
+            .original_input_path
+            .as_deref()
+            .context("Missing scenery package folder")?;
+        let package = fs::canonicalize(input)?;
+        let base = fs::canonicalize(source)?;
+        let replacement = fs::canonicalize(&option.root)?;
+        // Option folders may live inside the scenery itself (for example a
+        // "**Selectable Documents**" folder); only an option that *contains*
+        // the base scenery is unsafe.
+        if !base.starts_with(&package)
+            || !replacement.starts_with(package)
+            || replacement == base
+            || base.starts_with(replacement)
+        {
+            anyhow::bail!("Scenery option is outside the package");
+        }
+    } else {
+        let base = task
+            .extraction_chain
+            .as_ref()
+            .and_then(|chain| chain.final_internal_root.as_deref())
+            .or(task.archive_internal_root.as_deref())
+            .and_then(crate::package_artifacts::normalize_safe_relative_path)
+            .context("Missing base scenery folder in the archive")?;
+        let replacement = crate::package_artifacts::normalize_safe_relative_path(&option.root)
+            .context("Invalid scenery option folder")?;
+        if replacement == base || base.starts_with(&replacement) {
+            anyhow::bail!("Scenery option overlaps the base scenery");
+        }
+    }
+    for file in &option.files {
+        crate::package_artifacts::normalize_safe_relative_path(&file.source)
+            .context("Invalid scenery option source")?;
+        crate::package_artifacts::normalize_safe_relative_path(&file.destination)
+            .filter(|path| path.starts_with("Earth nav data") && path.components().count() > 1)
+            .context("Invalid scenery option destination")?;
+    }
+    Ok(())
+}
+
+fn apply_scenery_option(
+    base: &Path,
+    replacements: &Path,
+    option: &crate::models::SceneryInstallOption,
+) -> Result<Vec<PathBuf>> {
+    use crate::package_artifacts::normalize_safe_relative_path;
+
+    let files = option
+        .files
+        .iter()
+        .map(|entry| {
+            let source = normalize_safe_relative_path(&entry.source)
+                .with_context(|| format!("Invalid scenery option source: {}", entry.source))?;
+            let destination = normalize_safe_relative_path(&entry.destination)
+                .filter(|file| file.starts_with("Earth nav data") && file.components().count() > 1)
+                .with_context(|| {
+                    format!("Invalid scenery option destination: {}", entry.destination)
+                })?;
+            Ok((source, destination))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    anyhow::ensure!(!files.is_empty(), "Empty scenery option");
+
+    for (source, destination) in &files {
+        let from = replacements.join(source);
+        let to = base.join(destination);
+        anyhow::ensure!(
+            fs::symlink_metadata(&from).is_ok_and(|entry| entry.is_file())
+                && fs::symlink_metadata(&to).is_ok_and(|entry| entry.is_file()),
+            "Scenery option file does not match the base package: {}",
+            destination.display()
+        );
+    }
+    for (source, destination) in &files {
+        fs::copy(replacements.join(source), base.join(destination))?;
+    }
+    Ok(files
+        .into_iter()
+        .map(|(_, destination)| destination)
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Cursor, Read, Write};
-    use zip::write::SimpleFileOptions;
-    use zip::ZipWriter;
 
-    fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
-        let cursor = Cursor::new(Vec::new());
-        let mut writer = ZipWriter::new(cursor);
-        let options = SimpleFileOptions::default();
+    #[test]
+    fn scenery_option_overwrites_only_matching_navigation_files() {
+        use crate::models::{SceneryInstallOption, SceneryOptionFile};
 
-        for (path, contents) in entries {
-            writer
-                .start_file(path, options)
-                .expect("failed to start zip entry");
-            writer
-                .write_all(contents)
-                .expect("failed to write zip entry");
+        let base = tempfile::tempdir().unwrap();
+        let replacements = tempfile::tempdir().unwrap();
+        let relative = "Earth nav data/apt.dat";
+        for (dir, bytes) in [(&base, b"default" as &[u8]), (&replacements, b"option")] {
+            fs::create_dir(dir.path().join("Earth nav data")).unwrap();
+            fs::write(dir.path().join(relative), bytes).unwrap();
         }
+        fs::write(base.path().join("asset.obj"), b"asset").unwrap();
+        fs::write(replacements.path().join("What this is.txt"), b"notes").unwrap();
+        let mut option = SceneryInstallOption {
+            name: "Variant".into(),
+            root: "Package/Variant".into(),
+            files: vec![
+                SceneryOptionFile {
+                    source: relative.into(),
+                    destination: relative.into(),
+                },
+                SceneryOptionFile {
+                    source: "Earth nav data/missing.dsf".into(),
+                    destination: "Earth nav data/missing.dsf".into(),
+                },
+            ],
+        };
+        assert!(apply_scenery_option(base.path(), replacements.path(), &option).is_err());
+        assert_eq!(fs::read(base.path().join(relative)).unwrap(), b"default");
 
-        writer.finish().expect("failed to finish zip").into_inner()
-    }
-
-    fn archive_entries(archive_data: &[u8]) -> Vec<String> {
-        let cursor = Cursor::new(archive_data.to_vec());
-        let mut archive = zip::ZipArchive::new(cursor).expect("failed to open zip");
-        let mut entries = Vec::new();
-
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).expect("failed to read zip entry");
-            let mut data = Vec::new();
-            file.read_to_end(&mut data)
-                .expect("failed to read zip entry data");
-            entries.push(file.name().to_string());
-        }
-
-        entries
+        option.files.pop();
+        apply_scenery_option(base.path(), replacements.path(), &option).unwrap();
+        assert_eq!(fs::read(base.path().join(relative)).unwrap(), b"option");
+        assert_eq!(fs::read(base.path().join("asset.obj")).unwrap(), b"asset");
+        assert!(!base.path().join("What this is.txt").exists());
     }
 
     #[test]
-    fn load_nested_zip_layers_keeps_current_archive_when_no_remaining_layers() {
-        let outer_zip = build_zip(&[("plane.acf", b"acf")]);
+    fn scenery_option_maps_flat_replacements_into_earth_nav_data() {
+        use crate::models::{SceneryInstallOption, SceneryOptionFile};
 
-        let (result, password) =
-            load_nested_zip_layers_from_bytes(outer_zip, &[], None).expect("load failed");
-
-        assert!(password.is_none());
-        assert_eq!(archive_entries(&result), vec!["plane.acf".to_string()]);
-    }
-
-    #[test]
-    fn load_nested_zip_layers_descends_into_requested_nested_zip() {
-        let inner_zip = build_zip(&[("aircraft/plane.acf", b"acf")]);
-        let outer_zip = build_zip(&[("nested/inner.zip", inner_zip.as_slice())]);
-        let remaining_chain = vec![crate::models::NestedArchiveInfo {
-            internal_path: "nested/inner.zip".to_string(),
-            password: None,
-            format: "zip".to_string(),
-        }];
-
-        let (result, password) =
-            load_nested_zip_layers_from_bytes(outer_zip, &remaining_chain, None)
-                .expect("load failed");
-
-        assert!(password.is_none());
+        let base = tempfile::tempdir().unwrap();
+        let replacements = tempfile::tempdir().unwrap();
+        let tile = "+30+100/+34+108.dsf";
+        let base_tile = format!("Earth nav data/{tile}");
+        for (dir, apt, dsf) in [
+            (base.path(), b"default" as &[u8], b"default tile" as &[u8]),
+            (
+                replacements.path(),
+                b"no aircraft" as &[u8],
+                b"no aircraft tile" as &[u8],
+            ),
+        ] {
+            fs::create_dir_all(dir.join("Earth nav data/+30+100")).unwrap();
+            fs::create_dir_all(dir.join("+30+100")).unwrap();
+            fs::write(dir.join("Earth nav data/apt.dat"), apt).unwrap();
+            fs::write(dir.join(&base_tile), dsf).unwrap();
+            fs::write(dir.join("apt.dat"), apt).unwrap();
+            fs::write(dir.join(tile), dsf).unwrap();
+        }
+        let option = SceneryInstallOption {
+            name: "None_Aircrafts".into(),
+            root: "Package/Scenery/**Selectable Documents**/None_Aircrafts".into(),
+            files: vec![
+                SceneryOptionFile {
+                    source: tile.into(),
+                    destination: base_tile.clone(),
+                },
+                SceneryOptionFile {
+                    source: "apt.dat".into(),
+                    destination: "Earth nav data/apt.dat".into(),
+                },
+            ],
+        };
+        let applied = apply_scenery_option(base.path(), replacements.path(), &option).unwrap();
+        assert_eq!(applied.len(), 2);
         assert_eq!(
-            archive_entries(&result),
-            vec!["aircraft/plane.acf".to_string()]
+            fs::read(base.path().join("Earth nav data/apt.dat")).unwrap(),
+            b"no aircraft"
         );
+        assert_eq!(
+            fs::read(base.path().join(&base_tile)).unwrap(),
+            b"no aircraft tile"
+        );
+        assert_eq!(
+            fs::read(base.path().join("apt.dat")).unwrap(),
+            b"default",
+            "the flat option file must not be installed beside the scenery"
+        );
+    }
+
+    #[test]
+    fn scenery_options_inside_the_scenery_are_allowed() {
+        use crate::models::{SceneryInstallOption, SceneryOptionFile};
+
+        let package = tempfile::tempdir().unwrap();
+        let scenery = package.path().join("A_TAO_ZLXY");
+        let option_root = scenery.join("__Selectable Documents__/None_Aircrafts");
+        fs::create_dir_all(scenery.join("Earth nav data")).unwrap();
+        fs::create_dir_all(&option_root).unwrap();
+
+        let option = SceneryInstallOption {
+            name: "None_Aircrafts".into(),
+            root: option_root.to_string_lossy().into_owned(),
+            files: vec![SceneryOptionFile {
+                source: "apt.dat".into(),
+                destination: "Earth nav data/apt.dat".into(),
+            }],
+        };
+        let mut task = super::super::tests::install_task(AddonType::Scenery, "A_TAO_ZLXY");
+        task.original_input_path = Some(package.path().to_string_lossy().into_owned());
+        validate_scenery_option_root(&task, &scenery, &option).unwrap();
+
+        task.original_input_path = None;
+        task.archive_internal_root = Some("Package/A_TAO_ZLXY".into());
+        let mut archive_option = option.clone();
+        archive_option.root = "Package/A_TAO_ZLXY/__Selectable Documents__/None_Aircrafts".into();
+        validate_scenery_option_root(&task, Path::new("package.zip"), &archive_option).unwrap();
+    }
+
+    #[test]
+    fn lua_verification_covers_exactly_the_selected_bundle() {
+        let source = tempfile::tempdir().unwrap();
+        let scripts = tempfile::tempdir().unwrap();
+        let script_name = "Simple Ground Service.lua";
+        let module_path = "Simple Ground Service/profiles.lua";
+        let files: [(&str, &[u8]); 3] = [
+            (script_name, b"script"),
+            (module_path, b"module"),
+            ("Independent.lua", b"independent"),
+        ];
+        for (name, contents) in files {
+            let path = source.path().join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+
+        let target = scripts.path().join(script_name);
+        let mut task =
+            super::super::tests::install_task(AddonType::LuaScript, target.to_str().unwrap());
+        task.companion_paths = vec!["Simple Ground Service".into()];
+        let entries = Installer::get_lua_bundle_entries(&task, &target).unwrap();
+        let hashes = Installer::prepare_lua_bundle(&task, source.path(), &entries)
+            .unwrap()
+            .unwrap();
+        assert_eq!(hashes.len(), 2);
+        assert!(hashes.contains_key(script_name));
+        assert!(hashes.contains_key(module_path));
+
+        let installed_module = scripts.path().join(module_path);
+        fs::create_dir_all(installed_module.parent().unwrap()).unwrap();
+        fs::write(&target, b"script").unwrap();
+        fs::write(&installed_module, b"module").unwrap();
+        let verifier = crate::verifier::FileVerifier::new();
+        let verification_root = Installer::verification_target(&task).unwrap();
+        assert!(verifier
+            .verify_files(verification_root, &hashes)
+            .unwrap()
+            .is_empty());
+
+        fs::write(installed_module, b"wrong content").unwrap();
+        let failed = verifier.verify_files(verification_root, &hashes).unwrap();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].path, module_path);
     }
 }
