@@ -23,6 +23,8 @@ mod startup_migrations;
 mod task_control;
 #[path = "core/vercel_api.rs"]
 mod vercel_api;
+#[path = "core/zip_package.rs"]
+mod zip_package;
 
 // Data
 #[path = "data/database/mod.rs"]

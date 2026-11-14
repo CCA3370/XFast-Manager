@@ -557,7 +557,6 @@ impl Installer {
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    None,
                 )?;
             }
 
@@ -630,6 +629,18 @@ impl Installer {
         atomic_install_enabled: bool,
         xplane_path: &str,
     ) -> Result<()> {
+        if let Some(zip) = &ctx.zip_package {
+            zip.check_source()?;
+            if task.enable_verification
+                && task.extraction_chain.is_none()
+                && task.addon_type != AddonType::LuaScript
+            {
+                task.file_hashes = Some(zip_expected_hashes(
+                    zip,
+                    task.archive_internal_root.as_deref(),
+                ));
+            }
+        }
         if task.addon_type == AddonType::LuaScript {
             ctx.inline_hash_collection_enabled
                 .store(false, Ordering::SeqCst);
@@ -724,8 +735,9 @@ impl Installer {
             );
             self.install_task_atomic(task, ctx, xplane_path)?;
         } else {
+            let clean = !task.should_overwrite && target.exists();
             // Regular installation (non-nested, non-atomic)
-            if !task.should_overwrite && target.exists() {
+            if clean {
                 crate::log_debug!(
                     "[TIMING] Clean install mode for regular archive",
                     "installer_timing"
@@ -738,14 +750,25 @@ impl Installer {
                     "installer_timing"
                 );
                 // Direct overwrite mode: just install/extract files directly
-                self.install_content_with_progress_and_hashes(
+                self.install_content_with_progress(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    task.file_hashes.as_ref(),
                 )?;
+            }
+            // The ZIP decoder validates every stream as it is written. When
+            // no staging or backup restore follows, the output is already verified.
+            if ctx.zip_package.is_some()
+                && (!clean || !matches!(task.addon_type, AddonType::Aircraft | AddonType::Navdata))
+            {
+                if let Some(hashes) = &task.file_hashes {
+                    if !hashes.is_empty() {
+                        ctx.inline_verified.store(true, Ordering::SeqCst);
+                        ctx.inline_verified_count.store(hashes.len() as u64, Ordering::SeqCst);
+                    }
+                }
             }
         }
 
@@ -761,38 +784,16 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
-        self.install_content_with_progress_and_hashes(
-            source,
-            target,
-            internal_root,
-            ctx,
-            password,
-            None,
-        )
-    }
-
-    /// Install content with progress tracking and optional expected hashes for inline verification
-    fn install_content_with_progress_and_hashes(
-        &self,
-        source: &Path,
-        target: &Path,
-        internal_root: Option<&str>,
-        ctx: &ProgressContext,
-        password: Option<&str>,
-        expected_hashes: Option<&HashMap<String, crate::models::FileHash>>,
-    ) -> Result<()> {
         if source.is_dir() {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
-            if Self::is_supported_archive_file(source) {
-                self.extract_archive_with_progress(
-                    source,
-                    target,
-                    internal_root,
-                    ctx,
-                    password,
-                    expected_hashes,
-                )?;
+            if ctx
+                .zip_package
+                .as_ref()
+                .is_some_and(|zip| zip.source_path == source)
+                || Self::is_supported_archive_file(source)
+            {
+                self.extract_archive_with_progress(source, target, internal_root, ctx, password)?;
             } else {
                 self.copy_single_file_with_progress(source, target, ctx)?;
             }
@@ -838,7 +839,7 @@ impl Installer {
         }
     }
 
-    /// Optimized installation for nested ZIP archives (memory-only, no temp files)
+    /// Read the first nested member from the outer index, then open each inner ZIP.
     fn install_nested_zip_from_memory(
         &self,
         source: &Path,
@@ -848,115 +849,55 @@ impl Installer {
         outermost_password: Option<&str>,
     ) -> Result<()> {
         use std::io::{Cursor, Read};
-        use zip::ZipArchive;
 
-        crate::logger::log_info(
-            &format!(
-                "Using optimized memory extraction for {} nested ZIP layers",
-                chain.archives.len()
-            ),
-            Some("installer"),
-        );
-
-        let prepared_source = crate::archive_input::prepare_archive_for_read(
-            source,
-            crate::archive_input::ArchiveFormat::Zip,
+        let indexed = ctx
+            .zip_package
+            .as_ref()
+            .filter(|zip| zip.source_path == source);
+        let fallback;
+        let zip = match indexed {
+            Some(zip) => zip,
+            None => {
+                fallback = ZipPackage::open(source, None)?;
+                &fallback
+            }
+        };
+        let mut outer = zip.reader();
+        let Some((first, remaining)) = chain.archives.split_first() else {
+            return self.extract_zip_from_archive(
+                &mut outer,
+                target,
+                chain.final_internal_root.as_deref(),
+                ctx,
+                outermost_password.map(str::as_bytes),
+            );
+        };
+        let nested_path = first.internal_path.replace('\\', "/");
+        let entry = zip
+            .entries
+            .iter()
+            .find(|entry| entry.name == nested_path)
+            .with_context(|| format!("Nested archive not found in ZIP: {nested_path}"))?;
+        let mut file = match outermost_password {
+            Some(password) => outer.by_index_decrypt(entry.index, password.as_bytes())?,
+            None => outer.by_index(entry.index)?,
+        };
+        let mut inner = Vec::new();
+        file.read_to_end(&mut inner)?;
+        let (bytes, password) = load_nested_zip_layers_from_bytes(
+            inner,
+            remaining,
+            first.password.as_deref().or(outermost_password),
         )?;
-
-        // Open the outermost archive
-        let file = fs::File::open(prepared_source.read_path())?;
-        let mut current_archive_data = Vec::new();
-        file.take(u64::MAX).read_to_end(&mut current_archive_data)?;
-
-        // Store password as bytes to avoid taint flow from string into logging sinks
-        let mut current_password_bytes: Option<Vec<u8>> =
-            outermost_password.map(|p| p.as_bytes().to_vec());
-
-        // Navigate through all layers
-        for archive_info in chain.archives.iter() {
-            let cursor = Cursor::new(&current_archive_data);
-            let mut archive = ZipArchive::new(cursor)?;
-
-            // Read nested archive into memory
-            let nested_path = &archive_info.internal_path;
-            let nested_path_normalized = nested_path.replace('\\', "/");
-            let mut nested_data = Vec::new();
-
-            // Search for the nested archive
-            let mut found = false;
-            let mut decryption_error: Option<String> = None;
-
-            for i in 0..archive.len() {
-                // First, check if this is the file we're looking for using raw access
-                let file_name = {
-                    let raw_file = archive.by_index_raw(i)?;
-                    raw_file.name().replace('\\', "/")
-                };
-
-                if file_name != nested_path_normalized {
-                    continue; // Not the file we're looking for
-                }
-
-                // Found the file, now try to read it
-                let mut file = if let Some(ref pwd) = current_password_bytes {
-                    match archive.by_index_decrypt(i, pwd) {
-                        Ok(f) => f,
-                        Err(_e) => {
-                            // Avoid logging potentially sensitive details from the underlying error
-                            decryption_error = Some(format!(
-                                "Failed to decrypt nested archive at {}",
-                                nested_path
-                            ));
-                            break; // Stop searching, we found the file but can't decrypt
-                        }
-                    }
-                } else {
-                    archive.by_index(i)?
-                };
-
-                file.read_to_end(&mut nested_data)?;
-                found = true;
-                break;
-            }
-
-            if let Some(err) = decryption_error {
-                return Err(anyhow::anyhow!(err));
-            }
-
-            if !found {
-                return Err(anyhow::anyhow!(
-                    "Nested archive not found in ZIP: {}",
-                    nested_path
-                ));
-            }
-
-            // Update for next iteration
-            current_archive_data = nested_data;
-            // Update password for next layer if specified
-            // If the nested archive has its own password, use it
-            // Otherwise, keep the current (parent) password for try-through
-            if let Some(ref next_pwd) = archive_info.password {
-                current_password_bytes = Some(next_pwd.as_bytes().to_vec());
-            }
-            // Note: if archive_info.password is None, we keep current_password_bytes
-            // as-is, since many nested archives share the same password as the parent
-        }
-
-        // Now extract the final (innermost) archive
-        let cursor = Cursor::new(current_archive_data);
-        let mut archive = ZipArchive::new(cursor)?;
-
-        let pwd_bytes = current_password_bytes.as_deref();
-        // Extract all files with final_internal_root filter
+        zip.check_source()?;
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
         self.extract_zip_from_archive(
             &mut archive,
             target,
             chain.final_internal_root.as_deref(),
             ctx,
-            pwd_bytes,
-        )?;
-
-        Ok(())
+            password.as_deref(),
+        )
     }
 
     /// Extract files from an in-memory ZIP archive
@@ -1122,7 +1063,6 @@ impl Installer {
                 None,
                 ctx,
                 current_password,
-                None,
             )?;
 
             let nested_archive_path = resolve_extracted_nested_archive_path(
@@ -1207,7 +1147,6 @@ impl Installer {
                     chain.final_internal_root.as_deref(),
                     ctx,
                     nested_password,
-                    None,
                 )?;
 
                 return Ok(());
@@ -1493,13 +1432,12 @@ impl Installer {
                 if target.exists() {
                     self.remove_existing_target_path(target)?;
                 }
-                self.install_content_with_progress_and_hashes(
+                self.install_content_with_progress(
                     source,
                     target,
                     task.archive_internal_root.as_deref(),
                     ctx,
                     password,
-                    task.file_hashes.as_ref(),
                 )?;
             }
         }
@@ -2414,7 +2352,6 @@ impl Installer {
                     Some(&option.root),
                     ctx,
                     password,
-                    None,
                 )?;
             }
 

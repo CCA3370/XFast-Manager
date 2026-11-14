@@ -206,7 +206,7 @@ impl Installer {
             );
 
             retried_count = failed_files.len();
-            failed_files = self.retry_failed_files(task, failed_files, &expected_hashes)?;
+            failed_files = self.retry_failed_files(task, ctx, failed_files, &expected_hashes)?;
 
             ctx.set_verification_progress(95.0);
         } else {
@@ -421,6 +421,7 @@ impl Installer {
     fn retry_failed_files(
         &self,
         task: &InstallTask,
+        ctx: &ProgressContext,
         mut failed_files: Vec<crate::models::FileVerificationResult>,
         expected_hashes: &std::collections::HashMap<String, crate::models::FileHash>,
     ) -> Result<Vec<crate::models::FileVerificationResult>> {
@@ -482,14 +483,27 @@ impl Installer {
                     Some(option) => (source, Some(option.root.as_str())),
                     None => (source, task.archive_internal_root.as_deref()),
                 };
-                match self.re_extract_single_file(
-                    source,
-                    target,
-                    &safe_relative_path,
-                    internal_root,
-                    task.extraction_chain.as_ref(),
-                    task.password.as_deref(),
-                ) {
+                let retry = if let Some(zip) = &ctx.zip_package {
+                    zip.check_source().and_then(|()| {
+                        self.re_extract_from_zip(
+                            zip,
+                            target,
+                            &safe_relative_path,
+                            internal_root,
+                            task.password.as_deref(),
+                        )
+                    })
+                } else {
+                    self.re_extract_single_file(
+                        source,
+                        target,
+                        &safe_relative_path,
+                        internal_root,
+                        task.extraction_chain.as_ref(),
+                        task.password.as_deref(),
+                    )
+                };
+                match retry {
                     Ok(_) => {
                         failed.retry_count = retry_attempt;
                         re_extracted_files.push(failed.path.clone());
@@ -596,18 +610,15 @@ impl Installer {
         let format = crate::archive_input::detect_archive_format(source).ok_or_else(|| {
             anyhow::anyhow!("Unsupported archive format for retry: {}", source.display())
         })?;
+        if format == crate::archive_input::ArchiveFormat::Zip {
+            let zip = ZipPackage::open(source, None)?;
+            return self.re_extract_from_zip(&zip, target, relative_path, internal_root, password);
+        }
         let prepared_source = crate::archive_input::prepare_archive_for_read(source, format)?;
         let read_source = prepared_source.read_path();
 
         match format {
-            crate::archive_input::ArchiveFormat::Zip => self.re_extract_from_zip(
-                read_source,
-                target,
-                relative_path,
-                internal_root,
-                extraction_chain,
-                password,
-            ),
+            crate::archive_input::ArchiveFormat::Zip => unreachable!(),
             crate::archive_input::ArchiveFormat::SevenZ => self.re_extract_from_7z(
                 read_source,
                 target,
@@ -636,41 +647,21 @@ impl Installer {
     /// 3. If a nested ZIP itself is corrupted, the entire task would fail anyway
     fn re_extract_from_zip(
         &self,
-        archive_path: &Path,
+        zip: &ZipPackage,
         target: &Path,
         relative_path: &str,
         internal_root: Option<&str>,
-        _extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
         use std::io::copy;
-        use zip::ZipArchive;
-
-        let file = fs::File::open(archive_path)?;
-        let mut archive = ZipArchive::new(file)?;
-
-        let root = internal_root.map(|root| root.replace('\\', "/"));
+        let mut archive = zip.reader();
         let destination = Path::new(relative_path);
-        let mut file_index = None;
-        let mut is_encrypted = false;
-        for i in 0..archive.len() {
-            let file = archive.by_index_raw(i)?;
-            if !file.is_dir()
-                && file
-                    .enclosed_name()
-                    .and_then(|path| zip_install_relative_path(&path, root.as_deref()))
-                    .as_deref()
-                    == Some(destination)
-            {
-                file_index = Some(i);
-                is_encrypted = file.encrypted();
-                break;
-            }
-        }
-
-        let i = file_index.ok_or_else(|| {
-            anyhow::anyhow!("File not found in ZIP for install path: {}", relative_path)
-        })?;
+        let entry = zip_install_entries(zip, internal_root)
+            .into_iter()
+            .rev()
+            .find(|entry| !entry.source.is_directory && entry.destination == destination)
+            .with_context(|| format!("File not found in ZIP for install path: {relative_path}"))?;
+        let i = entry.source.index;
 
         // Now extract the file
         let target_path = target.join(relative_path);
@@ -683,7 +674,7 @@ impl Installer {
         // Extract file
         let mut outfile = fs::File::create(&target_path)?;
 
-        if is_encrypted {
+        if entry.source.encrypted {
             if let Some(pwd) = password {
                 let mut decrypted = archive
                     .by_index_decrypt(i, pwd.as_bytes())

@@ -11,6 +11,7 @@ use crate::logger;
 use crate::models::{
     AddonType, DetectedItem, ExtractionChain, NavdataCycle, NavdataInfo, NestedArchiveInfo,
 };
+use crate::zip_package::{ZipReader, ZipSummary};
 
 #[path = "rar.rs"]
 mod rar;
@@ -63,6 +64,7 @@ pub(super) struct ScanContext {
     parent_chain: Vec<NestedArchiveInfo>,
     /// Password map for archives (key: archive path, value: password)
     passwords: HashMap<String, String>,
+    zip_summary: Option<ZipSummary>,
 }
 
 impl ScanContext {
@@ -72,6 +74,7 @@ impl ScanContext {
             max_depth: 2,
             parent_chain: Vec::new(),
             passwords: HashMap::new(),
+            zip_summary: None,
         }
     }
 
@@ -121,10 +124,11 @@ impl ScanContext {
 }
 
 struct NestedZipScanParams<'a> {
-    parent_archive: &'a mut ::zip::ZipArchive<fs::File>,
+    parent_archive: &'a mut ::zip::ZipArchive<ZipReader>,
     file_index: usize,
     nested_path: &'a str,
     parent_path: &'a Path,
+    read_path: &'a Path,
     ctx: &'a mut ScanContext,
     parent_password: Option<&'a [u8]>,
     is_encrypted: bool,
@@ -465,6 +469,11 @@ fn infer_version_from_name(text: &str) -> Option<String> {
 /// with no internal state, so no unsafe impl is needed.
 pub struct Scanner;
 
+pub(crate) struct ScannedInput {
+    pub items: Vec<DetectedItem>,
+    pub zip_summary: Option<ZipSummary>,
+}
+
 impl Scanner {
     pub fn new() -> Self {
         Scanner
@@ -605,45 +614,26 @@ impl Scanner {
             })
     }
 
-    /// Scan a path (file or directory) and detect all addon types
+    #[cfg(test)]
     pub fn scan_path(&self, path: &Path, password: Option<&str>) -> Result<Vec<DetectedItem>> {
-        let original_input_path = path.to_string_lossy().to_string();
-        let mut ctx = ScanContext::new();
-        if let Some(pwd) = password {
-            ctx.passwords
-                .insert(path.to_string_lossy().to_string(), pwd.to_string());
-            let normalized = crate::archive_input::normalize_archive_entry_path(path)
-                .to_string_lossy()
-                .to_string();
-            ctx.passwords
-                .entry(normalized)
-                .or_insert_with(|| pwd.to_string());
-        }
-        let mut items = self.scan_path_with_context(path, &mut ctx)?;
-
-        // Set original_input_path for all detected items
-        for item in &mut items {
-            item.original_input_path = original_input_path.clone();
-        }
-
-        Ok(items)
+        let passwords = password
+            .map(|value| HashMap::from([(path.to_string_lossy().into_owned(), value.to_string())]));
+        self.scan_input(path, passwords.as_ref())
+            .map(|scan| scan.items)
     }
 
-    /// Scan a path with a full passwords map (supports nested archive passwords)
-    /// Unlike scan_path which only accepts a single password for the outer archive,
-    /// this method injects ALL passwords into ScanContext so that nested archive
-    /// passwords (keyed as "parent_path/nested_name") can be found during scanning.
-    pub fn scan_path_with_passwords(
+    /// Scan a path with passwords for both the outer and nested archives.
+    pub(crate) fn scan_input(
         &self,
         path: &Path,
-        passwords: &HashMap<String, String>,
-    ) -> Result<Vec<DetectedItem>> {
+        passwords: Option<&HashMap<String, String>>,
+    ) -> Result<ScannedInput> {
         let original_input_path = path.to_string_lossy().to_string();
         let mut ctx = ScanContext::new();
         // Insert all provided passwords into context
         // This includes outer archive passwords (key = archive path)
         // and nested archive passwords (key = "parent_path/nested_name")
-        for (key, value) in passwords {
+        for (key, value) in passwords.into_iter().flatten() {
             ctx.passwords.insert(key.clone(), value.clone());
             let normalized = crate::archive_input::normalize_archive_entry_path(Path::new(key))
                 .to_string_lossy()
@@ -659,7 +649,10 @@ impl Scanner {
             item.original_input_path = original_input_path.clone();
         }
 
-        Ok(items)
+        Ok(ScannedInput {
+            items,
+            zip_summary: ctx.zip_summary,
+        })
     }
 
     /// Internal method: Scan a path with context (supports nested archives)

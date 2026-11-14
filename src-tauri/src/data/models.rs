@@ -142,6 +142,9 @@ pub struct InstallTask {
     /// Estimated uncompressed size in bytes (for archives)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_size: Option<u64>,
+    /// Source revision observed when analyzing a standalone ZIP.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zip_source: Option<crate::zip_package::FileSnapshot>,
     /// Size warning message if archive is suspiciously large or has high compression ratio
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_warning: Option<String>,
@@ -169,9 +172,8 @@ pub struct InstallTask {
     /// Whether to backup navdata during clean install (Navdata only)
     #[serde(default = "default_true")]
     pub backup_navdata: bool,
-    /// File hashes collected during scanning (for verification)
-    /// Key: relative path within addon, Value: FileHash
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Verification metadata for this execution, keyed by installed relative path.
+    #[serde(skip)]
     pub file_hashes: Option<HashMap<String, FileHash>>,
     /// Whether hash verification is enabled for this task
     #[serde(default = "default_true")]

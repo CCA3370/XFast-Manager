@@ -672,6 +672,7 @@ pub fn build_install_tasks(
         should_overwrite: true,
         password,
         estimated_size: None,
+        zip_source: None,
         size_warning: None,
         size_confirmed: true,
         existing_navdata_info: None,

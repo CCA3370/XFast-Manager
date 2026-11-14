@@ -40,6 +40,10 @@ impl PreparedArchive {
     pub fn read_path(&self) -> &Path {
         &self.read_path
     }
+
+    pub fn is_temporary(&self) -> bool {
+        self._temp_file.is_some()
+    }
 }
 
 fn split_numbered_series(file_name: &str, marker_lower: &str) -> Option<(String, usize, u32)> {

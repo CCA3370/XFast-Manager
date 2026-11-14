@@ -3,6 +3,7 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::installer::{MAX_COMPRESSION_RATIO, MAX_EXTRACTION_SIZE};
@@ -160,6 +161,7 @@ impl Analyzer {
         passwords: Option<HashMap<String, String>>,
         verification_preferences: Option<HashMap<String, bool>>,
     ) -> AnalysisResult {
+        let start = Instant::now();
         // Normalize split-volume inputs (e.g. .z01/.zip.001/part2.rar) to a stable
         // archive entry path and deduplicate equivalent paths.
         let normalized_paths = crate::archive_input::normalize_archive_input_paths(paths);
@@ -226,18 +228,10 @@ impl Analyzer {
                     }
                 }
 
-                let password = passwords_ref.and_then(|p| p.get(path_str).map(|s| s.as_str()));
-                // Use scan_path_with_passwords when we have a full passwords map
-                // This ensures nested archive passwords (keyed as "parent/nested") are
-                // available in ScanContext for lookup during nested archive scanning
-                if let Some(all_passwords) = passwords_ref {
-                    (
-                        path_str.clone(),
-                        self.scanner.scan_path_with_passwords(path, all_passwords),
-                    )
-                } else {
-                    (path_str.clone(), self.scanner.scan_path(path, password))
-                }
+                (
+                    path_str.clone(),
+                    self.scanner.scan_input(path, passwords_ref),
+                )
             })
             .collect();
 
@@ -248,10 +242,15 @@ impl Analyzer {
         let mut nested_password_required = HashMap::new(); // NEW: Track nested password requirements
                                                            // Track which archives have passwords for setting on tasks later
         let mut archive_passwords: HashMap<String, String> = HashMap::new();
+        let mut zip_summaries = HashMap::new();
 
         for (path_str, result) in results {
             match result {
-                Ok(detected) => {
+                Ok(scan) => {
+                    if let Some(zip) = scan.zip_summary {
+                        zip_summaries.insert(path_str.clone(), zip);
+                    }
+                    let detected = scan.items;
                     // Store password for this archive if provided
                     // Use the same key format as scanner (Path::to_string_lossy)
                     if let Some(pwd) = passwords_ref.and_then(|p| p.get(&path_str)) {
@@ -338,20 +337,19 @@ impl Analyzer {
         let tasks: Vec<InstallTask> = filtered
             .into_iter()
             .map(|item| {
+                let zip = zip_summaries.get(&item.original_input_path);
                 self.create_install_task(
                     item,
                     xplane_path,
                     &archive_passwords,
                     verification_preferences.as_ref(),
+                    zip,
                 )
             })
             .collect();
 
         // Deduplicate tasks by target path (e.g., multiple .acf files in same aircraft folder)
-        let mut tasks = self.deduplicate_by_target_path(tasks);
-
-        // Collect file hashes for verification
-        self.collect_hashes_for_tasks(&mut tasks);
+        let tasks = self.deduplicate_by_target_path(tasks);
 
         logger::log_info(
             &format!("{}: {} task(s)", tr(LogMsg::AnalysisCompleted), tasks.len()),
@@ -360,11 +358,12 @@ impl Analyzer {
 
         crate::log_debug!(
             &format!(
-                "Analysis returned {} tasks, {} errors",
+                "[TIMING] Analysis completed in {:.2}ms: {} tasks, {} errors",
+                start.elapsed().as_secs_f64() * 1000.0,
                 tasks.len(),
                 errors.len()
             ),
-            "analysis"
+            "scanner_timing"
         );
         if !tasks.is_empty() {
             let task_types: Vec<String> = tasks
@@ -975,6 +974,7 @@ impl Analyzer {
         xplane_path: &str,
         archive_passwords: &HashMap<String, String>,
         verification_preferences: Option<&HashMap<String, bool>>,
+        zip: Option<&crate::zip_package::ZipSummary>,
     ) -> InstallTask {
         let xplane_root = Path::new(xplane_path);
 
@@ -1141,11 +1141,16 @@ impl Analyzer {
         }
 
         // Estimate size and check for warnings (for archives)
-        let (estimated_size, size_warning) = self.estimate_archive_size(&item.path);
+        let (estimated_size, size_warning) = match zip {
+            Some(zip) => self.check_size_warning(zip.compressed_size, zip.uncompressed_size),
+            None => self.estimate_archive_size(&item.path),
+        };
 
         // Determine source type and check verification preferences
         let source_path = Path::new(&item.path);
-        let source_type = if source_path.is_dir() {
+        let source_type = if zip.is_some() {
+            "zip"
+        } else if source_path.is_dir() {
             "directory"
         } else if let Some(ext) = source_path.extension().and_then(|s| s.to_str()) {
             match ext.to_lowercase().as_str() {
@@ -1179,6 +1184,7 @@ impl Analyzer {
             should_overwrite: false, // Default to false, controlled by frontend
             password,
             estimated_size,
+            zip_source: zip.and_then(|zip| zip.source.clone()),
             size_warning,
             size_confirmed: false, // User must confirm if there's a warning
             existing_navdata_info,
@@ -1189,7 +1195,7 @@ impl Analyzer {
             backup_config_files: true, // Default to true (safe)
             config_file_patterns: vec!["*_prefs.txt".to_string()], // Default pattern
             backup_navdata: true,      // Default to true (safe)
-            file_hashes: None,         // Will be populated by hash collector
+            file_hashes: None,         // Populated by installation when verification is enabled
             enable_verification,       // Based on verification preferences
             livery_aircraft_type: item.livery_aircraft_type,
             livery_aircraft_found,
@@ -1203,57 +1209,6 @@ impl Analyzer {
             patch_backup: false,
             patch_backup_dir: None,
             patch_aircraft_root: None,
-        }
-    }
-
-    /// Collect file hashes for all tasks
-    fn collect_hashes_for_tasks(&self, tasks: &mut [InstallTask]) {
-        let hash_collector = crate::hash_collector::HashCollector::new();
-
-        for task in tasks.iter_mut() {
-            // Skip hash collection entirely if verification is disabled
-            if !task.enable_verification {
-                logger::log_info(
-                    &format!(
-                        "Hash collection skipped for task: {} (verification disabled)",
-                        task.display_name
-                    ),
-                    Some("analyzer"),
-                );
-                continue;
-            }
-
-            match hash_collector.collect_hashes(task) {
-                Ok(hashes) => {
-                    if !hashes.is_empty() {
-                        logger::log_info(
-                            &format!(
-                                "Collected {} hashes for task: {}",
-                                hashes.len(),
-                                task.display_name
-                            ),
-                            Some("analyzer"),
-                        );
-                        task.file_hashes = Some(hashes);
-                    } else {
-                        logger::log_info(
-                            &format!(
-                                "No hashes collected for task: {} (will compute during extraction)",
-                                task.display_name
-                            ),
-                            Some("analyzer"),
-                        );
-                    }
-                }
-                Err(e) => {
-                    logger::log_error(
-                        &format!("Failed to collect hashes for {}: {}", task.display_name, e),
-                        Some("analyzer"),
-                    );
-                    // Don't fail the task, just disable verification
-                    task.enable_verification = false;
-                }
-            }
         }
     }
 
@@ -1273,73 +1228,10 @@ impl Analyzer {
             .to_lowercase();
 
         match extension.as_str() {
-            "zip" => self.estimate_zip_size(source_path),
             "7z" => self.estimate_7z_size(source_path),
             "rar" => self.estimate_rar_size(source_path),
             _ => (None, None),
         }
-    }
-
-    /// Estimate ZIP file uncompressed size
-    fn estimate_zip_size(&self, archive_path: &Path) -> (Option<u64>, Option<String>) {
-        use zip::ZipArchive;
-
-        let file = match fs::File::open(archive_path) {
-            Ok(f) => f,
-            Err(e) => {
-                logger::log_debug(
-                    &format!("Failed to open ZIP for size estimation: {}", e),
-                    Some("analyzer"),
-                    Some("analyzer.rs"),
-                );
-                // Fall back to conservative estimate
-                if let Ok(meta) = fs::metadata(archive_path) {
-                    return self.check_size_warning(meta.len(), meta.len().saturating_mul(5));
-                }
-                return (None, None);
-            }
-        };
-
-        // Get metadata from already-opened file handle (optimization: single pass)
-        let archive_size = match file.metadata() {
-            Ok(m) => m.len(),
-            Err(e) => {
-                logger::log_debug(
-                    &format!("Failed to get ZIP metadata: {}", e),
-                    Some("analyzer"),
-                    Some("analyzer.rs"),
-                );
-                return (None, None);
-            }
-        };
-
-        let mut archive = match ZipArchive::new(file) {
-            Ok(a) => a,
-            Err(e) => {
-                logger::log_debug(
-                    &format!("Failed to read ZIP archive for size estimation: {}", e),
-                    Some("analyzer"),
-                    Some("analyzer.rs"),
-                );
-                // Fall back to conservative estimate (5x compressed size)
-                return self.check_size_warning(archive_size, archive_size.saturating_mul(5));
-            }
-        };
-
-        // Calculate total uncompressed size
-        let mut total_uncompressed: u64 = 0;
-        for i in 0..archive.len() {
-            if let Ok(file) = archive.by_index_raw(i) {
-                total_uncompressed = total_uncompressed.saturating_add(file.size());
-            }
-        }
-
-        // If we couldn't get any size info, use conservative estimate
-        if total_uncompressed == 0 && !archive.is_empty() {
-            total_uncompressed = archive_size.saturating_mul(5);
-        }
-
-        self.check_size_warning(archive_size, total_uncompressed)
     }
 
     /// Estimate 7z file uncompressed size
@@ -1516,6 +1408,49 @@ mod tests {
     use crate::models::{ExtractionChain, NestedArchiveInfo};
     use tempfile::tempdir;
 
+    #[test]
+    fn multi_plugin_zip_returns_versions_and_a_shared_source_revision() {
+        let temp = tempdir().unwrap();
+        let archive = temp.path().join("plugins.zip");
+        crate::zip_package::write_zip(
+            &archive,
+            &[
+                ("Alpha/win_x64/alpha.xpl", b"alpha"),
+                ("Alpha/skunkcrafts_updater.cfg", b"version|1.2.3"),
+                ("Beta/win_x64/beta.xpl", b"beta"),
+                ("Beta/version.txt", b"4.5.6"),
+            ],
+        );
+        let xplane = temp.path().join("X-Plane");
+        let result = Analyzer::new().analyze(
+            vec![archive.to_string_lossy().into_owned()],
+            xplane.to_str().unwrap(),
+            None,
+            None,
+        );
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.tasks.len(), 2);
+        let revision = result.tasks[0].zip_source.as_ref().unwrap();
+        for (name, version) in [("Alpha", "1.2.3"), ("Beta", "4.5.6")] {
+            let task = result
+                .tasks
+                .iter()
+                .find(|task| task.display_name == name)
+                .unwrap();
+            assert_eq!(task.zip_source.as_ref(), Some(revision));
+            assert_eq!(
+                task.new_version_info
+                    .as_ref()
+                    .and_then(|info| info.version.as_deref()),
+                Some(version)
+            );
+            let payload = serde_json::to_value(task).unwrap();
+            assert!(payload.get("fileHashes").is_none());
+            let round_trip: InstallTask = serde_json::from_value(payload).unwrap();
+            assert_eq!(round_trip.zip_source.as_ref(), Some(revision));
+        }
+    }
+
     // Helper function to create DetectedItem for tests
     fn create_detected_item(
         addon_type: AddonType,
@@ -1578,6 +1513,7 @@ mod tests {
             should_overwrite: false,
             password: None,
             estimated_size: None,
+            zip_source: None,
             size_warning: None,
             size_confirmed: false,
             existing_navdata_info: None,

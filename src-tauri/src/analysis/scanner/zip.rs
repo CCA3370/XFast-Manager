@@ -56,6 +56,22 @@ impl<R: std::io::Read + std::io::Seek> std::io::Seek for BoundedReader<R> {
     }
 }
 
+fn read_zip_entry_text<R: std::io::Read + std::io::Seek>(
+    archive: &mut ::zip::ZipArchive<R>,
+    index: usize,
+    password: Option<&[u8]>,
+) -> Result<String> {
+    use std::io::Read;
+
+    let mut file = match password {
+        Some(password) => archive.by_index_decrypt(index, password)?,
+        None => archive.by_index(index)?,
+    };
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    Ok(content)
+}
+
 impl Scanner {
     /// Try to scan a ZIP file by loading it into memory (optimization)
     pub(super) fn try_scan_zip_from_file_to_memory(
@@ -102,7 +118,6 @@ impl Scanner {
         ctx: &mut ScanContext,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        use ::zip::ZipArchive;
         use std::io::Read;
 
         let scan_start = std::time::Instant::now();
@@ -111,14 +126,12 @@ impl Scanner {
             "scanner_timing"
         );
 
-        let prepared_archive = crate::archive_input::prepare_archive_for_read(
-            zip_path,
-            crate::archive_input::ArchiveFormat::Zip,
-        )?;
-
         let open_start = std::time::Instant::now();
-        let file = fs::File::open(prepared_archive.read_path())?;
-        let mut archive: ZipArchive<fs::File> = ZipArchive::new(file)?;
+        let package = crate::zip_package::ZipPackage::open(zip_path, None)?;
+        let mut archive = package.reader();
+        if !ctx.is_nested_archive_scan() {
+            ctx.zip_summary = Some(package.summary());
+        }
         crate::log_debug!(
             &format!(
                 "[TIMING] ZIP open completed in {:.2}ms: {}",
@@ -156,45 +169,35 @@ impl Scanner {
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut sound_packs = AircraftSoundPacks::default();
         let mut archive_files = Vec::new();
+        let mut version_candidates = Vec::new();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut nested_archives: Vec<(usize, String, bool)> = Vec::new(); // (index, path, encrypted)
         let mut has_encrypted = false;
+        let mut encrypted_index = None;
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
 
-        for i in 0..archive.len() {
-            let file: ::zip::read::ZipFile<'_> = match archive.by_index_raw(i) {
-                Ok(f) => f,
-                Err(e) => {
-                    let err_str = format!("{:?}", e);
-                    if err_str.contains("password")
-                        || err_str.contains("Password")
-                        || err_str.contains("encrypted")
-                        || err_str.contains("InvalidPassword")
-                    {
-                        if password_str.is_none() {
-                            return Err(anyhow::anyhow!(PasswordRequiredError {
-                                archive_path: zip_path.to_string_lossy().to_string(),
-                            }));
-                        } else {
-                            return Err(anyhow::anyhow!(
-                                "Wrong password for archive: {}",
-                                zip_path.display()
-                            ));
-                        }
-                    }
-                    return Err(anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e));
-                }
-            };
-
-            let is_encrypted = file.encrypted();
+        for entry in &package.entries {
+            let i = entry.index;
+            let is_encrypted = entry.encrypted;
             if is_encrypted {
                 has_encrypted = true;
+                if !entry.is_directory {
+                    encrypted_index.get_or_insert(i);
+                }
             }
 
-            let file_path = file.name().replace('\\', "/");
-            if !file.is_dir() {
+            let file_path = entry.name.clone();
+            if !entry.is_directory {
                 sound_packs.record_file(&file_path);
                 archive_files.push(file_path.clone());
+                if entry.size <= 10_240
+                    && file_path
+                        .rsplit('/')
+                        .next()
+                        .is_some_and(|name| classify_version_file_candidate(name).is_some())
+                {
+                    version_candidates.push(entry);
+                }
             }
 
             // Skip ignored paths
@@ -203,7 +206,7 @@ impl Scanner {
             }
 
             // Check if this is a nested archive (for recursive scanning)
-            if !file.is_dir() && is_archive_file(&file_path) {
+            if !entry.is_directory && is_archive_file(&file_path) {
                 nested_archives.push((i, file_path.clone(), is_encrypted));
             }
 
@@ -265,17 +268,6 @@ impl Scanner {
         if has_encrypted {
             if let Some(pwd) = password_str {
                 let pwd_bytes = pwd.as_bytes();
-                // Find first encrypted file index
-                let mut encrypted_index: Option<usize> = None;
-                for i in 0..archive.len() {
-                    if let Ok(file) = archive.by_index_raw(i) {
-                        let file: ::zip::read::ZipFile<'_> = file;
-                        if file.encrypted() && !file.is_dir() {
-                            encrypted_index = Some(i);
-                            break;
-                        }
-                    }
-                }
                 // Try to decrypt the first encrypted file
                 if let Some(idx) = encrypted_index {
                     use std::io::Read;
@@ -379,22 +371,10 @@ impl Scanner {
 
             // Detect addon based on marker type
             let item = match marker_type {
-                "acf" => {
-                    if read_archive_versions {
-                        self.detect_aircraft_in_archive(&file_path, zip_path)?
-                    } else {
-                        self.detect_aircraft_in_archive_without_version(&file_path, zip_path)?
-                    }
-                }
+                "acf" => self.detect_aircraft_in_archive_without_version(&file_path, zip_path)?,
                 "library" => self.detect_scenery_library(&file_path, zip_path)?,
                 "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, zip_path)?,
-                "xpl" => {
-                    if read_archive_versions {
-                        self.detect_plugin_in_archive(&file_path, zip_path)?
-                    } else {
-                        self.detect_plugin_in_archive_without_version(&file_path, zip_path)?
-                    }
-                }
+                "xpl" => self.detect_plugin_in_archive_without_version(&file_path, zip_path)?,
                 "navdata" => {
                     // Need to read cycle.json content
                     let mut content = String::new();
@@ -423,11 +403,30 @@ impl Scanner {
                     }
                 }
                 "livery" => self.detect_livery_in_archive(&file_path, zip_path)?,
-                "lua" => self.detect_lua_script_in_archive(&file_path, zip_path)?,
+                "lua" => {
+                    let content =
+                        read_zip_entry_text(&mut archive, i, password_bytes).unwrap_or_default();
+                    self.detect_lua_script_in_archive_with_data(
+                        &file_path,
+                        zip_path,
+                        Some(&content),
+                        Some(&archive_files),
+                    )?
+                }
                 _ => None,
             };
 
             if let Some(mut item) = item {
+                if read_archive_versions
+                    && matches!(item.addon_type, AddonType::Aircraft | AddonType::Plugin)
+                {
+                    item.version_info = self.read_indexed_zip_version(
+                        &mut archive,
+                        &version_candidates,
+                        item.archive_internal_root.as_deref(),
+                        password_bytes,
+                    );
+                }
                 xlua_roots.annotate_plugin(&mut item, true);
                 // Add to skip prefixes
                 if let Some(ref internal_root) = item.archive_internal_root {
@@ -497,6 +496,7 @@ impl Scanner {
                     file_index: index,
                     nested_path: nested_path.as_str(),
                     parent_path: zip_path,
+                    read_path: package.read_path(),
                     ctx,
                     parent_password: password_bytes,
                     is_encrypted,
@@ -544,6 +544,53 @@ impl Scanner {
         Ok(detected)
     }
 
+    fn read_indexed_zip_version(
+        &self,
+        archive: &mut ::zip::ZipArchive<ZipReader>,
+        candidates: &[&crate::zip_package::ZipEntry],
+        root: Option<&str>,
+        password: Option<&[u8]>,
+    ) -> Option<crate::models::VersionInfo> {
+        let root = root.map(|root| root.replace('\\', "/"));
+        let root = root.as_deref().filter(|root| !root.is_empty());
+        let mut updater = None;
+        let mut versions = Vec::new();
+        for entry in candidates {
+            let path = if let Some(root) = root {
+                let Some(path) = entry
+                    .name
+                    .strip_prefix(root)
+                    .and_then(|path| path.strip_prefix('/'))
+                else {
+                    continue;
+                };
+                path
+            } else {
+                entry.name.as_str()
+            };
+            let depth = path.matches('/').count();
+            if depth > 2 {
+                continue;
+            }
+            if let Ok(text) = read_zip_entry_text(archive, entry.index, password) {
+                if path.rsplit('/').next() == Some("skunkcrafts_updater.cfg") {
+                    updater = Some(text);
+                } else {
+                    versions.push((depth, text));
+                }
+            }
+        }
+        let min_depth = versions.iter().map(|(depth, _)| *depth).min();
+        let versions = versions
+            .into_iter()
+            .filter_map(|(depth, text)| (Some(depth) == min_depth).then_some(text))
+            .collect();
+        self.parse_version_from_contents(updater, versions)
+            .map(|version| crate::models::VersionInfo {
+                version: Some(version),
+            })
+    }
+
     /// Scan a nested archive within a ZIP file (in-memory)
     pub(super) fn scan_nested_archive_in_zip(
         &self,
@@ -554,6 +601,7 @@ impl Scanner {
             file_index,
             nested_path,
             parent_path,
+            read_path,
             ctx,
             parent_password,
             is_encrypted,
@@ -639,7 +687,7 @@ impl Scanner {
                 );
 
                 let scan_result = (|| -> Result<Vec<DetectedItem>> {
-                    let outer_file = fs::File::open(parent_path)?;
+                    let outer_file = fs::File::open(read_path)?;
                     let bounded = BoundedReader::new(outer_file, data_start, compressed_size)?;
                     let buffered = std::io::BufReader::with_capacity(1024 * 1024, bounded);
                     let password = match nested_info.password.as_deref() {
