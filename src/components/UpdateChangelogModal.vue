@@ -41,6 +41,7 @@
 
           <div
             class="px-5 py-4 max-h-[55vh] overflow-y-auto text-sm leading-relaxed text-gray-700 dark:text-gray-200 markdown-content will-change-transform"
+            @click="onMarkdownClick"
             v-html="renderedMarkdown"
           ></div>
 
@@ -64,11 +65,28 @@
         </div>
       </div>
     </Transition>
+
+    <!-- Image zoom overlay: click a changelog image to enlarge it. The image
+         grows from its original (thumbnail) position and shrinks back on close. -->
+    <div
+      v-if="zoomOpen"
+      class="fixed inset-0 z-[1200] flex items-center justify-center"
+      @click="closeZoom"
+    >
+      <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" :style="zoomBackdropStyle"></div>
+      <img
+        :src="zoomSrc"
+        :alt="zoomAlt"
+        class="absolute select-none"
+        :style="zoomImgStyle"
+        @click.stop="closeZoom"
+      />
+    </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { marked } from 'marked'
 import AnimatedText from './AnimatedText.vue'
@@ -85,6 +103,127 @@ const renderedMarkdown = computed(() => {
 function close() {
   updateStore.dismissPostUpdateChangelog()
 }
+
+/* ------------------------------------------------------------------ *
+ * Image zoom: click a changelog image to enlarge it. The enlarged    *
+ * image is positioned at its final centered size, then a transform    *
+ * maps it back onto the thumbnail's rectangle (FLIP). Toggling the     *
+ * transform on/off with a CSS transition produces the grow-from /      *
+ * shrink-back animation.                                              *
+ * ------------------------------------------------------------------ */
+const zoomOpen = ref(false)
+const zoomShown = ref(false)
+const zoomTransition = ref(false)
+const zoomSrc = ref('')
+const zoomAlt = ref('')
+const zoomThumbRect = ref<DOMRect | null>(null)
+const zoomTargetRect = ref<{ top: number; left: number; width: number; height: number } | null>(null)
+let closeTimer: ReturnType<typeof setTimeout> | null = null
+
+function onMarkdownClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null
+  if (target && target.tagName === 'IMG') {
+    openZoom(target as HTMLImageElement)
+  }
+}
+
+function computeTarget(thumb: DOMRect) {
+  const maxW = window.innerWidth * 0.9
+  const maxH = window.innerHeight * 0.9
+  const ratio = thumb.height > 0 ? thumb.width / thumb.height : 1
+  let width = Math.min(maxW, Math.max(thumb.width * 2.5, 640))
+  let height = width / ratio
+  if (height > maxH) {
+    height = maxH
+    width = height * ratio
+  }
+  const left = (window.innerWidth - width) / 2
+  const top = (window.innerHeight - height) / 2
+  return { top, left, width, height }
+}
+
+function openZoom(img: HTMLImageElement) {
+  if (zoomOpen.value) return
+  const rect = img.getBoundingClientRect()
+  if (rect.width === 0 || rect.height === 0) return
+  if (closeTimer) {
+    clearTimeout(closeTimer)
+    closeTimer = null
+  }
+  zoomThumbRect.value = rect
+  zoomSrc.value = img.src
+  zoomAlt.value = img.alt
+  zoomTargetRect.value = computeTarget(rect)
+  // Start with no transition, sitting on the thumbnail rectangle.
+  zoomTransition.value = false
+  zoomShown.value = false
+  zoomOpen.value = true
+  document.addEventListener('keydown', onKeydown)
+  // Next frame: enable the transition and slide to the centered position.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      zoomTransition.value = true
+      zoomShown.value = true
+    })
+  })
+}
+
+function closeZoom() {
+  if (!zoomOpen.value) return
+  // Animate back onto the thumbnail rectangle, then unmount.
+  zoomTransition.value = true
+  zoomShown.value = false
+  document.removeEventListener('keydown', onKeydown)
+  if (closeTimer) clearTimeout(closeTimer)
+  closeTimer = setTimeout(() => {
+    zoomOpen.value = false
+    zoomThumbRect.value = null
+    zoomTargetRect.value = null
+  }, 320)
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeZoom()
+}
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeydown)
+  if (closeTimer) clearTimeout(closeTimer)
+})
+
+const zoomImgStyle = computed<Record<string, string>>(() => {
+  const t = zoomTargetRect.value
+  if (!t) return {}
+  const base: Record<string, string> = {
+    position: 'fixed',
+    top: `${t.top}px`,
+    left: `${t.left}px`,
+    width: `${t.width}px`,
+    height: `${t.height}px`,
+    margin: '0',
+    'object-fit': 'contain',
+    'border-radius': '0.5rem',
+    'box-shadow': '0 25px 50px -12px rgba(0, 0, 0, 0.6)',
+    transition: zoomTransition.value
+      ? 'transform 0.3s cubic-bezier(0.22, 1, 0.36, 1)'
+      : 'none',
+  }
+  if (!zoomShown.value && zoomThumbRect.value) {
+    const thumb = zoomThumbRect.value
+    const scale = thumb.width / t.width
+    const dx = thumb.left + thumb.width / 2 - (t.left + t.width / 2)
+    const dy = thumb.top + thumb.height / 2 - (t.top + t.height / 2)
+    base.transform = `translate(${dx}px, ${dy}px) scale(${scale})`
+    base.transformOrigin = 'center center'
+  }
+  return base
+})
+
+const zoomBackdropStyle = computed<Record<string, string>>(() => ({
+  opacity: zoomShown.value ? '1' : '0',
+  transition: zoomTransition.value ? 'opacity 0.3s ease' : 'none',
+}))
+
 
 async function openRelease() {
   const url = updateStore.postUpdateReleaseUrl
@@ -347,6 +486,7 @@ async function openRelease() {
   border-radius: 0.5rem;
   border: 1px solid rgb(229 231 235);
   background-color: rgb(243 244 246);
+  cursor: zoom-in;
 }
 
 :root.dark .markdown-content :deep(img) {
