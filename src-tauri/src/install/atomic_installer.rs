@@ -14,7 +14,6 @@ use crate::models::{
 };
 
 /// Minimum required free space (1 GB) as a safety buffer
-const MIN_FREE_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// Maximum symlink resolution depth to prevent infinite loops
 const MAX_SYMLINK_DEPTH: usize = 40;
@@ -33,6 +32,7 @@ fn atomic_staging_base_candidates(target_dir: &Path, xplane_root: &Path) -> Vec<
         push_unique_path(&mut candidates, parent.to_path_buf());
     }
 
+    push_unique_path(&mut candidates, xplane_root.to_path_buf());
     push_unique_path(
         &mut candidates,
         std::env::temp_dir().join("xfastmanager_atomic_stage"),
@@ -95,14 +95,21 @@ impl AtomicInstaller {
         total_tasks: usize,
         current_task: usize,
         task_percentage: f64,
+        required_bytes: u64,
     ) -> Result<Self> {
-        // Check available disk space
-        check_disk_space(xplane_root)?;
-
         let mut temp_dir = None;
         let mut failures = Vec::new();
         for candidate in atomic_staging_base_candidates(target_dir, xplane_root) {
-            match create_atomic_temp_dir(&candidate) {
+            let staging = create_atomic_temp_dir(&candidate).and_then(|staging| {
+                if let Err(error) =
+                    crate::archive_input::archive_workspace_space(&staging, required_bytes)
+                {
+                    let _ = fs::remove_dir(&staging);
+                    return Err(error);
+                }
+                Ok(staging)
+            });
+            match staging {
                 Ok(created) => {
                     if candidate != xplane_root {
                         logger::log_info(
@@ -1024,7 +1031,25 @@ fn atomic_move(src: &Path, dst: &Path) -> Result<()> {
             );
 
             // Fallback: copy then delete
-            copy_directory_recursive(src, dst)?;
+            if e.kind() != std::io::ErrorKind::CrossesDevices {
+                return Err(e.into());
+            }
+            let parent = dst.parent().context("Missing atomic destination parent")?;
+            let bytes = walkdir::WalkDir::new(src).into_iter().try_fold(
+                0u64,
+                |total, entry| -> Result<u64> {
+                    let entry = entry?;
+                    if entry.file_type().is_file() {
+                        return Ok(total.saturating_add(entry.metadata()?.len()));
+                    }
+                    Ok(total)
+                },
+            )?;
+            crate::archive_input::archive_workspace_space(parent, bytes)?;
+            let stage = tempfile::tempdir_in(parent)?;
+            let ready = stage.path().join("ready");
+            copy_directory_recursive(src, &ready)?;
+            rename_with_retry(&ready, dst)?;
 
             // Attempt to remove source, but don't fail if it doesn't work
             // (prevents orphan source files from blocking installation)
@@ -1487,97 +1512,6 @@ fn verify_backup_fast(backup_dir: &Path, entries: &[BackupFileEntry]) -> Result<
             }
         }
     }
-    Ok(())
-}
-
-/// Check disk space (Unix/Linux/macOS - using statvfs)
-#[cfg(not(target_os = "windows"))]
-fn check_disk_space(path: &Path) -> Result<()> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    // Convert path to C string
-    let path_bytes = path.as_os_str().as_bytes();
-    let c_path = CString::new(path_bytes).context("Failed to convert path to C string")?;
-
-    // Call statvfs
-    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-    let result = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
-
-    if result != 0 {
-        return Err(anyhow::anyhow!("Failed to get filesystem statistics"));
-    }
-
-    // Calculate available space: f_bavail * f_frsize
-    // f_bavail is the number of free blocks available to non-privileged process
-    // f_frsize is the fragment size (preferred block size)
-    // Cast needed for macOS where f_bavail is u32, but on Linux it's already u64
-    #[allow(clippy::unnecessary_cast)]
-    let available_bytes = (stat.f_bavail as u64) * (stat.f_frsize as u64);
-    let available_gb = available_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-
-    logger::log_info(
-        &format!("Available disk space: {:.2} GB", available_gb),
-        Some("atomic_installer"),
-    );
-
-    if available_bytes < MIN_FREE_SPACE_BYTES {
-        return Err(anyhow::anyhow!(
-            "Insufficient disk space: {:.2} GB available, at least 1 GB required",
-            available_gb
-        ));
-    }
-
-    Ok(())
-}
-
-/// Check if there's sufficient disk space for atomic installation
-/// Requires at least MIN_FREE_SPACE_BYTES (1 GB) of free space
-#[cfg(target_os = "windows")]
-fn check_disk_space(path: &Path) -> Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use winapi::um::fileapi::GetDiskFreeSpaceExW;
-
-    // Get the root path (drive letter)
-    let root_path = path.ancestors().last().unwrap_or(path);
-
-    // Convert to wide string for Windows API
-    let wide_path: Vec<u16> = root_path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    let mut free_bytes: u64 = 0;
-    let mut total_bytes: u64 = 0;
-    let mut total_free_bytes: u64 = 0;
-
-    unsafe {
-        let result = GetDiskFreeSpaceExW(
-            wide_path.as_ptr(),
-            &mut free_bytes as *mut u64 as *mut _,
-            &mut total_bytes as *mut u64 as *mut _,
-            &mut total_free_bytes as *mut u64 as *mut _,
-        );
-
-        if result == 0 {
-            return Err(anyhow::anyhow!("Failed to check disk space"));
-        }
-    }
-
-    let free_gb = free_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-    logger::log_info(
-        &format!("Available disk space: {:.2} GB", free_gb),
-        Some("atomic_installer"),
-    );
-
-    if free_bytes < MIN_FREE_SPACE_BYTES {
-        return Err(anyhow::anyhow!(
-            "Insufficient disk space: {:.2} GB available, at least 1 GB required",
-            free_gb
-        ));
-    }
-
     Ok(())
 }
 

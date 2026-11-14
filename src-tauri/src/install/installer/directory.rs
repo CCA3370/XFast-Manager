@@ -90,20 +90,28 @@ impl DirectoryPlan {
             check_copy_cancelled(control)?;
             fs::create_dir_all(target.join(directory))?;
         }
-        let hashes: Vec<Option<FileHash>> = self
-            .files
-            .par_iter()
-            .map_init(
-                || vec![0; STREAM_BUFFER_SIZE],
-                |buffer, entry| {
-                    let input = self.source.join(&entry.path);
-                    let output = target.join(&entry.path);
-                    let hash = entry.copy(&input, &output, buffer, control, verify)?;
-                    progress(&entry.path, entry.snapshot.size);
-                    Ok(hash)
-                },
-            )
-            .collect::<Result<_>>()?;
+        let copy = |buffer: &mut Vec<u8>, entry: &DirectoryFile| {
+            let input = self.source.join(&entry.path);
+            let output = target.join(&entry.path);
+            entry.copy(&input, &output, buffer, control, verify, |size| {
+                progress(&entry.path, size)
+            })
+        };
+        let hashes: Vec<Option<FileHash>> =
+            if let Some(pool) = super::archive_worker_pool(&self.source, target) {
+                pool.install(|| {
+                    self.files
+                        .par_iter()
+                        .map_init(|| vec![0; STREAM_BUFFER_SIZE], copy)
+                        .collect::<Result<_>>()
+                })?
+            } else {
+                let mut buffer = vec![0; STREAM_BUFFER_SIZE];
+                self.files
+                    .iter()
+                    .map(|entry| copy(&mut buffer, entry))
+                    .collect::<Result<_>>()?
+            };
         Ok(hashes
             .into_iter()
             .flatten()
@@ -120,6 +128,7 @@ impl DirectoryFile {
         buffer: &mut [u8],
         control: &TaskControl,
         verify: bool,
+        progress: impl Fn(u64),
     ) -> Result<Option<FileHash>> {
         let check_source = || -> Result<()> {
             let meta = fs::symlink_metadata(source).with_context(|| {
@@ -144,14 +153,18 @@ impl DirectoryFile {
             "Source file changed during installation: {}",
             source.display()
         );
-        let mut output = fs::File::create(target)
-            .with_context(|| format!("Failed to create target file: {}", target.display()))?;
+        let mut output = tempfile::NamedTempFile::new_in(
+            target
+                .parent()
+                .context("Missing directory copy target parent")?,
+        )?;
         let mut hasher = verify.then(Sha256::new);
         let copied = copy_with_buffer(&mut input, &mut output, buffer, |bytes| {
             check_copy_cancelled(control)?;
             if let Some(hasher) = &mut hasher {
                 hasher.update(bytes);
             }
+            progress(bytes.len() as u64);
             Ok(())
         })?;
         ensure!(
@@ -161,6 +174,14 @@ impl DirectoryFile {
             source.display()
         );
         check_source()?;
+        check_copy_cancelled(control)?;
+        output
+            .as_file()
+            .set_permissions(input.metadata()?.permissions())?;
+        if target.is_file() {
+            let _ = remove_readonly_attribute(target);
+        }
+        output.persist(target)?;
         let _ = remove_readonly_attribute(target);
         Ok(hasher.map(|hasher| FileHash {
             path: self.path.to_string_lossy().replace('\\', "/"),
@@ -173,6 +194,9 @@ impl DirectoryFile {
 pub(super) fn check_copy_cancelled(control: &TaskControl) -> std::io::Result<()> {
     if control.is_cancelled() {
         return Err(std::io::Error::other("Cancelled by user"));
+    }
+    if control.is_skip_requested() {
+        return Err(std::io::Error::other("Skipped by user"));
     }
     Ok(())
 }

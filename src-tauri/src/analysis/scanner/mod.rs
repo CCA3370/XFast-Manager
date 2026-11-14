@@ -65,6 +65,7 @@ pub(super) struct ScanContext {
     /// Password map for archives (key: archive path, value: password)
     passwords: HashMap<String, String>,
     zip_summary: Option<ZipSummary>,
+    sevenz_summary: Option<ZipSummary>,
 }
 
 impl ScanContext {
@@ -75,6 +76,7 @@ impl ScanContext {
             parent_chain: Vec::new(),
             passwords: HashMap::new(),
             zip_summary: None,
+            sevenz_summary: None,
         }
     }
 
@@ -347,16 +349,45 @@ struct VersionFileReadPlan {
     version_file_paths: Vec<String>,
 }
 
-#[derive(Debug, Default)]
-struct VersionFilesReadOutcome {
-    files_content: Option<(Option<String>, Vec<String>)>,
-    timed_out: bool,
+fn attach_nested_chain(item: &mut DetectedItem, parent: &Path, member: &NestedArchiveInfo) {
+    let chain = item
+        .extraction_chain
+        .get_or_insert_with(|| ExtractionChain {
+            archives: Vec::new(),
+            final_internal_root: item.archive_internal_root.take(),
+        });
+    chain.archives.insert(0, member.clone());
+    item.path = parent.to_string_lossy().into_owned();
 }
 
-#[derive(Debug, Default)]
-struct VersionReadOutcome {
-    version_info: Option<crate::models::VersionInfo>,
-    timed_out: bool,
+fn sevenz_version_plan(
+    package: &crate::sevenz_package::SevenzPackage,
+    internal_root: Option<&str>,
+) -> VersionFileReadPlan {
+    plan_version_file_reads(
+        package
+            .archive
+            .files
+            .iter()
+            .filter(|entry| !entry.is_directory() && entry.has_stream())
+            .map(|entry| (entry.name(), entry.size())),
+        internal_root,
+    )
+}
+
+fn sevenz_version_contents(
+    plan: VersionFileReadPlan,
+    texts: &HashMap<String, String>,
+) -> (Option<String>, Vec<String>) {
+    let updater = plan
+        .updater_cfg_path
+        .and_then(|path| texts.get(&path.replace('\\', "/")).cloned());
+    let versions = plan
+        .version_file_paths
+        .iter()
+        .filter_map(|path| texts.get(&path.replace('\\', "/")).cloned())
+        .collect();
+    (updater, versions)
 }
 
 fn classify_version_file_candidate(file_name: &str) -> Option<VersionFileCandidateKind> {
@@ -472,6 +503,7 @@ pub struct Scanner;
 pub(crate) struct ScannedInput {
     pub items: Vec<DetectedItem>,
     pub zip_summary: Option<ZipSummary>,
+    pub sevenz_summary: Option<ZipSummary>,
 }
 
 impl Scanner {
@@ -652,6 +684,7 @@ impl Scanner {
         Ok(ScannedInput {
             items,
             zip_summary: ctx.zip_summary,
+            sevenz_summary: ctx.sevenz_summary,
         })
     }
 
@@ -2111,178 +2144,6 @@ impl Scanner {
         None
     }
 
-    fn read_version_files_from_7z_reader<R: std::io::Read + std::io::Seek>(
-        &self,
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
-        internal_root: Option<&str>,
-    ) -> Option<(Option<String>, Vec<String>)> {
-        self.read_version_files_from_7z_reader_with_budget(archive, reader, internal_root, None)
-            .files_content
-    }
-
-    fn read_version_files_from_7z_reader_with_budget<R: std::io::Read + std::io::Seek>(
-        &self,
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
-        internal_root: Option<&str>,
-        solid_scan_budget: Option<std::time::Duration>,
-    ) -> VersionFilesReadOutcome {
-        let plan = plan_version_file_reads(
-            archive.files.iter().filter_map(|entry| {
-                if entry.is_directory() || !entry.has_stream() {
-                    None
-                } else {
-                    Some((entry.name(), entry.size()))
-                }
-            }),
-            internal_root,
-        );
-
-        if plan.updater_cfg_path.is_none() && plan.version_file_paths.is_empty() {
-            return VersionFilesReadOutcome::default();
-        }
-
-        if archive.is_solid {
-            let budget_start = std::time::Instant::now();
-            let updater_cfg_target = plan.updater_cfg_path.clone();
-            let mut updater_cfg_processed = updater_cfg_target.is_none();
-            let mut updater_cfg_content: Option<String> = None;
-            let mut remaining_version_targets: HashSet<String> =
-                plan.version_file_paths.iter().cloned().collect();
-            let mut version_file_contents = Vec::new();
-            let mut timed_out = false;
-
-            let read_result = reader
-                .for_each_entries(|entry, entry_reader| {
-                    if solid_scan_budget
-                        .map(|budget| budget_start.elapsed() >= budget)
-                        .unwrap_or(false)
-                    {
-                        timed_out = true;
-                        return Ok(false);
-                    }
-
-                    let entry_name = entry.name();
-                    let is_updater_cfg = updater_cfg_target.as_deref() == Some(entry_name);
-                    let is_version_file = remaining_version_targets.contains(entry_name);
-
-                    if !is_updater_cfg && !is_version_file {
-                        return Ok(true);
-                    }
-
-                    let mut data = Vec::with_capacity(entry.size.min(10240) as usize);
-                    let content = if entry_reader.read_to_end(&mut data).is_ok() {
-                        String::from_utf8(data).ok()
-                    } else {
-                        None
-                    };
-
-                    if is_updater_cfg {
-                        updater_cfg_processed = true;
-                        updater_cfg_content = content;
-                    } else {
-                        remaining_version_targets.remove(entry_name);
-                        if let Some(content) = content {
-                            version_file_contents.push(content);
-                        }
-                    }
-
-                    let should_continue = updater_cfg_content.is_none()
-                        && !(updater_cfg_processed && remaining_version_targets.is_empty());
-                    Ok(should_continue)
-                })
-                .ok();
-
-            if read_result.is_none() {
-                return VersionFilesReadOutcome {
-                    files_content: None,
-                    timed_out,
-                };
-            }
-
-            if timed_out && updater_cfg_content.is_none() && version_file_contents.is_empty() {
-                return VersionFilesReadOutcome {
-                    files_content: None,
-                    timed_out: true,
-                };
-            }
-
-            if updater_cfg_content.is_some() || !version_file_contents.is_empty() {
-                return VersionFilesReadOutcome {
-                    files_content: Some((updater_cfg_content, version_file_contents)),
-                    timed_out,
-                };
-            }
-
-            return VersionFilesReadOutcome {
-                files_content: None,
-                timed_out,
-            };
-        }
-
-        let updater_cfg_content = plan.updater_cfg_path.as_deref().and_then(|path| {
-            reader
-                .read_file(path)
-                .ok()
-                .and_then(|bytes| String::from_utf8(bytes).ok())
-        });
-
-        if updater_cfg_content.is_some() {
-            return VersionFilesReadOutcome {
-                files_content: Some((updater_cfg_content, Vec::new())),
-                timed_out: false,
-            };
-        }
-
-        let version_file_contents: Vec<String> = plan
-            .version_file_paths
-            .into_iter()
-            .filter_map(|path| {
-                reader
-                    .read_file(&path)
-                    .ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
-            })
-            .collect();
-
-        if !version_file_contents.is_empty() {
-            VersionFilesReadOutcome {
-                files_content: Some((None, version_file_contents)),
-                timed_out: false,
-            }
-        } else {
-            VersionFilesReadOutcome::default()
-        }
-    }
-
-    fn read_version_from_7z_reader_with_budget<R: std::io::Read + std::io::Seek>(
-        &self,
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
-        internal_root: Option<&str>,
-        solid_scan_budget: Option<std::time::Duration>,
-    ) -> VersionReadOutcome {
-        let outcome = self.read_version_files_from_7z_reader_with_budget(
-            archive,
-            reader,
-            internal_root,
-            solid_scan_budget,
-        );
-        let version_info = outcome.files_content.and_then(|version_files_content| {
-            let version =
-                self.parse_version_from_contents(version_files_content.0, version_files_content.1)?;
-            Some(crate::models::VersionInfo {
-                version: Some(version),
-            })
-        });
-
-        VersionReadOutcome {
-            version_info,
-            timed_out: outcome.timed_out,
-        }
-    }
-
     fn infer_version_info_from_archive_context(
         &self,
         item: &DetectedItem,
@@ -2312,55 +2173,106 @@ impl Scanner {
         None
     }
 
-    fn populate_version_info_from_7z_reader<R: std::io::Read + std::io::Seek>(
+    fn populate_version_info_from_7z_package(
         &self,
         detected: &mut [DetectedItem],
-        archive: &sevenz_rust2::Archive,
-        reader: &mut sevenz_rust2::ArchiveReader<R>,
+        package: &crate::sevenz_package::SevenzPackage,
         archive_path: &Path,
         archive_name_hint: Option<&str>,
     ) {
-        const SOLID_7Z_VERSION_READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
-
-        for item in detected.iter_mut() {
-            if !matches!(item.addon_type, AddonType::Aircraft | AddonType::Plugin) {
-                continue;
-            }
-
-            let version_outcome = self.read_version_from_7z_reader_with_budget(
-                archive,
-                reader,
-                item.archive_internal_root.as_deref(),
-                archive.is_solid.then_some(SOLID_7Z_VERSION_READ_BUDGET),
-            );
-
-            item.version_info = version_outcome.version_info.or_else(|| {
-                if version_outcome.timed_out {
-                    let inferred = self.infer_version_info_from_archive_context(
+        let plans: Vec<_> = detected
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item.addon_type, AddonType::Aircraft | AddonType::Plugin))
+            .map(|(index, item)| {
+                (
+                    index,
+                    sevenz_version_plan(package, item.archive_internal_root.as_deref()),
+                )
+            })
+            .collect();
+        let deadline = package
+            .archive
+            .is_solid
+            .then(|| std::time::Instant::now() + std::time::Duration::from_secs(5));
+        let texts = package.read_texts(
+            plans.iter().flat_map(|(_, plan)| {
+                plan.updater_cfg_path
+                    .iter()
+                    .chain(&plan.version_file_paths)
+                    .cloned()
+            }),
+            deadline,
+        );
+        for (index, plan) in plans {
+            let (updater, versions) = sevenz_version_contents(plan, &texts);
+            let item = &mut detected[index];
+            item.version_info = self
+                .parse_version_from_contents(updater, versions)
+                .map(|version| crate::models::VersionInfo {
+                    version: Some(version),
+                })
+                .or_else(|| {
+                    self.infer_version_info_from_archive_context(
                         item,
                         archive_path,
                         archive_name_hint,
-                    );
-
-                    if inferred.is_some() {
-                        crate::log_debug!(
-                            &format!(
-                                "[TIMING] 7z version read timed out, inferred from filename/context: {}",
-                                item.display_name
-                            ),
-                            "scanner_timing"
-                        );
-                    }
-
-                    inferred
-                } else {
-                    None
-                }
-            });
+                    )
+                });
         }
     }
 
-    /// Read a file from a ZIP archive
+    fn scan_nested_file(
+        &self,
+        path: &Path,
+        logical_parent: &Path,
+        ctx: &mut ScanContext,
+        member: &NestedArchiveInfo,
+    ) -> Result<Vec<DetectedItem>> {
+        match member.format.as_str() {
+            "zip" | "7z" => self.scan_nested_reader(
+                crate::archive_reader::ArchiveReader::open(path)?,
+                logical_parent,
+                ctx,
+                member,
+            ),
+            "rar" => self.scan_rar_with_context(path, ctx, member.password.as_deref()),
+            _ => anyhow::bail!("Unsupported nested archive: {}", member.format),
+        }
+    }
+
+    fn scan_nested_reader(
+        &self,
+        input: crate::archive_reader::ArchiveReader,
+        logical_parent: &Path,
+        ctx: &mut ScanContext,
+        member: &NestedArchiveInfo,
+    ) -> Result<Vec<DetectedItem>> {
+        match member.format.as_str() {
+            "zip" => {
+                let package = crate::zip_package::ZipPackage::from_reader(logical_parent, input)?;
+                self.scan_zip_package(&package, logical_parent, ctx, member.password.as_deref())
+            }
+            "7z" => {
+                let package = crate::sevenz_package::SevenzPackage::from_reader(
+                    input,
+                    member.password.as_deref(),
+                )
+                .map_err(|error| {
+                    sevenz::classify_7z_password(error, logical_parent, member.password.as_deref())
+                })?;
+                self.scan_7z_package(
+                    logical_parent,
+                    &package,
+                    ctx,
+                    member.password.as_deref(),
+                    std::time::Instant::now(),
+                )
+            }
+            _ => anyhow::bail!("Unsupported nested stream: {}", member.format),
+        }
+    }
+
     fn read_file_from_zip(&self, archive_path: &Path, file_path: &str) -> Result<String> {
         use std::io::Read;
 
@@ -2551,12 +2463,17 @@ impl Scanner {
         archive_path: &Path,
         internal_root: Option<&str>,
     ) -> Option<(Option<String>, Vec<String>)> {
-        use sevenz_rust2::Password;
-
-        let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ).ok()?;
-        let mut reader = prepared.sevenz_reader(Password::empty()).ok()?;
-        let archive = reader.archive().clone();
-        self.read_version_files_from_7z_reader(&archive, &mut reader, internal_root)
+        let package = crate::sevenz_package::SevenzPackage::open(archive_path, None).ok()?;
+        let plan = sevenz_version_plan(&package, internal_root);
+        let texts = package.read_texts(
+            plan.updater_cfg_path
+                .iter()
+                .chain(&plan.version_file_paths)
+                .cloned(),
+            None,
+        );
+        let (updater, versions) = sevenz_version_contents(plan, &texts);
+        (updater.is_some() || !versions.is_empty()).then_some((updater, versions))
     }
 
     /// Read version files from a RAR archive
@@ -3101,6 +3018,53 @@ mod tests {
         assert_eq!(items[0].addon_type, AddonType::Scenery);
         assert_eq!(items[0].display_name, "NTTH_Scenery_Pack");
         assert_eq!(items[0].path, scenery_root.to_string_lossy());
+    }
+
+    #[test]
+    fn mixed_archive_scan_keeps_both_layers_and_the_final_install_root() -> anyhow::Result<()> {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
+        use zip::write::SimpleFileOptions;
+
+        let temp = tempdir()?;
+        let inner = temp.path().join("content.zip");
+        crate::zip_package::write_zip(
+            &inner,
+            &[("Example/Earth nav data/apt.dat", APT_DAT_FIXTURE)],
+        );
+        let middle = temp.path().join("bundle.7z");
+        let mut sevenz = ArchiveWriter::create(&middle)?;
+        sevenz.push_archive_entry(
+            ArchiveEntry::new_file("files/content.zip"),
+            Some(fs::File::open(&inner)?),
+        )?;
+        sevenz.finish()?;
+        let outer = temp.path().join("bundle.zip");
+        let mut zip = ::zip::ZipWriter::new(fs::File::create(&outer)?);
+        zip.start_file(
+            "bundle.7z",
+            SimpleFileOptions::default()
+                .compression_method(::zip::CompressionMethod::Stored)
+                .large_file(true),
+        )?;
+        std::io::copy(&mut fs::File::open(middle)?, &mut zip)?;
+        zip.finish()?;
+        let items = Scanner::new().scan_path(&outer, None)?;
+        let scenery = items
+            .iter()
+            .find(|item| item.addon_type == AddonType::Scenery)
+            .unwrap();
+        let chain = scenery.extraction_chain.as_ref().unwrap();
+        assert_eq!(
+            chain
+                .archives
+                .iter()
+                .map(|layer| layer.internal_path.as_str())
+                .collect::<Vec<_>>(),
+            ["bundle.7z", "files/content.zip"]
+        );
+        assert_eq!(chain.final_internal_root.as_deref(), Some("Example"));
+        assert_eq!(scenery.path, outer.to_string_lossy());
+        Ok(())
     }
 
     #[test]

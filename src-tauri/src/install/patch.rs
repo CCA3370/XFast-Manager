@@ -673,6 +673,7 @@ pub fn build_install_tasks(
         password,
         estimated_size: None,
         zip_source: None,
+        sevenz_source: None,
         size_warning: None,
         size_confirmed: true,
         existing_navdata_info: None,

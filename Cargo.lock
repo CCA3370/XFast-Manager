@@ -8804,6 +8804,7 @@ dependencies = [
  "tokio",
  "trash",
  "unrar",
+ "unrar_sys",
  "uuid",
  "walkdir",
  "winapi",

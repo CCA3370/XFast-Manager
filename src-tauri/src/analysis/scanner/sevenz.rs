@@ -1,4 +1,5 @@
 use super::*;
+use crate::sevenz_package::SevenzPackage;
 
 impl Scanner {
     /// Fast metadata-only check for encrypted 7z content.
@@ -11,15 +12,15 @@ impl Scanner {
         })
     }
 
-    pub(super) fn scan_7z_archive_with_reader<R: std::io::Read + std::io::Seek>(
+    pub(super) fn scan_7z_package(
         &self,
         archive_path: &Path,
-        archive: sevenz_rust2::Archive,
-        mut text_reader: sevenz_rust2::ArchiveReader<R>,
+        package: &SevenzPackage,
         ctx: &mut ScanContext,
         password: Option<&str>,
         scan_start: std::time::Instant,
     ) -> Result<Vec<DetectedItem>> {
+        let archive = &package.archive;
         // Check for empty archive
         if archive.files.is_empty() {
             logger::log_info(
@@ -30,7 +31,7 @@ impl Scanner {
         }
 
         // Fast path: encryption detection from metadata only.
-        if password.is_none() && Self::archive_has_encrypted_blocks(&archive) {
+        if password.is_none() && Self::archive_has_encrypted_blocks(archive) {
             return Err(anyhow::anyhow!(PasswordRequiredError {
                 archive_path: archive_path.to_string_lossy().to_string(),
             }));
@@ -136,7 +137,13 @@ impl Scanner {
 
         let mut detected = Vec::new();
         let mut skip_prefixes: Vec<String> = Vec::new();
-        let mut marker_text_cache: HashMap<String, String> = HashMap::new();
+        let marker_text_cache = package.read_texts(
+            marker_files
+                .iter()
+                .filter(|(_, kind)| *kind == "navdata" || (*kind == "lua" && !archive.is_solid))
+                .map(|(path, _)| path.clone()),
+            None,
+        );
 
         let process_start = std::time::Instant::now();
         crate::log_debug!(
@@ -188,21 +195,8 @@ impl Scanner {
                 "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, archive_path)?,
                 "xpl" => self.detect_plugin_in_archive_without_version(&file_path, archive_path)?,
                 "navdata" => {
-                    let content = if let Some(cached) = marker_text_cache.get(&file_path) {
-                        Some(cached.clone())
-                    } else {
-                        let final_content = text_reader
-                            .read_file(&file_path)
-                            .ok()
-                            .and_then(|bytes| String::from_utf8(bytes).ok());
-                        if let Some(ref content) = final_content {
-                            marker_text_cache.insert(file_path.clone(), content.clone());
-                        }
-                        final_content
-                    };
-
-                    if let Some(content) = content {
-                        self.detect_navdata_in_archive(&file_path, &content, archive_path)?
+                    if let Some(content) = marker_text_cache.get(&file_path) {
+                        self.detect_navdata_in_archive(&file_path, content, archive_path)?
                     } else {
                         None
                     }
@@ -210,24 +204,15 @@ impl Scanner {
                 "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
                 "lua" => {
                     let lua_content = if archive.is_solid {
-                        Some(String::new())
-                    } else if let Some(cached) = marker_text_cache.get(&file_path) {
-                        Some(cached.clone())
+                        Some("")
                     } else {
-                        let final_content = text_reader
-                            .read_file(&file_path)
-                            .ok()
-                            .and_then(|bytes| String::from_utf8(bytes).ok());
-                        if let Some(ref content) = final_content {
-                            marker_text_cache.insert(file_path.clone(), content.clone());
-                        }
-                        final_content
+                        marker_text_cache.get(&file_path).map(String::as_str)
                     };
 
                     self.detect_lua_script_in_archive_with_data(
                         &file_path,
                         archive_path,
-                        lua_content.as_deref(),
+                        lua_content,
                         Some(&archive_entries),
                     )?
                 }
@@ -296,10 +281,9 @@ impl Scanner {
                 "scanner_timing"
             );
         } else {
-            self.populate_version_info_from_7z_reader(
+            self.populate_version_info_from_7z_package(
                 &mut detected,
-                &archive,
-                &mut text_reader,
+                package,
                 archive_path,
                 archive_name_hint,
             );
@@ -354,7 +338,13 @@ impl Scanner {
                     continue;
                 }
 
-                match self.scan_nested_archive_in_7z(archive_path, &nested_path, ctx, password) {
+                match self.scan_nested_archive_in_7z(
+                    package,
+                    archive_path,
+                    &nested_path,
+                    ctx,
+                    password,
+                ) {
                     Ok(nested_items) => {
                         detected.extend(nested_items);
                     }
@@ -408,147 +398,44 @@ impl Scanner {
             "scanner_timing"
         );
 
-        let prepared_archive = crate::archive_input::prepare_archive_for_read(
-            archive_path,
-            crate::archive_input::ArchiveFormat::SevenZ,
-        )?;
-
-        let open_start = std::time::Instant::now();
-        let pwd = match password {
-            Some(pwd) => sevenz_rust2::Password::from(pwd),
-            None => sevenz_rust2::Password::empty(),
-        };
-        let reader = match prepared_archive.sevenz_reader(pwd) {
-            Ok(reader) => reader,
-            Err(e) => {
-                let err_str = format!("{:?}", e);
-                if password.is_none()
-                    && (err_str.contains("password")
-                        || err_str.contains("Password")
-                        || err_str.contains("encrypted")
-                        || err_str.contains("WrongPassword"))
-                {
-                    return Err(anyhow::anyhow!(PasswordRequiredError {
-                        archive_path: archive_path.to_string_lossy().to_string(),
-                    }));
-                }
-                return Err(anyhow::anyhow!("Failed to open 7z archive: {}", e));
-            }
-        };
-        let archive = reader.archive().clone();
-        crate::log_debug!(
-            &format!(
-                "[TIMING] 7z open completed in {:.2}ms: {}",
-                open_start.elapsed().as_secs_f64() * 1000.0,
-                archive_path.display()
-            ),
-            "scanner_timing"
-        );
-
-        self.scan_7z_archive_with_reader(archive_path, archive, reader, ctx, password, scan_start)
+        let package = SevenzPackage::open(archive_path, password)
+            .map_err(|error| classify_7z_password(error, archive_path, password))?;
+        let detected = self.scan_7z_package(archive_path, &package, ctx, password, scan_start)?;
+        if !ctx.is_nested_archive_scan() {
+            ctx.sevenz_summary = Some(ZipSummary {
+                source: Some(package.revision()),
+                compressed_size: package.compressed_size(),
+                uncompressed_size: package
+                    .archive
+                    .files
+                    .iter()
+                    .fold(0u64, |size, entry| size.saturating_add(entry.size)),
+            });
+        }
+        package.check_source()?;
+        Ok(detected)
     }
 
     /// Scan a nested archive within a 7z file (extract to temp)
     /// Optimized: If nested archive is ZIP, load into memory for faster scanning
-    pub(super) fn scan_nested_archive_in_7z(
+    fn scan_nested_archive_in_7z(
         &self,
+        package: &SevenzPackage,
         parent_path: &Path,
         nested_path: &str,
         ctx: &mut ScanContext,
         parent_password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        use tempfile::Builder;
-
-        // Create temp directory for extraction
-        let temp_dir = Builder::new()
-            .prefix("xfi_7z_nested_")
-            .tempdir()
-            .context("Failed to create temp directory")?;
-
-        // Extract only the nested archive entry (avoid full 7z extraction).
-        let safe_nested_path = crate::installer::sanitize_path(Path::new(nested_path))
-            .ok_or_else(|| anyhow::anyhow!("Unsafe nested archive path in 7z: {}", nested_path))?;
-        let normalized_target = safe_nested_path.to_string_lossy().replace('\\', "/");
-        let fallback_target = nested_path.replace('\\', "/");
-        let temp_archive_path = temp_dir.path().join(&safe_nested_path);
-
-        if let Some(parent) = temp_archive_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        let prepared_parent = crate::archive_input::prepare_archive_for_read(
-            parent_path,
-            crate::archive_input::ArchiveFormat::SevenZ,
-        )?;
-
-        let read_nested_entry = |entry_name: &str| -> Result<Vec<u8>> {
-            let pwd = match parent_password {
-                Some(pwd) => sevenz_rust2::Password::from(pwd),
-                None => sevenz_rust2::Password::empty(),
-            };
-
-            let mut reader = prepared_parent.sevenz_reader(pwd).map_err(|e| {
-                let err_str = format!("{:?}", e);
-                if err_str.contains("password")
-                    || err_str.contains("Password")
-                    || err_str.contains("encrypted")
-                    || err_str.contains("WrongPassword")
-                {
-                    if parent_password.is_some() {
-                        anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
-                    } else {
-                        anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: parent_path.to_string_lossy().to_string(),
-                        })
-                    }
-                } else {
-                    anyhow::anyhow!("Failed to open 7z archive: {}", e)
-                }
-            })?;
-
-            reader.read_file(entry_name).map_err(|e| {
-                let err_str = format!("{:?}", e);
-                if err_str.contains("password")
-                    || err_str.contains("Password")
-                    || err_str.contains("encrypted")
-                    || err_str.contains("WrongPassword")
-                {
-                    if parent_password.is_some() {
-                        anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
-                    } else {
-                        anyhow::anyhow!(PasswordRequiredError {
-                            archive_path: parent_path.to_string_lossy().to_string(),
-                        })
-                    }
-                } else {
-                    anyhow::anyhow!("Failed to read nested archive from 7z: {}", e)
-                }
-            })
-        };
-
-        let nested_bytes = match read_nested_entry(&normalized_target) {
-            Ok(data) => data,
-            Err(primary_err) if fallback_target != normalized_target => {
-                match read_nested_entry(&fallback_target) {
-                    Ok(data) => data,
-                    Err(_) => return Err(primary_err),
-                }
-            }
-            Err(e) => return Err(e),
-        };
-
-        fs::write(&temp_archive_path, nested_bytes).context(format!(
-            "Failed to write nested archive to temp file: {:?}",
-            temp_archive_path
-        ))?;
-
-        // Get archive format
-        let format = get_archive_format(nested_path)
-            .ok_or_else(|| anyhow::anyhow!("Unknown archive format: {}", nested_path))?;
-
+        crate::installer::sanitize_path(Path::new(nested_path)).context("Unsafe nested member")?;
+        let format = get_archive_format(nested_path).context("Unknown nested archive format")?;
+        let name = nested_path.replace('\\', "/");
+        let index = package
+            .index(&name)
+            .with_context(|| format!("7z member not found: {name}"))?;
         // Check if this nested archive has its own password
-        let nested_password =
-            ctx.get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path);
+        let nested_password = ctx
+            .get_nested_password(parent_path.to_string_lossy().as_ref(), nested_path)
+            .or_else(|| parent_password.map(str::to_owned));
 
         // Build nested archive info with password if available
         let nested_info = NestedArchiveInfo {
@@ -560,28 +447,23 @@ impl Scanner {
         // Push to context chain
         ctx.push_archive(nested_info.clone());
 
-        // OPTIMIZATION: If nested archive is ZIP, try to load into memory
-        let nested_result = if format == "zip" {
-            crate::logger::log_info(
-                "Optimizing: Loading nested ZIP from 7z into memory for scanning",
-                Some("scanner"),
-            );
-
-            match self.try_scan_zip_from_file_to_memory(&temp_archive_path, parent_path, ctx) {
-                Ok(items) => Ok(items),
-                Err(e) => {
-                    crate::logger::log_info(
-                        &format!("Memory optimization failed, using standard scan: {}", e),
-                        Some("scanner"),
-                    );
-                    // Fallback to standard scan
-                    self.scan_path_with_context(&temp_archive_path, ctx)
+        let nested_result = (|| {
+            if matches!(nested_info.format.as_str(), "zip" | "7z") {
+                if let Some(input) = package.stored_member(index)? {
+                    return self.scan_nested_reader(input, parent_path, ctx, &nested_info);
                 }
             }
-        } else {
-            // For non-ZIP, use standard scan
-            self.scan_path_with_context(&temp_archive_path, ctx)
-        };
+            let mut temp =
+                tempfile::NamedTempFile::with_suffix(&format!(".{}", nested_info.format))?;
+            crate::archive_input::archive_workspace_space(
+                temp.path(),
+                package.archive.files[index].size,
+            )?;
+            package
+                .copy_index(index, &mut temp, || Ok(()))
+                .map_err(|error| classify_7z_password(error, parent_path, parent_password))?;
+            self.scan_nested_file(temp.path(), parent_path, ctx, &nested_info)
+        })();
 
         // Pop from context chain
         ctx.pop_archive();
@@ -591,14 +473,7 @@ impl Scanner {
             Ok(mut items) => {
                 // Update each detected item with extraction chain
                 for item in &mut items {
-                    let mut chain = ExtractionChain {
-                        archives: ctx.parent_chain.clone(),
-                        final_internal_root: item.archive_internal_root.clone(),
-                    };
-                    chain.archives.push(nested_info.clone());
-                    item.path = parent_path.to_string_lossy().to_string();
-                    item.extraction_chain = Some(chain);
-                    item.archive_internal_root = None;
+                    super::attach_nested_chain(item, parent_path, &nested_info);
 
                     // Preserve the detected addon name when available.
                     // Only fall back to the nested archive filename for blank/unknown names.
@@ -629,298 +504,44 @@ impl Scanner {
         archive_path: &Path,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        let prepared_archive = crate::archive_input::prepare_archive_for_read(
-            archive_path,
-            crate::archive_input::ArchiveFormat::SevenZ,
-        )?;
-
-        // Open archive to read file list (fast, no decompression)
-        let archive = match prepared_archive.sevenz_metadata(&sevenz_rust2::Password::empty()) {
-            Ok(a) => a,
-            Err(e) => {
-                let err_str = format!("{:?}", e);
-                if password.is_none()
-                    && (err_str.contains("password")
-                        || err_str.contains("Password")
-                        || err_str.contains("encrypted")
-                        || err_str.contains("WrongPassword"))
-                {
-                    return Err(anyhow::anyhow!(PasswordRequiredError {
-                        archive_path: archive_path.to_string_lossy().to_string(),
-                    }));
-                }
-                return Err(anyhow::anyhow!("Failed to open 7z archive: {}", e));
-            }
+        let mut ctx = ScanContext {
+            max_depth: 0,
+            ..ScanContext::new()
         };
-
-        // Check for empty archive
-        if archive.files.is_empty() {
-            logger::log_info(
-                &format!("Empty 7z archive: {}", archive_path.display()),
-                Some("scanner"),
-            );
-            return Ok(Vec::new());
-        }
-
-        // Fast metadata-only encryption detection.
-        let has_encrypted_content = Self::archive_has_encrypted_blocks(&archive);
-        if has_encrypted_content && password.is_none() {
-            return Err(anyhow::anyhow!(PasswordRequiredError {
-                archive_path: archive_path.to_string_lossy().to_string(),
-            }));
-        }
-
-        // If a password is provided, validate it with a single entry read.
-        if has_encrypted_content {
-            if let Some(first_file) = archive
-                .files
-                .iter()
-                .find(|f| !f.is_directory() && f.has_stream())
-                .map(|f| f.name().to_string())
-            {
-                let mut reader = prepared_archive
-                    .sevenz_reader(sevenz_rust2::Password::from(password.unwrap_or_default()))
-                    .map_err(|_| {
-                        anyhow::anyhow!("Wrong password for archive: {}", archive_path.display())
-                    })?;
-
-                if let Err(e) = reader.read_file(&first_file) {
-                    let err_str = format!("{:?}", e);
-                    if err_str.contains("password")
-                        || err_str.contains("Password")
-                        || err_str.contains("encrypted")
-                        || err_str.contains("WrongPassword")
-                    {
-                        return Err(anyhow::anyhow!(
-                            "Wrong password for archive: {}",
-                            archive_path.display()
-                        ));
-                    }
-                }
-            }
-        }
-
-        let mut detected = Vec::new();
-
-        // Collect file paths and identify markers in a single pass
-        let mut plugin_dirs: HashSet<String> = HashSet::new();
-        let mut aircraft_dirs: HashSet<String> = HashSet::new();
-        let mut sound_packs = AircraftSoundPacks::default();
-        let mut marker_files: Vec<(String, &str)> = Vec::new(); // (path, marker_type)
-        let mut detected_livery_roots: HashSet<String> = HashSet::new();
-
-        for entry in &archive.files {
-            let file_path = entry.name().to_string();
-            let normalized = file_path.replace('\\', "/");
-            if !entry.is_directory() {
-                sound_packs.record_file(&normalized);
-            }
-
-            // Skip ignored paths
-            if Self::should_ignore_archive_path(&normalized) {
-                continue;
-            }
-
-            // Check for livery patterns first (before any potential moves)
-            if let Some((_, livery_root)) = livery_patterns::check_livery_pattern(&normalized) {
-                if !detected_livery_roots.contains(&livery_root) {
-                    detected_livery_roots.insert(livery_root.clone());
-                    marker_files.push((normalized.clone(), "livery"));
-                }
-            }
-
-            // Identify plugin directories, aircraft directories, and marker files
-            if normalized.ends_with(".xpl") {
-                if let Some(root) = plugin_root(Path::new(&normalized)) {
-                    plugin_dirs.insert(root.to_string_lossy().into_owned());
-                }
-                marker_files.push((normalized, "xpl"));
-            } else if normalized.ends_with(".acf") {
-                // Track aircraft directories to skip embedded plugins
-                if let Some(parent) = Path::new(&normalized).parent() {
-                    let parent_str = parent.to_string_lossy().to_string();
-                    if !parent_str.is_empty() {
-                        aircraft_dirs.insert(parent_str);
-                    }
-                }
-                marker_files.push((normalized, "acf"));
-            } else if Self::is_library_archive_path(&normalized) {
-                marker_files.push((normalized, "library"));
-            } else if normalized.ends_with(".dsf") {
-                marker_files.push((normalized, "dsf"));
-            } else if Self::is_apt_dat_archive_path(&normalized) {
-                marker_files.push((normalized, "apt"));
-            } else if normalized.ends_with("cycle.json") {
-                marker_files.push((normalized, "navdata"));
-            } else if normalized.ends_with(".lua") {
-                // Lua script detection (lowest priority)
-                marker_files.push((normalized, "lua"));
-            }
-        }
-
-        // Sort marker files by depth, then by type priority (aircraft first)
-        marker_files.sort_by(|a, b| {
-            let depth_a = a.0.matches('/').count();
-            let depth_b = b.0.matches('/').count();
-            match depth_a.cmp(&depth_b) {
-                std::cmp::Ordering::Equal => {
-                    // Same depth: sort by marker type priority (aircraft first)
-                    Self::marker_type_priority(a.1).cmp(&Self::marker_type_priority(b.1))
-                }
-                other => other,
-            }
-        });
-
-        // Track detected addon roots to skip
-        let mut skip_prefixes: Vec<String> = Vec::new();
-
-        // Process marker files
-        let xlua_roots = XluaRuntimeRoots::from_archive_markers(
-            marker_files
-                .iter()
-                .map(|(name, kind)| (name.as_str(), *kind)),
-        );
-        for (file_path, marker_type) in marker_files {
-            if marker_type == "lua" && xlua_roots.contains(Path::new(&file_path)) {
-                continue;
-            }
-
-            // Check if inside a skip prefix (already detected addon)
-            let should_skip = skip_prefixes
-                .iter()
-                .any(|prefix| file_path.starts_with(prefix));
-            if should_skip {
-                continue;
-            }
-
-            // Skip aircraft and scenery markers inside plugin directories
-            if (marker_type == "acf" || Self::is_scenery_marker_type(marker_type))
-                && Self::is_archive_path_inside_plugin_dirs(&file_path, &plugin_dirs)
-            {
-                continue;
-            }
-
-            if sound_packs.contains_plugin_marker(&file_path, marker_type) {
-                continue;
-            }
-
-            // Skip .xpl inside aircraft directories (embedded plugins)
-            if marker_type == "xpl"
-                && Self::is_archive_path_inside_aircraft_dirs(&file_path, &aircraft_dirs)
-            {
-                continue;
-            }
-
-            // Detect addon based on marker type
-            let item = match marker_type {
-                "acf" => self.detect_aircraft_in_archive(&file_path, archive_path)?,
-                "library" => self.detect_scenery_library(&file_path, archive_path)?,
-                "dsf" | "apt" => self.detect_scenery_in_archive(&file_path, archive_path)?,
-                "xpl" => self.detect_plugin_in_archive(&file_path, archive_path)?,
-                "navdata" => {
-                    if let Ok(content) = self.read_file_from_7z(archive_path, &file_path, password)
-                    {
-                        self.detect_navdata_in_archive(&file_path, &content, archive_path)?
-                    } else {
-                        None
-                    }
-                }
-                "livery" => self.detect_livery_in_archive(&file_path, archive_path)?,
-                "lua" => {
-                    if archive.is_solid {
-                        self.detect_lua_script_in_archive_with_data(
-                            &file_path,
-                            archive_path,
-                            Some(""),
-                            None,
-                        )?
-                    } else {
-                        self.detect_lua_script_in_archive(&file_path, archive_path)?
-                    }
-                }
-                _ => None,
-            };
-
-            if let Some(mut item) = item {
-                xlua_roots.annotate_plugin(&mut item, true);
-                // Add to skip prefixes
-                if let Some(ref internal_root) = item.archive_internal_root {
-                    if item.addon_type != AddonType::LuaScript {
-                        let prefix = if internal_root.ends_with('/') {
-                            internal_root.clone()
-                        } else {
-                            format!("{}/", internal_root)
-                        };
-                        skip_prefixes.push(prefix);
-                    }
-                } else if item.addon_type == AddonType::Aircraft {
-                    // Aircraft at archive root: skip all other markers in this archive
-                    skip_prefixes.push(String::new());
-                }
-                detected.push(item);
-            }
-        }
-
-        scenery_options::attach_archive_options(
-            archive
-                .files
-                .iter()
-                .filter(|entry| !entry.is_directory() && !entry.is_anti_item())
-                .map(|entry| entry.name()),
-            &mut detected,
-        );
-        Ok(detected)
+        self.scan_7z_with_context(archive_path, &mut ctx, password)
     }
-
-    /// Read a single file content from a 7z archive
     pub(super) fn read_file_from_7z(
         &self,
         archive_path: &Path,
-        file_path: &str,
+        path: &str,
         password: Option<&str>,
     ) -> Result<String> {
-        use sevenz_rust2::Password;
-
-        let prepared_archive = crate::archive_input::prepare_archive_for_read(
-            archive_path,
-            crate::archive_input::ArchiveFormat::SevenZ,
-        )?;
-
-        // Sanitize target path to avoid traversal-like patterns
-        let safe_path = crate::installer::sanitize_path(Path::new(file_path))
-            .ok_or_else(|| anyhow::anyhow!("Unsafe path in 7z archive: {}", file_path))?;
-        let target_normalized = safe_path.to_string_lossy().replace('\\', "/");
-        let fallback_normalized = file_path.replace('\\', "/");
-
-        // Helper: open reader with optional password
-        let open_reader = || {
-            let pwd = match password {
-                Some(pwd) => Password::from(pwd),
-                None => Password::empty(),
-            };
-            prepared_archive
-                .sevenz_reader(pwd)
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))
-        };
-
-        // ArchiveReader::read_file is significantly faster than extracting whole archive to disk.
-        let bytes = {
-            let mut reader = open_reader()?;
-            match reader.read_file(&target_normalized) {
-                Ok(data) => data,
-                Err(_) if fallback_normalized != target_normalized => {
-                    let mut reader = open_reader()?;
-                    reader
-                        .read_file(&fallback_normalized)
-                        .map_err(|e| anyhow::anyhow!("Failed to read file from 7z: {}", e))?
-                }
-                Err(e) => {
-                    return Err(anyhow::anyhow!("Failed to read file from 7z: {}", e));
-                }
-            }
-        };
-
-        String::from_utf8(bytes)
-            .map_err(|e| anyhow::anyhow!("Failed to decode UTF-8 file from 7z: {}", e))
+        let package = SevenzPackage::open(archive_path, password)?;
+        let name = path.replace('\\', "/");
+        package
+            .read_texts([name.clone()], None)
+            .remove(&name)
+            .with_context(|| format!("Failed to read 7z text member: {path}"))
     }
+}
+
+pub(super) fn classify_7z_password(
+    error: anyhow::Error,
+    path: &Path,
+    password: Option<&str>,
+) -> anyhow::Error {
+    use sevenz_rust2::Error;
+    let requires_password = error
+        .downcast_ref::<Error>()
+        .is_some_and(|error| matches!(error, Error::PasswordRequired | Error::MaybeBadPassword(_)));
+    if requires_password {
+        if password.is_none() {
+            return PasswordRequiredError {
+                archive_path: path.to_string_lossy().into_owned(),
+            }
+            .into();
+        }
+        return error.context(format!("Wrong password for archive: {}", path.display()));
+    }
+    error
 }

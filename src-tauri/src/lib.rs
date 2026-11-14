@@ -17,8 +17,12 @@ mod package_artifacts;
 mod path_utils;
 #[path = "core/performance.rs"]
 mod performance;
+#[path = "core/rar_stream.rs"]
+mod rar_stream;
 #[path = "core/registry.rs"]
 mod registry;
+#[path = "core/sevenz_package.rs"]
+mod sevenz_package;
 #[path = "core/startup_migrations.rs"]
 mod startup_migrations;
 #[path = "core/task_control.rs"]

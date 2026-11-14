@@ -479,6 +479,8 @@ impl Installer {
                             task.password.as_deref(),
                         )
                     })
+                } else if let Some(sevenz) = &ctx.sevenz_package {
+                    self.re_extract_from_7z(sevenz, target, &safe_relative_path, internal_root)
                 } else {
                     self.re_extract_single_file(
                         source,
@@ -605,14 +607,10 @@ impl Installer {
 
         match format {
             crate::archive_input::ArchiveFormat::Zip => unreachable!(),
-            crate::archive_input::ArchiveFormat::SevenZ => self.re_extract_from_7z(
-                &prepared_source,
-                target,
-                relative_path,
-                internal_root,
-                extraction_chain,
-                password,
-            ),
+            crate::archive_input::ArchiveFormat::SevenZ => {
+                let package = SevenzPackage::open(source, password)?;
+                self.re_extract_from_7z(&package, target, relative_path, internal_root)
+            }
             crate::archive_input::ArchiveFormat::Rar => self.re_extract_from_rar(
                 read_source,
                 target,
@@ -677,129 +675,34 @@ impl Installer {
         Ok(())
     }
 
-    /// Re-extract single file from 7z (requires full re-extraction to temp)
-    /// Note: 7z library doesn't support single-file extraction, so we extract the entire archive
-    /// to a temp directory and then copy the specific file. This is inefficient but necessary.
+    /// Re-extract a single installed 7z member using its block.
     fn re_extract_from_7z(
         &self,
-        archive_path: &crate::archive_input::PreparedArchive,
+        package: &SevenzPackage,
         target: &Path,
         relative_path: &str,
         internal_root: Option<&str>,
-        _extraction_chain: Option<&crate::models::ExtractionChain>,
-        password: Option<&str>,
     ) -> Result<()> {
-        use tempfile::TempDir;
-
-        let sanitized_relative = sanitize_path(Path::new(relative_path))
-            .ok_or_else(|| anyhow::anyhow!("Unsafe path in archive: {}", relative_path))?;
-
-        // 7z doesn't support single-file extraction easily
-        // Extract to temp, then copy the specific file
-        let temp_dir = TempDir::new()?;
-        let mut skipped_count = 0usize;
-
-        // Extract entire archive to temp
-        if let Some(pwd) = password {
-            let mut reader = archive_path
-                .sevenz_reader(sevenz_rust2::Password::from(pwd))
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
-            reader
-                .for_each_entries(|entry, reader| {
-                    let entry_path = match sanitize_path(Path::new(entry.name())) {
-                        Some(path) => path,
-                        None => {
-                            skipped_count += 1;
-                            logger::log_debug(
-                                &format!("Skipping 7z entry with unsafe path: {}", entry.name()),
-                                Some("installer"),
-                                None,
-                            );
-                            return Ok(true);
-                        }
-                    };
-                    let dest_path = temp_dir.path().join(&entry_path);
-                    if entry.is_directory() {
-                        std::fs::create_dir_all(&dest_path)?;
-                    } else {
-                        if let Some(parent) = dest_path.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        let mut file = std::fs::File::create(&dest_path)?;
-                        std::io::copy(reader, &mut file)?;
-                    }
-                    Ok(true)
-                })
-                .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
-        } else {
-            let mut reader = archive_path
-                .sevenz_reader(sevenz_rust2::Password::empty())
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
-            reader
-                .for_each_entries(|entry, reader| {
-                    let entry_path = match sanitize_path(Path::new(entry.name())) {
-                        Some(path) => path,
-                        None => {
-                            skipped_count += 1;
-                            logger::log_debug(
-                                &format!("Skipping 7z entry with unsafe path: {}", entry.name()),
-                                Some("installer"),
-                                None,
-                            );
-                            return Ok(true);
-                        }
-                    };
-                    let dest_path = temp_dir.path().join(&entry_path);
-                    if entry.is_directory() {
-                        std::fs::create_dir_all(&dest_path)?;
-                    } else {
-                        if let Some(parent) = dest_path.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        let mut file = std::fs::File::create(&dest_path)?;
-                        std::io::copy(reader, &mut file)?;
-                    }
-                    Ok(true)
-                })
-                .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
-        }
-
-        if skipped_count > 0 {
-            logger::log_info(
-                &format!(
-                    "Skipped {} unsafe 7z entries during re-extract",
-                    skipped_count
-                ),
-                Some("installer"),
-            );
-        }
-
-        // Find and copy the specific file
-        let archive_relative = match internal_root {
-            Some(root) => sanitize_path(Path::new(&root.replace('\\', "/")))
-                .context("Unsafe 7z root in verification metadata")?
-                .join(&sanitized_relative),
-            None => sanitized_relative.clone(),
-        };
-        let temp_file = temp_dir.path().join(archive_relative);
-        if !temp_file.exists() {
-            return Err(anyhow::anyhow!(
-                "File not found after 7z extraction: {}",
-                relative_path
-            ));
-        }
-
-        let target_file = target.join(&sanitized_relative);
-        if let Some(parent) = target_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        fs::copy(&temp_file, &target_file)?;
-
+        let relative =
+            sanitize_path(Path::new(relative_path)).context("Unsafe path in 7z retry")?;
+        let index = sevenz_install_entries(package, internal_root)
+            .iter()
+            .rev()
+            .find(|(_, path)| path == &relative)
+            .map(|(index, _)| *index)
+            .with_context(|| format!("7z member not found for retry: {relative_path}"))?;
+        let destination = target.join(relative);
+        let parent = destination.parent().context("Missing 7z retry directory")?;
+        fs::create_dir_all(parent)?;
+        let mut output = tempfile::NamedTempFile::new_in(parent)?;
+        package.copy_index(index, &mut output, || {
+            check_archive_cancelled(&self.task_control)
+        })?;
+        package.check_source()?;
+        output.persist(&destination)?;
         Ok(())
     }
 
-    /// Re-extract single file from RAR (requires full re-extraction to temp)
     fn re_extract_from_rar(
         &self,
         archive_path: &Path,
@@ -809,63 +712,28 @@ impl Installer {
         _extraction_chain: Option<&crate::models::ExtractionChain>,
         password: Option<&str>,
     ) -> Result<()> {
-        // Create secure temp directory
-        let temp_dir = tempfile::Builder::new()
-            .prefix("xfi_rar_retry_")
-            .tempdir()
-            .context("Failed to create temp directory for RAR retry")?;
-
-        // Extract using the typestate pattern (with password if provided)
-        let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(archive_path, pwd)
-        } else {
-            unrar::Archive::new(archive_path)
+        let relative =
+            sanitize_path(Path::new(relative_path)).context("Unsafe path in RAR retry")?;
+        let name = match internal_root {
+            Some(root) => format!(
+                "{}/{}",
+                root.trim_end_matches('/'),
+                relative.to_string_lossy()
+            ),
+            None => relative.to_string_lossy().into_owned(),
         };
-
-        let mut arch = archive_builder
-            .open_for_processing()
-            .map_err(|e| anyhow::anyhow!("Failed to open RAR for retry: {:?}", e))?;
-
-        // Extract all files to temp directory
-        while let Some(header) = arch
-            .read_header()
-            .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
-        {
-            arch = if header.entry().is_file() {
-                header
-                    .extract_with_base(temp_dir.path())
-                    .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
-            } else {
-                header
-                    .skip()
-                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-            };
-        }
-
-        // Determine the source path in temp directory
-        let source_file = if let Some(root) = internal_root {
-            let root_normalized = root.replace('\\', "/");
-            temp_dir.path().join(&root_normalized).join(relative_path)
-        } else {
-            temp_dir.path().join(relative_path)
-        };
-
-        if !source_file.exists() {
-            return Err(anyhow::anyhow!(
-                "File not found after RAR extraction: {}",
-                relative_path
-            ));
-        }
-
-        // Copy to target
-        let target_file = target.join(relative_path);
-        if let Some(parent) = target_file.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        fs::copy(&source_file, &target_file)
-            .context(format!("Failed to copy RAR file: {}", relative_path))?;
-
+        let destination = target.join(relative);
+        let parent = destination
+            .parent()
+            .context("Missing RAR retry directory")?;
+        fs::create_dir_all(parent)?;
+        crate::archive_input::extract_rar_member(
+            archive_path,
+            &name,
+            &destination,
+            password,
+            || check_archive_cancelled(&self.task_control),
+        )?;
         Ok(())
     }
 

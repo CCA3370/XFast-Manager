@@ -145,6 +145,8 @@ pub struct InstallTask {
     /// Source revision observed when analyzing a standalone ZIP.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zip_source: Option<crate::zip_package::FileSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sevenz_source: Option<crate::zip_package::FileSnapshot>,
     /// Size warning message if archive is suspiciously large or has high compression ratio
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_warning: Option<String>,

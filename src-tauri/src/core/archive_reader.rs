@@ -111,6 +111,18 @@ impl Clone for ArchiveReader {
 }
 
 impl ArchiveReader {
+    pub fn len(&self) -> u64 {
+        self.len
+    }
+
+    pub fn check_source(&self) -> io::Result<()> {
+        self.files.check_source()
+    }
+
+    pub fn revision(&self) -> FileSnapshot {
+        self.files.revision()
+    }
+
     pub fn open(path: &Path) -> io::Result<Self> {
         Ok(ArchiveFiles::open([path.to_path_buf()])?.reader())
     }

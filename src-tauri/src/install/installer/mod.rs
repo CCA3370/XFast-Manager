@@ -17,6 +17,7 @@ use crate::models::{
     AddonType, FileHash, HashAlgorithm, InstallPhase, InstallProgress, InstallResult, InstallTask,
     ParallelTaskProgress, TaskResult,
 };
+use crate::sevenz_package::SevenzPackage;
 use crate::task_control::TaskControl;
 use crate::zip_package::{FileSnapshot, ZipEntry, ZipPackage};
 
@@ -34,8 +35,6 @@ pub const MAX_EXTRACTION_SIZE: u64 = 20 * 1024 * 1024 * 1024;
 pub const MAX_COMPRESSION_RATIO: u64 = 100;
 
 /// Maximum size for in-memory ZIP optimization (200 MB)
-/// Larger files are extracted via temp directory to avoid memory pressure
-pub const MAX_MEMORY_ZIP_SIZE: u64 = 200 * 1024 * 1024;
 
 /// Buffer size for file I/O operations (8 MB)
 /// Optimized for modern SSDs and network storage
@@ -260,6 +259,84 @@ fn copy_file_optimized<R: std::io::Read + ?Sized, W: std::io::Write>(
     copy_with_buffer(reader, writer, &mut vec![0; STREAM_BUFFER_SIZE], |_| Ok(()))
 }
 
+fn archive_entry_destination(name: &str, internal_root: Option<&str>) -> Option<PathBuf> {
+    let normalized = name.replace('\\', "/");
+    let root = internal_root.unwrap_or_default().replace('\\', "/");
+    let root = root.trim_matches('/');
+    let relative = if root.is_empty() {
+        normalized.as_str()
+    } else {
+        normalized.strip_prefix(root)?.strip_prefix('/')?
+    };
+    if relative.is_empty()
+        || crate::package_artifacts::is_ignored_package_artifact_archive_path(relative)
+    {
+        return None;
+    }
+    sanitize_path(Path::new(relative)).filter(|path| !path.as_os_str().is_empty())
+}
+
+fn sevenz_install_entries(
+    package: &SevenzPackage,
+    internal_root: Option<&str>,
+) -> Vec<(usize, PathBuf)> {
+    package
+        .archive
+        .files
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| {
+            if entry.is_anti_item() {
+                return None;
+            }
+            archive_entry_destination(entry.name(), internal_root).map(|path| (index, path))
+        })
+        .collect()
+}
+
+fn check_archive_cancelled(control: &TaskControl) -> std::io::Result<()> {
+    directory::check_copy_cancelled(control)
+}
+
+fn archive_worker_pool(source: &Path, target: &Path) -> Option<&'static rayon::ThreadPool> {
+    use std::sync::OnceLock;
+    static DISKS: OnceLock<sysinfo::Disks> = OnceLock::new();
+    static POOL: OnceLock<Option<rayon::ThreadPool>> = OnceLock::new();
+    let disks = DISKS.get_or_init(sysinfo::Disks::new_with_refreshed_list);
+    let is_ssd = |path: &Path| {
+        let absolute = path
+            .ancestors()
+            .find_map(|path| fs::canonicalize(path).ok());
+        let Some(absolute) = absolute else {
+            return false;
+        };
+        #[cfg(windows)]
+        let absolute = PathBuf::from(absolute.to_string_lossy().trim_start_matches(r"\\?\"));
+        disks
+            .iter()
+            .filter(|disk| absolute.starts_with(disk.mount_point()))
+            .max_by_key(|disk| disk.mount_point().components().count())
+            .is_some_and(|disk| disk.kind() == sysinfo::DiskKind::SSD)
+    };
+    if !is_ssd(source) || !is_ssd(target) {
+        return None;
+    }
+    POOL.get_or_init(|| {
+        let threads = std::thread::available_parallelism()
+            .map_or(1, |count| count.get())
+            .min(4);
+        (threads > 1)
+            .then(|| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(threads)
+                    .build()
+                    .ok()
+            })
+            .flatten()
+    })
+    .as_ref()
+}
+
 fn copy_with_buffer<R: std::io::Read + ?Sized, W: std::io::Write>(
     reader: &mut R,
     writer: &mut W,
@@ -316,10 +393,6 @@ fn open_file_for_read_with_retry(path: &Path) -> std::io::Result<fs::File> {
     }
 
     Err(last_error.unwrap_or_else(|| std::io::Error::other("Unknown file open failure")))
-}
-
-fn should_compute_inline_7z_hashes(enable_verification: bool, is_nested_archive: bool) -> bool {
-    enable_verification && !is_nested_archive
 }
 
 fn format_install_error_for_display(error: &anyhow::Error) -> String {
@@ -526,6 +599,7 @@ struct ProgressContext {
     /// Whether current task should compute 7z SHA256 inline during extraction.
     inline_hash_collection_enabled: Arc<std::sync::atomic::AtomicBool>,
     zip_package: Option<Arc<ZipPackage>>,
+    sevenz_package: Option<Arc<SevenzPackage>>,
     directory_plan: Option<DirectoryInstall>,
     /// Optional parallel emit callback: when set, emit_progress updates tracker data
     /// and calls this instead of emitting directly
@@ -553,6 +627,7 @@ impl ProgressContext {
             inline_hashes: Arc::new(Mutex::new(HashMap::new())),
             inline_hash_collection_enabled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             zip_package: None,
+            sevenz_package: None,
             directory_plan: None,
             parallel_emit: None,
             parallel_current_file: None,
@@ -1209,6 +1284,7 @@ pub struct Installer {
 struct PreparedInstall {
     size: u64,
     zip: Option<Arc<ZipPackage>>,
+    sevenz: Option<Arc<SevenzPackage>>,
     directory: Option<DirectoryInstall>,
 }
 
@@ -1536,6 +1612,7 @@ impl Installer {
                 }
             };
             ctx.zip_package = preparation.zip;
+            ctx.sevenz_package = preparation.sevenz;
             ctx.directory_plan = preparation.directory;
 
             let task_start = Instant::now();
@@ -1585,46 +1662,11 @@ impl Installer {
                     {
                         let inline = std::mem::take(&mut *ctx.inline_hashes.lock().unwrap());
                         if !inline.is_empty() {
-                            if ctx.directory_plan.is_none() {
-                                ctx.inline_verified.store(true, Ordering::SeqCst);
-                                ctx.inline_verified_count
-                                    .store(inline.len() as u64, Ordering::SeqCst);
-                            }
                             task.file_hashes = Some(inline);
                         }
                     }
 
-                    // Check for skip request after installation but before verification
-                    if task.addon_type == AddonType::Patch || task.scenery_option().is_some() {
-                        // The staged install has already committed.
-                        self.task_control.reset_skip();
-                    } else if self.task_control.is_skip_requested() {
-                        logger::log_info(
-                            &format!("Task skipped by user: {}", task.display_name),
-                            Some("installer"),
-                        );
-
-                        // Cleanup the installed files
-                        if let Err(e) = self.cleanup_task(task) {
-                            logger::log_error(
-                                &format!("Failed to cleanup skipped task: {}", e),
-                                Some("installer"),
-                            );
-                        }
-
-                        skipped += 1;
-                        task_results.push(TaskResult {
-                            task_id: task.id.clone(),
-                            task_name: task.display_name.clone(),
-                            success: false,
-                            error_message: Some("Skipped by user".to_string()),
-                            verification_stats: None,
-                        });
-
-                        // Reset skip flag for next task
-                        self.task_control.reset_skip();
-                        continue;
-                    }
+                    self.task_control.reset_skip();
 
                     crate::log_debug!(
                         &format!(
@@ -1799,6 +1841,17 @@ impl Installer {
                         "installer_timing"
                     );
 
+                    if self.task_control.is_skip_requested() {
+                        skipped += 1;
+                        self.task_control.reset_skip();
+                        task_results.push(failed_task(task, "Skipped by user".to_owned()));
+                        continue;
+                    }
+                    if self.task_control.is_cancelled() {
+                        cancelled += 1;
+                        task_results.push(failed_task(task, "Cancelled by user".to_owned()));
+                        continue;
+                    }
                     failed += 1;
                     logger::log_debug(
                         &format!(
@@ -1841,6 +1894,7 @@ impl Installer {
         );
 
         ctx.zip_package = None;
+        ctx.sevenz_package = None;
         self.cleanup_sources_after_install(
             &source_cleanup_candidates,
             &task_results,
@@ -1990,7 +2044,7 @@ impl Installer {
         for (index, (task, preparation)) in tasks.into_iter().zip(prepared).enumerate() {
             let sem = semaphore.clone();
             let ctx = ctx.clone();
-            let tc = task_control.clone();
+            let tc = task_control.child_session();
             let ah = app_handle.clone();
             let xp = xplane_path.clone();
             let atomic = atomic_install_enabled;
@@ -2067,8 +2121,10 @@ impl Installer {
                     let task_view = ctx.get_task_view(index);
                     let mut progress_ctx = task_view.as_progress_context();
                     progress_ctx.zip_package = preparation.zip;
+                    progress_ctx.sevenz_package = preparation.sevenz;
                     progress_ctx.directory_plan = preparation.directory;
-                    let installer = Installer::new(ah);
+                    let mut installer = Installer::new(ah);
+                    installer.task_control = tc;
 
                     let mut task = task;
                     let install_started = Instant::now();
@@ -2089,12 +2145,6 @@ impl Installer {
                                     &mut *progress_ctx.inline_hashes.lock().unwrap(),
                                 );
                                 if !inline.is_empty() {
-                                    if progress_ctx.directory_plan.is_none() {
-                                        progress_ctx.inline_verified.store(true, Ordering::SeqCst);
-                                        progress_ctx
-                                            .inline_verified_count
-                                            .store(inline.len() as u64, Ordering::SeqCst);
-                                    }
                                     task.file_hashes = Some(inline);
                                 }
                             }
@@ -2348,6 +2398,7 @@ impl Installer {
     /// atomic installer doesn't track restore bytes, and the restore phase is fast.
     fn prepare_tasks(&self, tasks: Vec<InstallTask>) -> InstallBatch {
         let mut archives = HashMap::new();
+        let mut sevenz_archives = HashMap::new();
         let mut prepared = Vec::with_capacity(tasks.len());
         let mut task_sizes = Vec::with_capacity(tasks.len());
         let mut total_size = 0u64;
@@ -2356,7 +2407,7 @@ impl Installer {
             let preparation = if self.task_control.is_cancelled() {
                 Ok(PreparedInstall::default())
             } else {
-                self.prepare_task(task, &mut archives)
+                self.prepare_task(task, &mut archives, &mut sevenz_archives)
             };
             let size = preparation.as_ref().map_or(0, |prepared| prepared.size);
             prepared.push(preparation);
@@ -2375,6 +2426,7 @@ impl Installer {
         &self,
         task: &InstallTask,
         archives: &mut HashMap<PathBuf, Arc<ZipPackage>>,
+        sevenz_archives: &mut HashMap<(PathBuf, Option<String>), Arc<SevenzPackage>>,
     ) -> Result<PreparedInstall> {
         use crate::archive_input::{detect_archive_format, ArchiveFormat};
 
@@ -2410,6 +2462,8 @@ impl Installer {
 
         let format = if task.zip_source.is_some() || archives.contains_key(source) {
             Some(ArchiveFormat::Zip)
+        } else if task.sevenz_source.is_some() {
+            Some(ArchiveFormat::SevenZ)
         } else {
             detect_archive_format(source)
         };
@@ -2441,6 +2495,46 @@ impl Installer {
                 );
             }
             prepared.zip = Some(zip);
+        } else if format == Some(ArchiveFormat::SevenZ) {
+            let key = (source.to_path_buf(), task.password.clone());
+            let sevenz = if let Some(package) = sevenz_archives.get(&key) {
+                Arc::clone(package)
+            } else {
+                let package = Arc::new(SevenzPackage::open(source, task.password.as_deref())?);
+                sevenz_archives.insert(key, Arc::clone(&package));
+                package
+            };
+            anyhow::ensure!(
+                task.sevenz_source
+                    .as_ref()
+                    .is_none_or(|expected| expected == &sevenz.revision()),
+                "7z package changed. Analyze it again before installing: {}",
+                source.display()
+            );
+            prepared.size = sevenz_install_entries(&sevenz, task.archive_internal_root.as_deref())
+                .iter()
+                .fold(0u64, |size, (index, _)| {
+                    size.saturating_add(sevenz.archive.files[*index].size)
+                });
+            if let Some(option) = task
+                .scenery_option()
+                .filter(|_| task.extraction_chain.is_none())
+            {
+                prepared.size = prepared.size.saturating_add(
+                    sevenz_install_entries(&sevenz, Some(&option.root))
+                        .iter()
+                        .fold(0u64, |size, (index, _)| {
+                            size.saturating_add(sevenz.archive.files[*index].size)
+                        }),
+                );
+            }
+            prepared.sevenz = Some(sevenz);
+        } else if format == Some(ArchiveFormat::Rar) {
+            prepared.size = self.get_rar_size(
+                source,
+                task.archive_internal_root.as_deref(),
+                task.password.as_deref(),
+            )?;
         } else if task.addon_type == AddonType::LuaScript {
             prepared.size = if format.is_some() {
                 self.get_lua_bundle_size_in_archive(task, source)?
@@ -2481,6 +2575,7 @@ impl Installer {
                 verify: task.enable_verification,
             }),
             zip: None,
+            sevenz: None,
         })
     }
 
@@ -2632,7 +2727,9 @@ impl Installer {
             Some(crate::archive_input::ArchiveFormat::SevenZ) => {
                 self.get_7z_size(archive, internal_root)
             }
-            Some(crate::archive_input::ArchiveFormat::Rar) => self.get_rar_size(archive),
+            Some(crate::archive_input::ArchiveFormat::Rar) => {
+                self.get_rar_size(archive, internal_root, None)
+            }
             // Non-archive files (e.g. standalone Lua scripts) are installed by direct copy.
             _ => Ok(fs::metadata(archive)?.len()),
         }
@@ -2701,15 +2798,28 @@ impl Installer {
     }
 
     /// Get uncompressed size of RAR archive
-    fn get_rar_size(&self, archive: &Path) -> Result<u64> {
-        let normalized = crate::archive_input::normalize_archive_entry_path(archive);
-        let arch = unrar::Archive::new(&normalized)
-            .open_for_listing()
-            .map_err(|e| anyhow::anyhow!("Failed to open RAR for size query: {:?}", e))?;
-
+    fn get_rar_size(
+        &self,
+        archive: &Path,
+        root: Option<&str>,
+        password: Option<&str>,
+    ) -> Result<u64> {
+        let prepared = crate::archive_input::prepare_archive_for_read(
+            archive,
+            crate::archive_input::ArchiveFormat::Rar,
+        )?;
+        let input = match password {
+            Some(password) => unrar::Archive::with_password(prepared.read_path(), password),
+            None => unrar::Archive::new(prepared.read_path()),
+        };
         let mut total = 0u64;
-        for e in arch.flatten() {
-            total += e.unpacked_size;
+        for entry in input.open_for_listing()? {
+            let entry = entry?;
+            if entry.is_file()
+                && archive_entry_destination(&entry.filename.to_string_lossy(), root).is_some()
+            {
+                total = total.saturating_add(entry.unpacked_size);
+            }
         }
         Ok(total)
     }
@@ -2751,6 +2861,7 @@ mod tests {
             password: None,
             estimated_size: None,
             zip_source: None,
+            sevenz_source: None,
             size_warning: None,
             size_confirmed: false,
             existing_navdata_info: None,
@@ -2974,13 +3085,6 @@ mod tests {
         // Verify constants are reasonable
         assert_eq!(MAX_EXTRACTION_SIZE, 20 * 1024 * 1024 * 1024); // 20 GB
         assert_eq!(MAX_COMPRESSION_RATIO, 100); // 100:1
-    }
-
-    #[test]
-    fn inline_7z_hashes_enabled_only_for_non_nested_verified_tasks() {
-        assert!(should_compute_inline_7z_hashes(true, false));
-        assert!(!should_compute_inline_7z_hashes(true, true));
-        assert!(!should_compute_inline_7z_hashes(false, false));
     }
 
     #[test]

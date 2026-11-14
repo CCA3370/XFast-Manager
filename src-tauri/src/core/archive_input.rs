@@ -70,16 +70,6 @@ impl PreparedArchive {
         let mut reader = std::io::BufReader::with_capacity(256 * 1024, self.reader()?);
         Ok(sevenz_rust2::Archive::read(&mut reader, password)?)
     }
-
-    pub(crate) fn sevenz_reader(
-        &self,
-        password: sevenz_rust2::Password,
-    ) -> Result<sevenz_rust2::ArchiveReader<std::io::BufReader<ArchiveReader>>> {
-        let input = std::io::BufReader::with_capacity(256 * 1024, self.reader()?);
-        let mut reader = sevenz_rust2::ArchiveReader::new(input, password)?;
-        reader.set_thread_count(1);
-        Ok(reader)
-    }
 }
 
 fn split_numbered_series(file_name: &str, marker_lower: &str) -> Option<(String, usize, u32)> {
@@ -720,6 +710,97 @@ fn concat_parts_to_temp(parts: &[PathBuf], format: ArchiveFormat) -> Result<Prep
         temp_file: Some(temp_file),
         parts: parts.to_vec(),
     })
+}
+
+pub(crate) fn extract_rar_member(
+    path: &Path,
+    name: &str,
+    destination: &Path,
+    password: Option<&str>,
+    mut check: impl FnMut() -> std::io::Result<()>,
+) -> Result<()> {
+    let mut archive = crate::rar_stream::RarStream::open(path, password)?;
+    let name = name.replace('\\', "/");
+    while let Some(entry) = archive.next()? {
+        check()?;
+        if !entry.directory && !entry.redirected && entry.name == name {
+            let parent = destination
+                .parent()
+                .context("Missing RAR extraction directory")?;
+            archive_workspace_space(parent, entry.size)?;
+            let mut output = NamedTempFile::new_in(parent)?;
+            let mut remaining = entry.size;
+            archive.read(|bytes| {
+                check()?;
+                remaining = remaining
+                    .checked_sub(bytes.len() as u64)
+                    .ok_or_else(|| std::io::Error::other("RAR member exceeds its declared size"))?;
+                output.write_all(bytes)
+            })?;
+            anyhow::ensure!(remaining == 0, "RAR member was truncated");
+            output.persist(destination)?;
+            return Ok(());
+        }
+        archive.skip()?;
+    }
+    anyhow::bail!("RAR member not found: {name}")
+}
+
+pub(crate) fn archive_workspace_space(path: &Path, required: u64) -> Result<()> {
+    let directory = path
+        .ancestors()
+        .find(|path| path.is_dir())
+        .with_context(|| format!("No writable parent for {}", path.display()))?;
+    let available = fs2::available_space(directory)
+        .with_context(|| format!("Cannot determine free space at {}", directory.display()))?;
+    anyhow::ensure!(
+        available >= required,
+        "Insufficient disk space at {}: {} bytes required, {} bytes available",
+        directory.display(),
+        required,
+        available
+    );
+    Ok(())
+}
+
+pub(crate) fn spool_archive_member(
+    mut input: impl Read,
+    size: u64,
+    format: &str,
+    directory: Option<&Path>,
+    mut check: impl FnMut() -> std::io::Result<()>,
+) -> Result<NamedTempFile> {
+    let default_dir;
+    let directory = match directory {
+        Some(path) => path,
+        None => {
+            default_dir = std::env::temp_dir();
+            &default_dir
+        }
+    };
+    archive_workspace_space(directory, size)?;
+    let mut output = tempfile::Builder::new()
+        .prefix("xfast-nested-")
+        .suffix(&format!(".{format}"))
+        .tempfile_in(directory)?;
+    let mut buffer = vec![0; 256 * 1024];
+    let mut remaining = size;
+    loop {
+        check()?;
+        let read = input.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        anyhow::ensure!(
+            remaining >= read as u64,
+            "Nested archive exceeds its declared size"
+        );
+        output.write_all(&buffer[..read])?;
+        remaining -= read as u64;
+    }
+    anyhow::ensure!(remaining == 0, "Nested archive was truncated");
+    output.flush()?;
+    Ok(output)
 }
 
 pub fn prepare_archive_for_read(path: &Path, format: ArchiveFormat) -> Result<PreparedArchive> {

@@ -243,12 +243,16 @@ impl Analyzer {
                                                            // Track which archives have passwords for setting on tasks later
         let mut archive_passwords: HashMap<String, String> = HashMap::new();
         let mut zip_summaries = HashMap::new();
+        let mut sevenz_summaries = HashMap::new();
 
         for (path_str, result) in results {
             match result {
                 Ok(scan) => {
                     if let Some(zip) = scan.zip_summary {
                         zip_summaries.insert(path_str.clone(), zip);
+                    }
+                    if let Some(sevenz) = scan.sevenz_summary {
+                        sevenz_summaries.insert(path_str.clone(), sevenz);
                     }
                     let detected = scan.items;
                     // Store password for this archive if provided
@@ -338,12 +342,14 @@ impl Analyzer {
             .into_iter()
             .map(|item| {
                 let zip = zip_summaries.get(&item.original_input_path);
+                let sevenz = sevenz_summaries.get(&item.original_input_path);
                 self.create_install_task(
                     item,
                     xplane_path,
                     &archive_passwords,
                     verification_preferences.as_ref(),
                     zip,
+                    sevenz,
                 )
             })
             .collect();
@@ -975,6 +981,7 @@ impl Analyzer {
         archive_passwords: &HashMap<String, String>,
         verification_preferences: Option<&HashMap<String, bool>>,
         zip: Option<&crate::zip_package::ZipSummary>,
+        sevenz: Option<&crate::zip_package::ZipSummary>,
     ) -> InstallTask {
         let xplane_root = Path::new(xplane_path);
 
@@ -1141,26 +1148,21 @@ impl Analyzer {
         }
 
         // Estimate size and check for warnings (for archives)
-        let (estimated_size, size_warning) = match zip {
-            Some(zip) => self.check_size_warning(zip.compressed_size, zip.uncompressed_size),
+        let (estimated_size, size_warning) = match zip.or(sevenz) {
+            Some(summary) => {
+                self.check_size_warning(summary.compressed_size, summary.uncompressed_size)
+            }
             None => self.estimate_archive_size(&item.path),
         };
 
         // Determine source type and check verification preferences
         let source_path = Path::new(&item.path);
-        let source_type = if zip.is_some() {
-            "zip"
-        } else if source_path.is_dir() {
-            "directory"
-        } else if let Some(ext) = source_path.extension().and_then(|s| s.to_str()) {
-            match ext.to_lowercase().as_str() {
-                "zip" => "zip",
-                "7z" => "7z",
-                "rar" => "rar",
-                _ => "directory", // Unknown archive types treated as directory
-            }
-        } else {
-            "directory"
+        let source_type = match (zip, sevenz) {
+            (Some(_), _) => "zip",
+            (_, Some(_)) => "7z",
+            _ if source_path.is_dir() => "directory",
+            _ => crate::archive_input::detect_archive_format(source_path)
+                .map_or("directory", |format| format.as_str()),
         };
 
         // Check if verification is enabled for this source type
@@ -1185,6 +1187,7 @@ impl Analyzer {
             password,
             estimated_size,
             zip_source: zip.and_then(|zip| zip.source.clone()),
+            sevenz_source: sevenz.and_then(|seven| seven.source.clone()),
             size_warning,
             size_confirmed: false, // User must confirm if there's a warning
             existing_navdata_info,
@@ -1514,6 +1517,7 @@ mod tests {
             password: None,
             estimated_size: None,
             zip_source: None,
+            sevenz_source: None,
             size_warning: None,
             size_confirmed: false,
             existing_navdata_info: None,

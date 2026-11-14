@@ -98,9 +98,8 @@ pub(crate) struct ZipPackage {
     pub source_path: PathBuf,
     archive: ZipArchive<ZipReader>,
     pub entries: Vec<ZipEntry>,
-    snapshot: FileSnapshot,
-    files: ArchiveFiles,
-    _prepared: PreparedArchive,
+    input: ZipReader,
+    source: Option<(ArchiveFiles, PreparedArchive)>,
 }
 
 impl ZipPackage {
@@ -114,7 +113,13 @@ impl ZipPackage {
             expected.is_none_or(|expected| !prepared.is_temporary() && expected == &snapshot),
             Self::changed_message(path)
         );
-        let mut archive = ZipArchive::new(files.reader())?;
+        let mut package = Self::from_reader(path, files.reader())?;
+        package.source = Some((files, prepared));
+        Ok(package)
+    }
+
+    pub fn from_reader(path: &Path, input: ZipReader) -> Result<Self> {
+        let mut archive = ZipArchive::new(input.clone())?;
         let mut entries = Vec::with_capacity(archive.len());
         for index in 0..archive.len() {
             let file = archive
@@ -136,9 +141,8 @@ impl ZipPackage {
             source_path: path.to_path_buf(),
             archive,
             entries,
-            snapshot,
-            files,
-            _prepared: prepared,
+            input,
+            source: None,
         })
     }
 
@@ -147,13 +151,17 @@ impl ZipPackage {
     }
 
     pub fn input(&self) -> ZipReader {
-        self.files.reader()
+        self.input.clone()
     }
 
     pub fn summary(&self) -> ZipSummary {
         ZipSummary {
-            source: (!self._prepared.is_temporary()).then(|| self.snapshot.clone()),
-            compressed_size: self.files.len(),
+            source: self
+                .source
+                .as_ref()
+                .filter(|(_, prepared)| !prepared.is_temporary())
+                .map(|(files, _)| files.revision()),
+            compressed_size: self.input.len(),
             uncompressed_size: self
                 .entries
                 .iter()
@@ -163,15 +171,16 @@ impl ZipPackage {
 
     pub fn check_revision(&self, expected: Option<&FileSnapshot>) -> Result<()> {
         ensure!(
-            expected
-                .is_none_or(|expected| !self._prepared.is_temporary() && expected == &self.snapshot),
+            expected.is_none_or(|expected| self.source.as_ref().is_some_and(
+                |(files, prepared)| { !prepared.is_temporary() && expected == &files.revision() }
+            )),
             Self::changed_message(&self.source_path)
         );
         Ok(())
     }
 
     pub fn check_source(&self) -> Result<()> {
-        self.files
+        self.input
             .check_source()
             .with_context(|| Self::changed_message(&self.source_path))?;
         Ok(())
@@ -183,6 +192,22 @@ impl ZipPackage {
             path.display()
         )
     }
+}
+
+pub(crate) fn stored_member(
+    archive: &mut ZipArchive<ZipReader>,
+    input: &ZipReader,
+    index: usize,
+) -> Result<Option<ZipReader>> {
+    let entry = archive.by_index_raw(index)?;
+    if entry.encrypted() || entry.compression() != zip::CompressionMethod::Stored {
+        return Ok(None);
+    }
+    ensure!(
+        entry.compressed_size() == entry.size(),
+        "Invalid stored ZIP member size"
+    );
+    Ok(Some(input.range(entry.data_start(), entry.size())?))
 }
 
 #[cfg(test)]

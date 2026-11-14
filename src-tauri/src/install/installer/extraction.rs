@@ -244,9 +244,6 @@ impl Installer {
             );
             return Ok(());
         }
-        let prepared_archive = crate::archive_input::prepare_archive_for_read(archive, format)?;
-        let read_archive = prepared_archive.read_path();
-
         crate::log_debug!(
             &format!(
                 "[TIMING] Archive extraction started: {} format",
@@ -258,12 +255,23 @@ impl Installer {
         match format {
             crate::archive_input::ArchiveFormat::Zip => unreachable!(),
             crate::archive_input::ArchiveFormat::SevenZ => {
+                let standalone;
+                let package = if let Some(package) = ctx
+                    .sevenz_package
+                    .as_deref()
+                    .filter(|package| package.source_path.as_deref() == Some(archive))
+                {
+                    package
+                } else {
+                    standalone = SevenzPackage::open(archive, password)?;
+                    &standalone
+                };
                 let primary_result = self.extract_7z_with_progress(
-                    &prepared_archive,
+                    package,
                     target,
                     internal_root,
                     ctx,
-                    password,
+                    Some(archive),
                 );
                 if let Err(primary_err) = primary_result {
                     if Self::should_try_external_7z_fallback(&primary_err) {
@@ -275,7 +283,11 @@ impl Installer {
                             Some("installer"),
                         );
                         self.extract_7z_with_external_fallback(
-                            read_archive,
+                            package
+                                .prepared
+                                .as_ref()
+                                .expect("file-backed package")
+                                .read_path(),
                             target,
                             internal_root,
                             ctx,
@@ -294,7 +306,14 @@ impl Installer {
                 }
             }
             crate::archive_input::ArchiveFormat::Rar => {
-                self.extract_rar_with_progress(read_archive, target, internal_root, ctx, password)?
+                let prepared = crate::archive_input::prepare_archive_for_read(archive, format)?;
+                self.extract_rar_with_progress(
+                    prepared.read_path(),
+                    target,
+                    internal_root,
+                    ctx,
+                    password,
+                )?
             }
         }
 
@@ -313,7 +332,7 @@ impl Installer {
     /// Extract ZIP archive with progress tracking
     /// Supports password-protected ZIP files (both ZipCrypto and AES encryption)
     /// Uses parallel extraction for better performance on multi-core systems
-    fn extract_zip_with_progress(
+    pub(super) fn extract_zip_with_progress(
         &self,
         zip: &ZipPackage,
         target: &Path,
@@ -346,9 +365,7 @@ impl Installer {
                           archive: &mut zip::ZipArchive<crate::zip_package::ZipReader>,
                           buffer: &mut [u8]|
          -> Result<()> {
-            if self.task_control.is_cancelled() {
-                anyhow::bail!("Cancelled by user");
-            }
+            check_archive_cancelled(&self.task_control)?;
             let index = entry.source.index;
             let mut file = if entry.source.encrypted {
                 let password = password.context("Password required for encrypted ZIP entry")?;
@@ -357,10 +374,19 @@ impl Installer {
                 archive.by_index(index)?
             };
             let outpath = target.join(&entry.destination);
-            let mut output = fs::File::create(&outpath)?;
+            let mut output = tempfile::NamedTempFile::new_in(
+                outpath.parent().context("Missing ZIP output parent")?,
+            )?;
+            let display = entry
+                .destination
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned());
             // Reading through EOF runs the decoder's CRC or authentication check.
-            let bytes = copy_with_buffer(&mut file, &mut output, buffer, |_| {
-                directory::check_copy_cancelled(&self.task_control)
+            let bytes = copy_with_buffer(&mut file, &mut output, buffer, |bytes| {
+                check_archive_cancelled(&self.task_control)?;
+                ctx.add_bytes(bytes.len() as u64);
+                ctx.emit_progress(display.clone(), InstallPhase::Installing);
+                Ok(())
             })?;
             anyhow::ensure!(
                 bytes == entry.source.size,
@@ -370,16 +396,15 @@ impl Installer {
             #[cfg(unix)]
             if let Some(mode) = entry.source.unix_mode {
                 use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(&outpath, fs::Permissions::from_mode(mode))?;
+                output
+                    .as_file()
+                    .set_permissions(fs::Permissions::from_mode(mode))?;
             }
-            ctx.add_bytes(bytes);
-            ctx.emit_progress(
-                entry
-                    .destination
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned()),
-                InstallPhase::Installing,
-            );
+            check_archive_cancelled(&self.task_control)?;
+            if outpath.is_file() {
+                let _ = remove_readonly_attribute(&outpath);
+            }
+            output.persist(&outpath)?;
             Ok(())
         };
 
@@ -395,11 +420,15 @@ impl Installer {
             };
             destinations.insert(key)
         });
-        if unique {
-            files.par_iter().try_for_each_init(
-                || (zip.reader(), vec![0; STREAM_BUFFER_SIZE]),
-                |(archive, buffer), entry| write_file(entry, archive, buffer),
-            )?;
+        if let Some(pool) =
+            archive_worker_pool(&zip.source_path, target).filter(|_| unique && files.len() > 1)
+        {
+            pool.install(|| {
+                files.par_iter().try_for_each_init(
+                    || (zip.reader(), vec![0; STREAM_BUFFER_SIZE]),
+                    |(archive, buffer), entry| write_file(entry, archive, buffer),
+                )
+            })?;
         } else {
             let mut archive = zip.reader();
             let mut buffer = vec![0; STREAM_BUFFER_SIZE];
@@ -413,153 +442,133 @@ impl Installer {
 
     /// Extract 7z archive with progress tracking
     /// Extracts directly to target directory with inline SHA256 hash computation
-    fn extract_7z_with_progress(
+    pub(super) fn extract_7z_with_progress(
         &self,
-        archive: &crate::archive_input::PreparedArchive,
+        package: &SevenzPackage,
         target: &Path,
         internal_root: Option<&str>,
         ctx: &ProgressContext,
-        password: Option<&str>,
+        source_path: Option<&Path>,
     ) -> Result<()> {
+        use rayon::prelude::*;
         use sha2::{Digest, Sha256};
-        let compute_inline_hashes = ctx.inline_hash_collection_enabled.load(Ordering::SeqCst);
-
-        // Normalize internal_root for path matching
-        let internal_root_normalized = internal_root.map(|s| {
-            let normalized = s.replace('\\', "/");
-            if normalized.ends_with('/') {
-                normalized
-            } else {
-                format!("{}/", normalized)
-            }
-        });
-
-        // Create target directory
+        package.check_source()?;
         fs::create_dir_all(target)?;
-
-        // Open archive with or without password
-        let mut reader = if let Some(pwd) = password {
-            archive
-                .sevenz_reader(sevenz_rust2::Password::from(pwd))
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?
-        } else {
-            archive
-                .sevenz_reader(sevenz_rust2::Password::empty())
-                .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?
-        };
-
-        if !compute_inline_hashes {
-            logger::log_info(
-                "Skipping inline 7z SHA256 computation for current task",
-                Some("installer"),
-            );
+        let entries = sevenz_install_entries(package, internal_root);
+        anyhow::ensure!(!entries.is_empty(), "No files match the selected 7z root");
+        let mut files = HashMap::new();
+        for (index, relative) in entries {
+            let entry = &package.archive.files[index];
+            if entry.is_directory() {
+                fs::create_dir_all(target.join(relative))?;
+            } else {
+                if let Some(parent) = relative.parent() {
+                    fs::create_dir_all(target.join(parent))?;
+                }
+                files.insert(index, relative);
+            }
         }
-
-        // Extract directly to target with progress reporting and inline SHA256
-        reader
-            .for_each_entries(|entry, entry_reader| {
-                let entry_name = entry.name().replace('\\', "/");
-
-                // Apply internal_root filter
-                let relative_path = if let Some(ref prefix) = internal_root_normalized {
-                    if entry_name.starts_with(prefix) {
-                        entry_name.strip_prefix(prefix).unwrap_or(&entry_name)
-                    } else if entry_name == prefix.trim_end_matches('/') {
-                        // Skip the root directory itself
-                        return Ok(true);
-                    } else {
-                        // Skip entries outside internal_root
-                        return Ok(true);
-                    }
-                } else {
-                    &entry_name
-                };
-
-                // Skip empty paths
-                if relative_path.is_empty() {
-                    return Ok(true);
-                }
-
-                if crate::package_artifacts::is_ignored_package_artifact_archive_path(relative_path)
-                {
-                    return Ok(true);
-                }
-
-                // Sanitize path to prevent path traversal
-                let sanitized = match sanitize_path(Path::new(relative_path)) {
-                    Some(p) => p,
-                    None => return Ok(true), // Skip unsafe paths
-                };
-
-                let dest_path = target.join(&sanitized);
-
-                if entry.is_directory() {
-                    std::fs::create_dir_all(&dest_path)?;
-                } else {
-                    if let Some(parent) = dest_path.parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-
-                    let mut file = std::fs::File::create(&dest_path)?;
-                    if compute_inline_hashes {
-                        // Compute SHA256 inline while writing.
-                        let mut hasher = Sha256::new();
-                        let mut buffer = vec![0u8; IO_BUFFER_SIZE];
-                        loop {
-                            let bytes_read = entry_reader.read(&mut buffer)?;
-                            if bytes_read == 0 {
-                                break;
-                            }
-                            hasher.update(&buffer[..bytes_read]);
-                            std::io::Write::write_all(&mut file, &buffer[..bytes_read])?;
+        let groups = package.groups(files.keys().copied());
+        let compute_hashes = ctx.inline_hash_collection_enabled.load(Ordering::SeqCst);
+        let write_group = |block, indices: &[usize], discard: &mut [u8], buffer: &mut [u8]| {
+            package.read_group(
+                block,
+                indices,
+                discard,
+                || check_archive_cancelled(&self.task_control),
+                |index, entry, input| {
+                    let relative = &files[&index];
+                    let destination = target.join(relative);
+                    let mut output = tempfile::NamedTempFile::new_in(
+                        destination.parent().expect("target parent"),
+                    )?;
+                    let mut hasher = compute_hashes.then(Sha256::new);
+                    let display = relative
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned());
+                    let written = copy_with_buffer(input, &mut output, buffer, |bytes| {
+                        check_archive_cancelled(&self.task_control)?;
+                        if let Some(hasher) = &mut hasher {
+                            hasher.update(bytes);
                         }
-                        let hash = format!("{:x}", hasher.finalize());
-
-                        // Store computed hash for inline verification
-                        let relative_str = sanitized.to_string_lossy().replace('\\', "/");
+                        ctx.add_bytes(bytes.len() as u64);
+                        ctx.emit_progress(display.clone(), InstallPhase::Installing);
+                        Ok(())
+                    })?;
+                    if written != entry.size {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "Truncated 7z member",
+                        ));
+                    }
+                    check_archive_cancelled(&self.task_control)?;
+                    if destination.is_file() {
+                        let _ = remove_readonly_attribute(&destination);
+                    }
+                    output.persist(&destination).map_err(|error| error.error)?;
+                    if let Some(hasher) = hasher {
+                        let path = relative.to_string_lossy().replace('\\', "/");
                         ctx.inline_hashes.lock().unwrap().insert(
-                            relative_str.clone(),
+                            path.clone(),
                             crate::models::FileHash {
-                                path: relative_str,
-                                hash,
+                                path,
+                                hash: format!("{:x}", hasher.finalize()),
                                 algorithm: crate::models::HashAlgorithm::Sha256,
                             },
                         );
-                    } else {
-                        copy_file_optimized(entry_reader, &mut file)?;
                     }
-
-                    // Remove read-only attribute
-                    let _ = remove_readonly_attribute(&dest_path);
-
-                    // Report progress
-                    let file_size = entry.size();
-                    let file_name = sanitized
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-                    ctx.add_bytes(file_size);
-                    ctx.emit_progress(Some(file_name), InstallPhase::Installing);
-                }
-                Ok(true)
+                    Ok(())
+                },
+            )
+        };
+        let groups: Vec<_> = groups.into_iter().collect();
+        let mut destinations = std::collections::HashSet::with_capacity(files.len());
+        let unique = files.values().all(|path| {
+            let name = path.to_string_lossy();
+            destinations.insert(if cfg!(any(windows, target_os = "macos")) {
+                name.to_lowercase()
+            } else {
+                name.into_owned()
             })
-            .map_err(|e| anyhow::anyhow!("Failed to extract 7z: {}", e))?;
-
+        });
+        let pool = (unique && groups.len() > 1)
+            .then(|| source_path.and_then(|source| archive_worker_pool(source, target)))
+            .flatten();
+        if let Some(pool) = pool {
+            pool.install(|| {
+                groups.par_iter().try_for_each_init(
+                    || (vec![0; STREAM_BUFFER_SIZE], vec![0; STREAM_BUFFER_SIZE]),
+                    |(discard, buffer), (block, indices)| {
+                        write_group(*block, indices, discard, buffer)
+                    },
+                )
+            })?;
+        } else {
+            let mut discard = vec![0; STREAM_BUFFER_SIZE];
+            let mut buffer = vec![0; STREAM_BUFFER_SIZE];
+            // Empty files follow streamed blocks, matching archive extraction order.
+            for (block, indices) in groups
+                .iter()
+                .filter(|(block, _)| block.is_some())
+                .chain(groups.iter().filter(|(block, _)| block.is_none()))
+            {
+                write_group(*block, indices, &mut discard, &mut buffer)?;
+            }
+        }
+        package.check_source()?;
         Ok(())
     }
 
     fn should_try_external_7z_fallback(error: &anyhow::Error) -> bool {
-        let text = format!("{:#}", error).to_ascii_lowercase();
-        text.contains("checksumverificationfailed")
-            || text.contains("checksum verification failed")
-            || text.contains("nextheadercrcmismatch")
-            || text.contains("next header crc mismatch")
-            || text.contains("maybebadpassword")
-            || text.contains("invalid lzma2")
-            || text.contains("invalid lzma")
-            || text.contains("badcrc")
-            || text.contains("bad_crc")
+        use sevenz_rust2::Error;
+        error.downcast_ref::<Error>().is_some_and(|error| {
+            matches!(
+                error,
+                Error::UnsupportedCompressionMethod(_)
+                    | Error::Unsupported(_)
+                    | Error::ExternalUnsupported
+            )
+        })
     }
 
     fn extract_7z_with_external_fallback(
@@ -781,7 +790,7 @@ impl Installer {
 
     /// Extract RAR archive with progress tracking
     /// When no internal_root is needed, extracts directly to target (no temp dir)
-    fn extract_rar_with_progress(
+    pub(super) fn extract_rar_with_progress(
         &self,
         archive: &Path,
         target: &Path,
@@ -789,106 +798,62 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
-        if internal_root.is_none() {
-            // Direct extraction to target - no temp dir needed
-            fs::create_dir_all(target)?;
-
-            let archive_builder = if let Some(pwd) = password {
-                unrar::Archive::with_password(archive, pwd)
-            } else {
-                unrar::Archive::new(archive)
+        fs::create_dir_all(target)?;
+        let mut reader = crate::rar_stream::RarStream::open(archive, password)?;
+        let mut files = 0;
+        while let Some(entry) = reader.next()? {
+            check_archive_cancelled(&self.task_control)?;
+            let relative = archive_entry_destination(&entry.name, internal_root);
+            let Some(relative) = relative.filter(|_| !entry.directory && !entry.redirected) else {
+                reader.skip()?;
+                continue;
             };
-
-            let mut arch = archive_builder
-                .open_for_processing()
-                .map_err(|e| anyhow::anyhow!("Failed to open RAR for extraction: {:?}", e))?;
-
-            while let Some(header) = arch
-                .read_header()
-                .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
-            {
-                let is_ignored = crate::package_artifacts::is_ignored_package_artifact_archive_path(
-                    &header.entry().filename.to_string_lossy(),
+            let path = target.join(&relative);
+            let parent = path.parent().context("Missing RAR output parent")?;
+            fs::create_dir_all(parent)?;
+            let mut output = tempfile::NamedTempFile::new_in(parent)?;
+            let mut remaining = entry.size;
+            let display = relative
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned());
+            use sha2::{Digest, Sha256};
+            use std::io::Write;
+            let mut hasher = ctx
+                .inline_hash_collection_enabled
+                .load(Ordering::SeqCst)
+                .then(Sha256::new);
+            reader.read(|bytes| {
+                check_archive_cancelled(&self.task_control)?;
+                remaining = remaining
+                    .checked_sub(bytes.len() as u64)
+                    .ok_or_else(|| std::io::Error::other("RAR member exceeds its declared size"))?;
+                output.write_all(bytes)?;
+                if let Some(hasher) = &mut hasher {
+                    hasher.update(bytes);
+                }
+                ctx.add_bytes(bytes.len() as u64);
+                ctx.emit_progress(display.clone(), InstallPhase::Installing);
+                Ok(())
+            })?;
+            anyhow::ensure!(remaining == 0, "RAR member was truncated");
+            if path.is_file() {
+                let _ = remove_readonly_attribute(&path);
+            }
+            output.persist(path)?;
+            if let Some(hasher) = hasher {
+                let path = relative.to_string_lossy().replace('\\', "/");
+                ctx.inline_hashes.lock().unwrap().insert(
+                    path.clone(),
+                    crate::models::FileHash {
+                        path,
+                        hash: format!("{:x}", hasher.finalize()),
+                        algorithm: crate::models::HashAlgorithm::Sha256,
+                    },
                 );
-                arch = if is_ignored {
-                    header
-                        .skip()
-                        .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-                } else if header.entry().is_file() {
-                    let size = header.entry().unpacked_size;
-                    let result = header
-                        .extract_with_base(target)
-                        .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?;
-
-                    // Report progress
-                    ctx.add_bytes(size);
-                    ctx.emit_progress(None, InstallPhase::Installing);
-
-                    result
-                } else {
-                    header
-                        .skip()
-                        .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-                };
             }
-
-            return Ok(());
+            files += 1;
         }
-
-        // When internal_root is Some, use temp dir approach to strip the root prefix
-        let temp_dir = tempfile::Builder::new()
-            .prefix("xfastmanager_rar_")
-            .tempdir()
-            .context("Failed to create secure temp directory")?;
-
-        // Extract using the typestate pattern (with password if provided)
-        let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(archive, pwd)
-        } else {
-            unrar::Archive::new(archive)
-        };
-
-        let mut arch = archive_builder
-            .open_for_processing()
-            .map_err(|e| anyhow::anyhow!("Failed to open RAR for extraction: {:?}", e))?;
-
-        while let Some(header) = arch
-            .read_header()
-            .map_err(|e| anyhow::anyhow!("Failed to read RAR header: {:?}", e))?
-        {
-            let is_ignored = crate::package_artifacts::is_ignored_package_artifact_archive_path(
-                &header.entry().filename.to_string_lossy(),
-            );
-            arch = if is_ignored {
-                header
-                    .skip()
-                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-            } else if header.entry().is_file() {
-                header
-                    .extract_with_base(temp_dir.path())
-                    .map_err(|e| anyhow::anyhow!("Failed to extract RAR entry: {:?}", e))?
-            } else {
-                header
-                    .skip()
-                    .map_err(|e| anyhow::anyhow!("Failed to skip RAR entry: {:?}", e))?
-            };
-        }
-
-        // Determine source path with internal_root
-        let internal_root_normalized = internal_root.unwrap().replace('\\', "/");
-        let source_path = {
-            let path = temp_dir.path().join(&internal_root_normalized);
-            if path.exists() && path.is_dir() {
-                path
-            } else {
-                temp_dir.path().to_path_buf()
-            }
-        };
-
-        // Copy with progress tracking
-        self.copy_directory_with_progress(&source_path, target, ctx)?;
-
-        // TempDir automatically cleans up when dropped
+        anyhow::ensure!(files > 0, "No files match the selected RAR root");
         Ok(())
     }
 }
@@ -922,10 +887,10 @@ mod tests {
     }
 
     #[test]
-    fn checksum_failure_triggers_external_7z_fallback() {
-        let error = anyhow::anyhow!(
-            "Failed to extract 7z: Io(Custom {{ kind: Other, error: ChecksumVerificationFailed }}, \"\")"
-        );
+    fn unsupported_codecs_trigger_external_7z_fallback() {
+        let error = sevenz_rust2::Error::UnsupportedCompressionMethod("fixture".into()).into();
         assert!(Installer::should_try_external_7z_fallback(&error));
+        let bad_data = anyhow::anyhow!("Checksum verification failed");
+        assert!(!Installer::should_try_external_7z_fallback(&bad_data));
     }
 }
