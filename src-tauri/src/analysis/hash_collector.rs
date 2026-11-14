@@ -305,6 +305,7 @@ mod tests {
             flywithlua_installed: false,
             is_xlua_runtime: false,
             companion_paths: vec![],
+            scenery_options: Vec::new(),
             patch_files: Vec::new(),
             patch_plan_id: None,
             patch_backup: false,

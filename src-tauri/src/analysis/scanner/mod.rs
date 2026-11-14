@@ -14,6 +14,7 @@ use crate::models::{
 
 #[path = "rar.rs"]
 mod rar;
+mod scenery_options;
 #[path = "sevenz.rs"]
 mod sevenz;
 #[path = "zip.rs"]
@@ -875,6 +876,7 @@ impl Scanner {
             }
         }
 
+        scenery_options::attach_directory_options(dir, &mut detected);
         Ok(detected)
     }
 
@@ -944,6 +946,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1041,6 +1044,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1087,6 +1091,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1116,6 +1121,7 @@ impl Scanner {
                 version_info: None,
                 is_xlua_runtime: false,
                 companion_paths: Vec::new(),
+                scenery_options: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -1203,6 +1209,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1254,6 +1261,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1318,6 +1326,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1383,6 +1392,7 @@ impl Scanner {
             version_info,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1449,6 +1459,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1517,6 +1528,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1556,6 +1568,7 @@ impl Scanner {
                 version_info: None,
                 is_xlua_runtime: false,
                 companion_paths: Vec::new(),
+                scenery_options: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -1607,6 +1620,7 @@ impl Scanner {
                 version_info: None,
                 is_xlua_runtime: false,
                 companion_paths: Vec::new(),
+                scenery_options: Vec::new(),
             }))
         } else {
             Ok(None)
@@ -1712,6 +1726,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths,
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -1802,6 +1817,7 @@ impl Scanner {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths,
+            scenery_options: Vec::new(),
         }))
     }
 
@@ -2996,6 +3012,39 @@ mod tests {
         assert!(Scanner::is_library_archive_path("Folder\\library.txt"));
         assert!(!Scanner::is_library_archive_path("Folder/mylibrary.txt"));
         assert!(!Scanner::is_library_archive_path("Folder/._library.txt"));
+    }
+
+    #[test]
+    fn scenery_package_keeps_navigation_override_with_its_base() {
+        use std::io::Write;
+
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("Airport.zip");
+        let mut writer = ::zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        for (path, contents) in [
+            ("Airport/Airport/objects/static.obj", "base asset"),
+            ("Airport/Airport/Earth nav data/apt.dat", "default"),
+            (
+                "Airport/Airport/Earth nav data/+30+130/+34+136.dsf",
+                "default scenery",
+            ),
+            ("Airport/NO747LCF/Earth nav data/apt.dat", "option"),
+            (
+                "Airport/NO747LCF/Earth nav data/+30+130/+34+136.dsf",
+                "option scenery",
+            ),
+            ("Airport/NO747LCF/What this is.txt", "Copy over the base"),
+        ] {
+            writer
+                .start_file(path, ::zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(contents.as_bytes()).unwrap();
+        }
+        writer.finish().unwrap();
+
+        let items = Scanner::new().scan_path(&archive, None).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].display_name, "Airport");
     }
 
     #[test]

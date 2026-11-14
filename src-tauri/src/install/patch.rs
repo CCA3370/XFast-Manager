@@ -689,6 +689,7 @@ pub fn build_install_tasks(
         flywithlua_installed: true,
         is_xlua_runtime: false,
         companion_paths: Vec::new(),
+        scenery_options: Vec::new(),
         patch_files: files,
         patch_plan_id: Some(plan_id),
         patch_backup: backup_overwritten,

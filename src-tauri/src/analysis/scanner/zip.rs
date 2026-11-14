@@ -155,6 +155,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut sound_packs = AircraftSoundPacks::default();
+        let mut archive_files = Vec::new();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut nested_archives: Vec<(usize, String, bool)> = Vec::new(); // (index, path, encrypted)
         let mut has_encrypted = false;
@@ -193,6 +194,7 @@ impl Scanner {
             let file_path = file.name().replace('\\', "/");
             if !file.is_dir() {
                 sound_packs.record_file(&file_path);
+                archive_files.push(file_path.clone());
             }
 
             // Skip ignored paths
@@ -453,6 +455,8 @@ impl Scanner {
             ),
             "scanner_timing"
         );
+
+        scenery_options::attach_archive_options(&archive_files, &mut detected);
 
         // Recursively scan nested archives if depth allows
         if ctx.can_recurse() && !nested_archives.is_empty() {
@@ -782,6 +786,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut sound_packs = AircraftSoundPacks::default();
+        let mut archive_files = Vec::new();
         let mut marker_files: Vec<(usize, String, &str)> = Vec::new(); // (index, path, marker_type)
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
         let mut has_encrypted = false;
@@ -795,6 +800,7 @@ impl Scanner {
             let file_path = file.name().replace('\\', "/");
             if !file.is_dir() {
                 sound_packs.record_file(&file_path);
+                archive_files.push(file_path.clone());
             }
 
             // Skip ignored paths
@@ -962,6 +968,7 @@ impl Scanner {
             }
         }
 
+        scenery_options::attach_archive_options(&archive_files, &mut detected);
         Ok(detected)
     }
 
@@ -1028,6 +1035,7 @@ impl Scanner {
         let mut plugin_dirs: HashSet<String> = HashSet::new();
         let mut aircraft_dirs: HashSet<String> = HashSet::new();
         let mut sound_packs = AircraftSoundPacks::default();
+        let mut archive_files = Vec::new();
         let mut marker_files: Vec<(usize, String, bool, &str)> = Vec::new(); // (index, path, encrypted, marker_type)
         let mut has_encrypted = false;
         let mut detected_livery_roots: HashSet<String> = HashSet::new();
@@ -1065,6 +1073,7 @@ impl Scanner {
             let file_path = file.name().replace('\\', "/");
             if !file.is_dir() {
                 sound_packs.record_file(&file_path);
+                archive_files.push(file_path.clone());
             }
 
             // Skip ignored paths
@@ -1283,6 +1292,7 @@ impl Scanner {
             }
         }
 
+        scenery_options::attach_archive_options(&archive_files, &mut detected);
         Ok(detected)
     }
 }

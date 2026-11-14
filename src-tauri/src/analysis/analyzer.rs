@@ -1196,6 +1196,7 @@ impl Analyzer {
             flywithlua_installed,
             is_xlua_runtime: item.is_xlua_runtime,
             companion_paths: item.companion_paths,
+            scenery_options: item.scenery_options,
             patch_files: Vec::new(),
             patch_plan_id: None,
             patch_backup: false,
@@ -1533,6 +1534,7 @@ mod tests {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
         }
     }
 
@@ -1593,6 +1595,7 @@ mod tests {
             flywithlua_installed: true,
             is_xlua_runtime: false,
             companion_paths: Vec::new(),
+            scenery_options: Vec::new(),
             patch_files: Vec::new(),
             patch_plan_id: None,
             patch_backup: false,
@@ -1686,6 +1689,7 @@ mod tests {
             version_info: None,
             is_xlua_runtime: false,
             companion_paths: vec!["assets".to_string()],
+            scenery_options: Vec::new(),
         };
 
         let staged = analyzer.resolve_stable_source_path(&item).unwrap();

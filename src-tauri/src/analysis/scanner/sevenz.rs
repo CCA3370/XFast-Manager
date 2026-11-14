@@ -261,6 +261,15 @@ impl Scanner {
             "scanner_timing"
         );
 
+        scenery_options::attach_archive_options(
+            archive
+                .files
+                .iter()
+                .filter(|entry| !entry.is_directory() && !entry.is_anti_item())
+                .map(|entry| entry.name()),
+            &mut detected,
+        );
+
         let version_start = std::time::Instant::now();
         let archive_name_hint = ctx
             .parent_chain
@@ -858,6 +867,14 @@ impl Scanner {
             }
         }
 
+        scenery_options::attach_archive_options(
+            archive
+                .files
+                .iter()
+                .filter(|entry| !entry.is_directory() && !entry.is_anti_item())
+                .map(|entry| entry.name()),
+            &mut detected,
+        );
         Ok(detected)
     }
 

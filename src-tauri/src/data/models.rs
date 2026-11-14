@@ -191,6 +191,9 @@ pub struct InstallTask {
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub companion_paths: Vec<String>,
+    /// Optional replacements bundled alongside a scenery's default files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenery_options: Vec<SceneryInstallOption>,
     /// Files selected by the confirmed patch plan, relative to the archive and aircraft roots.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patch_files: Vec<PatchFileWrite>,
@@ -205,6 +208,15 @@ pub struct InstallTask {
     /// Selected aircraft boundary, rechecked before a patch writes any files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch_aircraft_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneryInstallOption {
+    pub root: String,
+    pub name: String,
+    /// Paths relative to both the option root and the base scenery.
+    pub files: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,6 +271,7 @@ pub struct DetectedItem {
     pub is_xlua_runtime: bool,
     /// For LuaScript: companion files/folders referenced by SCRIPT_DIRECTORY
     pub companion_paths: Vec<String>,
+    pub scenery_options: Vec<SceneryInstallOption>,
 }
 
 /// Installation progress event sent to frontend
