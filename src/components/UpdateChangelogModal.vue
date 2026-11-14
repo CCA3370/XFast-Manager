@@ -122,9 +122,10 @@ let closeTimer: ReturnType<typeof setTimeout> | null = null
 
 function onMarkdownClick(e: MouseEvent) {
   const target = e.target as HTMLElement | null
-  if (target && target.tagName === 'IMG') {
-    openZoom(target as HTMLImageElement)
-  }
+  if (!target) return
+  const figure = target.closest('.changelog-figure')
+  const img = figure ? (figure.querySelector('img') as HTMLImageElement | null) : null
+  if (img) openZoom(img)
 }
 
 function computeTarget(thumb: DOMRect) {
