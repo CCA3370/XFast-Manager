@@ -1,7 +1,6 @@
-use std::fs::{self, File, Metadata};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::fs::{File, Metadata};
+use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::{ensure, Context, Result};
@@ -9,11 +8,15 @@ use serde::{Deserialize, Serialize};
 use zip::ZipArchive;
 
 use crate::archive_input::{prepare_archive_for_read, ArchiveFormat, PreparedArchive};
+use crate::archive_reader::ArchiveFiles;
+pub(crate) use crate::archive_reader::ArchiveReader as ZipReader;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSnapshot {
     pub size: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) volumes: Vec<FileSnapshot>,
     modified: Option<SystemTime>,
     created: Option<SystemTime>,
     #[cfg(unix)]
@@ -31,6 +34,7 @@ impl FileSnapshot {
 
         Self {
             size: metadata.len(),
+            volumes: Vec::new(),
             modified: metadata.modified().ok(),
             created: metadata.created().ok(),
             #[cfg(unix)]
@@ -42,7 +46,7 @@ impl FileSnapshot {
         }
     }
 
-    fn from_file(file: &File) -> io::Result<Self> {
+    pub(crate) fn from_file(file: &File) -> io::Result<Self> {
         let snapshot = Self::from_metadata(&file.metadata()?);
         #[cfg(windows)]
         {
@@ -72,38 +76,6 @@ impl FileSnapshot {
     }
 }
 
-/// Each ZIP reader has an independent cursor over the same open file. Cloning
-/// a ZipArchive with this reader shares the parsed central directory as well.
-#[derive(Clone)]
-pub(crate) struct ZipReader {
-    file: Arc<File>,
-    len: u64,
-    position: u64,
-}
-
-impl Read for ZipReader {
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        #[cfg(unix)]
-        let read = std::os::unix::fs::FileExt::read_at(&*self.file, buffer, self.position)?;
-        #[cfg(windows)]
-        let read = std::os::windows::fs::FileExt::seek_read(&*self.file, buffer, self.position)?;
-        self.position += read as u64;
-        Ok(read)
-    }
-}
-
-impl Seek for ZipReader {
-    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
-        self.position = match position {
-            SeekFrom::Start(offset) => Some(offset),
-            SeekFrom::End(offset) => self.len.checked_add_signed(offset),
-            SeekFrom::Current(offset) => self.position.checked_add_signed(offset),
-        }
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid ZIP seek"))?;
-        Ok(self.position)
-    }
-}
-
 pub(crate) struct ZipEntry {
     pub index: usize,
     pub name: String,
@@ -127,29 +99,22 @@ pub(crate) struct ZipPackage {
     archive: ZipArchive<ZipReader>,
     pub entries: Vec<ZipEntry>,
     snapshot: FileSnapshot,
-    prepared: PreparedArchive,
+    files: ArchiveFiles,
+    _prepared: PreparedArchive,
 }
 
 impl ZipPackage {
     pub fn open(path: &Path, expected: Option<&FileSnapshot>) -> Result<Self> {
         let prepared = prepare_archive_for_read(path, ArchiveFormat::Zip)?;
-        let file = File::open(prepared.read_path()).with_context(|| {
-            if expected.is_some() {
-                Self::changed_message(path)
-            } else {
-                format!("Failed to open ZIP package: {}", path.display())
-            }
-        })?;
-        let snapshot = FileSnapshot::from_file(&file)?;
+        let files = prepared
+            .files()
+            .with_context(|| Self::changed_message(path))?;
+        let snapshot = files.revision();
         ensure!(
             expected.is_none_or(|expected| !prepared.is_temporary() && expected == &snapshot),
             Self::changed_message(path)
         );
-        let mut archive = ZipArchive::new(ZipReader {
-            file: Arc::new(file),
-            len: snapshot.size,
-            position: 0,
-        })?;
+        let mut archive = ZipArchive::new(files.reader())?;
         let mut entries = Vec::with_capacity(archive.len());
         for index in 0..archive.len() {
             let file = archive
@@ -172,7 +137,8 @@ impl ZipPackage {
             archive,
             entries,
             snapshot,
-            prepared,
+            files,
+            _prepared: prepared,
         })
     }
 
@@ -180,14 +146,14 @@ impl ZipPackage {
         self.archive.clone()
     }
 
-    pub fn read_path(&self) -> &Path {
-        self.prepared.read_path()
+    pub fn input(&self) -> ZipReader {
+        self.files.reader()
     }
 
     pub fn summary(&self) -> ZipSummary {
         ZipSummary {
-            source: (!self.prepared.is_temporary()).then(|| self.snapshot.clone()),
-            compressed_size: self.snapshot.size,
+            source: (!self._prepared.is_temporary()).then(|| self.snapshot.clone()),
+            compressed_size: self.files.len(),
             uncompressed_size: self
                 .entries
                 .iter()
@@ -198,20 +164,16 @@ impl ZipPackage {
     pub fn check_revision(&self, expected: Option<&FileSnapshot>) -> Result<()> {
         ensure!(
             expected
-                .is_none_or(|expected| !self.prepared.is_temporary() && expected == &self.snapshot),
+                .is_none_or(|expected| !self._prepared.is_temporary() && expected == &self.snapshot),
             Self::changed_message(&self.source_path)
         );
         Ok(())
     }
 
     pub fn check_source(&self) -> Result<()> {
-        let path = self.read_path();
-        ensure!(
-            fs::File::open(path)
-                .and_then(|file| FileSnapshot::from_file(&file))
-                .is_ok_and(|snapshot| snapshot == self.snapshot),
-            Self::changed_message(&self.source_path)
-        );
+        self.files
+            .check_source()
+            .with_context(|| Self::changed_message(&self.source_path))?;
         Ok(())
     }
 
@@ -226,7 +188,8 @@ impl ZipPackage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::fs;
+    use std::io::{Read, Write};
     use zip::write::SimpleFileOptions;
 
     pub(crate) fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {

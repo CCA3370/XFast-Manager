@@ -6,6 +6,8 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
+use crate::archive_reader::{ArchiveFiles, ArchiveReader};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveFormat {
     Zip,
@@ -33,7 +35,8 @@ impl ArchiveFormat {
 
 pub struct PreparedArchive {
     read_path: PathBuf,
-    _temp_file: Option<NamedTempFile>,
+    temp_file: Option<NamedTempFile>,
+    parts: Vec<PathBuf>,
 }
 
 impl PreparedArchive {
@@ -42,7 +45,40 @@ impl PreparedArchive {
     }
 
     pub fn is_temporary(&self) -> bool {
-        self._temp_file.is_some()
+        self.temp_file.is_some()
+    }
+    pub(crate) fn is_split(&self) -> bool {
+        !self.parts.is_empty()
+    }
+
+    pub(crate) fn files(&self) -> Result<ArchiveFiles> {
+        if self.is_temporary() || self.parts.is_empty() {
+            Ok(ArchiveFiles::open([self.read_path.clone()])?)
+        } else {
+            Ok(ArchiveFiles::open(self.parts.iter().cloned())?)
+        }
+    }
+
+    pub(crate) fn reader(&self) -> Result<ArchiveReader> {
+        Ok(self.files()?.reader())
+    }
+
+    pub(crate) fn sevenz_metadata(
+        &self,
+        password: &sevenz_rust2::Password,
+    ) -> Result<sevenz_rust2::Archive> {
+        let mut reader = std::io::BufReader::with_capacity(256 * 1024, self.reader()?);
+        Ok(sevenz_rust2::Archive::read(&mut reader, password)?)
+    }
+
+    pub(crate) fn sevenz_reader(
+        &self,
+        password: sevenz_rust2::Password,
+    ) -> Result<sevenz_rust2::ArchiveReader<std::io::BufReader<ArchiveReader>>> {
+        let input = std::io::BufReader::with_capacity(256 * 1024, self.reader()?);
+        let mut reader = sevenz_rust2::ArchiveReader::new(input, password)?;
+        reader.set_thread_count(1);
+        Ok(reader)
     }
 }
 
@@ -681,7 +717,8 @@ fn concat_parts_to_temp(parts: &[PathBuf], format: ArchiveFormat) -> Result<Prep
 
     Ok(PreparedArchive {
         read_path: temp_file.path().to_path_buf(),
-        _temp_file: Some(temp_file),
+        temp_file: Some(temp_file),
+        parts: parts.to_vec(),
     })
 }
 
@@ -703,7 +740,8 @@ pub fn prepare_archive_for_read(path: &Path, format: ArchiveFormat) -> Result<Pr
                 if let Some(first) = parts.first() {
                     return Ok(PreparedArchive {
                         read_path: first.clone(),
-                        _temp_file: None,
+                        temp_file: None,
+                        parts: Vec::new(),
                     });
                 }
             }
@@ -711,19 +749,21 @@ pub fn prepare_archive_for_read(path: &Path, format: ArchiveFormat) -> Result<Pr
         }
     };
 
-    if let Some(parts) = parts {
-        let lower = normalized.to_string_lossy().to_ascii_lowercase();
-        let needs_concat = parts.len() > 1
-            || (format == ArchiveFormat::Zip && !lower.ends_with(".zip"))
-            || (format == ArchiveFormat::SevenZ && !lower.ends_with(".7z"));
-        if needs_concat {
-            return concat_parts_to_temp(&parts, format);
-        }
+    let parts = parts.unwrap_or_default();
+    let is_spanned_zip = format == ArchiveFormat::Zip
+        && parts.first().is_some_and(|part| {
+            part.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| split_zip_z_volume(name).is_some())
+        });
+    if is_spanned_zip {
+        return concat_parts_to_temp(&parts, format);
     }
 
     Ok(PreparedArchive {
-        read_path: normalized,
-        _temp_file: None,
+        read_path: parts.first().cloned().unwrap_or(normalized),
+        temp_file: None,
+        parts,
     })
 }
 
@@ -774,8 +814,9 @@ mod tests {
         let prepared =
             prepare_archive_for_read(&part2, ArchiveFormat::SevenZ).expect("prepare split 7z");
         let mut merged = Vec::new();
-        fs::File::open(prepared.read_path())
-            .expect("open merged archive")
+        prepared
+            .reader()
+            .expect("open split archive")
             .read_to_end(&mut merged)
             .expect("read merged archive");
 

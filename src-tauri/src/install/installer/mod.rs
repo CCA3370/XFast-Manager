@@ -2566,7 +2566,7 @@ impl Installer {
                     archive,
                     crate::archive_input::ArchiveFormat::SevenZ,
                 )?;
-                let archive_meta = sevenz_rust2::Archive::open(prepared.read_path())?;
+                let archive_meta = prepared.sevenz_metadata(&sevenz_rust2::Password::empty())?;
                 for entry in &archive_meta.files {
                     if entry.is_directory() || !entry.has_stream() {
                         continue;
@@ -2648,7 +2648,7 @@ impl Installer {
         let read_archive = prepared.read_path();
 
         // For full-archive queries, use cache when available.
-        if internal_root.is_none() {
+        if internal_root.is_none() && !prepared.is_split() {
             if let Some(cached) = crate::cache::get_cached_metadata(read_archive) {
                 return Ok(cached.uncompressed_size);
             }
@@ -2663,13 +2663,12 @@ impl Installer {
             }
         });
 
-        let archive_meta = match sevenz_rust2::Archive::open(read_archive) {
+        let archive_meta = match prepared.sevenz_metadata(&sevenz_rust2::Password::empty()) {
             Ok(a) => a,
             Err(_) => {
                 // Fallback for corrupted/unsupported 7z metadata:
                 // keep previous conservative behavior.
-                let meta = fs::metadata(read_archive)?;
-                return Ok(meta.len() * 3);
+                return Ok(prepared.files()?.len().saturating_mul(3));
             }
         };
 
@@ -2693,7 +2692,9 @@ impl Installer {
         }
 
         if internal_root.is_none() && total > 0 {
-            crate::cache::cache_metadata(read_archive, total, file_count);
+            if !prepared.is_split() {
+                crate::cache::cache_metadata(read_archive, total, file_count);
+            }
         }
 
         Ok(total)

@@ -412,14 +412,13 @@ impl Scanner {
             archive_path,
             crate::archive_input::ArchiveFormat::SevenZ,
         )?;
-        let read_archive_path = prepared_archive.read_path();
 
         let open_start = std::time::Instant::now();
         let pwd = match password {
             Some(pwd) => sevenz_rust2::Password::from(pwd),
             None => sevenz_rust2::Password::empty(),
         };
-        let reader = match sevenz_rust2::ArchiveReader::open(read_archive_path, pwd) {
+        let reader = match prepared_archive.sevenz_reader(pwd) {
             Ok(reader) => reader,
             Err(e) => {
                 let err_str = format!("{:?}", e);
@@ -481,7 +480,6 @@ impl Scanner {
             parent_path,
             crate::archive_input::ArchiveFormat::SevenZ,
         )?;
-        let read_parent_path = prepared_parent.read_path().to_path_buf();
 
         let read_nested_entry = |entry_name: &str| -> Result<Vec<u8>> {
             let pwd = match parent_password {
@@ -489,25 +487,24 @@ impl Scanner {
                 None => sevenz_rust2::Password::empty(),
             };
 
-            let mut reader =
-                sevenz_rust2::ArchiveReader::open(&read_parent_path, pwd).map_err(|e| {
-                    let err_str = format!("{:?}", e);
-                    if err_str.contains("password")
-                        || err_str.contains("Password")
-                        || err_str.contains("encrypted")
-                        || err_str.contains("WrongPassword")
-                    {
-                        if parent_password.is_some() {
-                            anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
-                        } else {
-                            anyhow::anyhow!(PasswordRequiredError {
-                                archive_path: parent_path.to_string_lossy().to_string(),
-                            })
-                        }
+            let mut reader = prepared_parent.sevenz_reader(pwd).map_err(|e| {
+                let err_str = format!("{:?}", e);
+                if err_str.contains("password")
+                    || err_str.contains("Password")
+                    || err_str.contains("encrypted")
+                    || err_str.contains("WrongPassword")
+                {
+                    if parent_password.is_some() {
+                        anyhow::anyhow!("Wrong password for archive: {}", parent_path.display())
                     } else {
-                        anyhow::anyhow!("Failed to open 7z archive: {}", e)
+                        anyhow::anyhow!(PasswordRequiredError {
+                            archive_path: parent_path.to_string_lossy().to_string(),
+                        })
                     }
-                })?;
+                } else {
+                    anyhow::anyhow!("Failed to open 7z archive: {}", e)
+                }
+            })?;
 
             reader.read_file(entry_name).map_err(|e| {
                 let err_str = format!("{:?}", e);
@@ -636,10 +633,9 @@ impl Scanner {
             archive_path,
             crate::archive_input::ArchiveFormat::SevenZ,
         )?;
-        let read_archive_path = prepared_archive.read_path();
 
         // Open archive to read file list (fast, no decompression)
-        let archive = match sevenz_rust2::Archive::open(read_archive_path) {
+        let archive = match prepared_archive.sevenz_metadata(&sevenz_rust2::Password::empty()) {
             Ok(a) => a,
             Err(e) => {
                 let err_str = format!("{:?}", e);
@@ -682,13 +678,11 @@ impl Scanner {
                 .find(|f| !f.is_directory() && f.has_stream())
                 .map(|f| f.name().to_string())
             {
-                let mut reader = sevenz_rust2::ArchiveReader::open(
-                    read_archive_path,
-                    sevenz_rust2::Password::from(password.unwrap_or_default()),
-                )
-                .map_err(|_| {
-                    anyhow::anyhow!("Wrong password for archive: {}", archive_path.display())
-                })?;
+                let mut reader = prepared_archive
+                    .sevenz_reader(sevenz_rust2::Password::from(password.unwrap_or_default()))
+                    .map_err(|_| {
+                        anyhow::anyhow!("Wrong password for archive: {}", archive_path.display())
+                    })?;
 
                 if let Err(e) = reader.read_file(&first_file) {
                     let err_str = format!("{:?}", e);
@@ -885,13 +879,12 @@ impl Scanner {
         file_path: &str,
         password: Option<&str>,
     ) -> Result<String> {
-        use sevenz_rust2::{ArchiveReader, Password};
+        use sevenz_rust2::Password;
 
         let prepared_archive = crate::archive_input::prepare_archive_for_read(
             archive_path,
             crate::archive_input::ArchiveFormat::SevenZ,
         )?;
-        let read_archive_path = prepared_archive.read_path().to_path_buf();
 
         // Sanitize target path to avoid traversal-like patterns
         let safe_path = crate::installer::sanitize_path(Path::new(file_path))
@@ -900,12 +893,13 @@ impl Scanner {
         let fallback_normalized = file_path.replace('\\', "/");
 
         // Helper: open reader with optional password
-        let open_reader = || -> Result<ArchiveReader<std::fs::File>> {
+        let open_reader = || {
             let pwd = match password {
                 Some(pwd) => Password::from(pwd),
                 None => Password::empty(),
             };
-            ArchiveReader::open(&read_archive_path, pwd)
+            prepared_archive
+                .sevenz_reader(pwd)
                 .map_err(|e| anyhow::anyhow!("Failed to open 7z archive: {}", e))
         };
 

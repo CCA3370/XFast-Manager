@@ -606,7 +606,7 @@ impl Installer {
         match format {
             crate::archive_input::ArchiveFormat::Zip => unreachable!(),
             crate::archive_input::ArchiveFormat::SevenZ => self.re_extract_from_7z(
-                read_source,
+                &prepared_source,
                 target,
                 relative_path,
                 internal_root,
@@ -682,7 +682,7 @@ impl Installer {
     /// to a temp directory and then copy the specific file. This is inefficient but necessary.
     fn re_extract_from_7z(
         &self,
-        archive_path: &Path,
+        archive_path: &crate::archive_input::PreparedArchive,
         target: &Path,
         relative_path: &str,
         internal_root: Option<&str>,
@@ -701,9 +701,9 @@ impl Installer {
 
         // Extract entire archive to temp
         if let Some(pwd) = password {
-            let mut reader =
-                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::from(pwd))
-                    .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
+            let mut reader = archive_path
+                .sevenz_reader(sevenz_rust2::Password::from(pwd))
+                .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?;
             reader
                 .for_each_entries(|entry, reader| {
                     let entry_path = match sanitize_path(Path::new(entry.name())) {
@@ -732,9 +732,9 @@ impl Installer {
                 })
                 .map_err(|e| anyhow::anyhow!("7z extraction failed: {}", e))?;
         } else {
-            let mut reader =
-                sevenz_rust2::ArchiveReader::open(archive_path, sevenz_rust2::Password::empty())
-                    .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
+            let mut reader = archive_path
+                .sevenz_reader(sevenz_rust2::Password::empty())
+                .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?;
             reader
                 .for_each_entries(|entry, reader| {
                     let entry_path = match sanitize_path(Path::new(entry.name())) {

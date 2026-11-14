@@ -128,7 +128,7 @@ struct NestedZipScanParams<'a> {
     file_index: usize,
     nested_path: &'a str,
     parent_path: &'a Path,
-    read_path: &'a Path,
+    input: ZipReader,
     ctx: &'a mut ScanContext,
     parent_password: Option<&'a [u8]>,
     is_encrypted: bool,
@@ -2365,7 +2365,7 @@ impl Scanner {
         use std::io::Read;
 
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip)?;
-        let file = fs::File::open(prepared.read_path())?;
+        let file = prepared.reader()?;
         let mut archive = ::zip::ZipArchive::new(file)?;
 
         let mut zip_file = archive.by_name(file_path)?;
@@ -2378,7 +2378,7 @@ impl Scanner {
     /// List all entries in a ZIP archive
     fn list_zip_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip)?;
-        let file = fs::File::open(prepared.read_path())?;
+        let file = prepared.reader()?;
         let archive = ::zip::ZipArchive::new(file)?;
 
         let entries: Vec<String> = (0..archive.len())
@@ -2401,7 +2401,7 @@ impl Scanner {
     /// List all entries in a 7z archive
     fn list_7z_entries(&self, archive_path: &Path) -> Result<Vec<String>> {
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ)?;
-        let archive = sevenz_rust2::Archive::open(prepared.read_path())?;
+        let archive = prepared.sevenz_metadata(&sevenz_rust2::Password::empty())?;
         Ok(archive
             .files
             .iter()
@@ -2450,7 +2450,7 @@ impl Scanner {
         use std::io::Read;
 
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::Zip).ok()?;
-        let file = fs::File::open(prepared.read_path()).ok()?;
+        let file = prepared.reader().ok()?;
         let mut archive = ::zip::ZipArchive::new(file).ok()?;
 
         let mut updater_cfg_content: Option<String> = None;
@@ -2551,10 +2551,10 @@ impl Scanner {
         archive_path: &Path,
         internal_root: Option<&str>,
     ) -> Option<(Option<String>, Vec<String>)> {
-        use sevenz_rust2::{ArchiveReader, Password};
+        use sevenz_rust2::Password;
 
         let prepared = prepare_archive_for_read(archive_path, ArchiveFormat::SevenZ).ok()?;
-        let mut reader = ArchiveReader::open(prepared.read_path(), Password::empty()).ok()?;
+        let mut reader = prepared.sevenz_reader(Password::empty()).ok()?;
         let archive = reader.archive().clone();
         self.read_version_files_from_7z_reader(&archive, &mut reader, internal_root)
     }

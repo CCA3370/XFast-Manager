@@ -259,7 +259,7 @@ impl Installer {
             crate::archive_input::ArchiveFormat::Zip => unreachable!(),
             crate::archive_input::ArchiveFormat::SevenZ => {
                 let primary_result = self.extract_7z_with_progress(
-                    read_archive,
+                    &prepared_archive,
                     target,
                     internal_root,
                     ctx,
@@ -415,7 +415,7 @@ impl Installer {
     /// Extracts directly to target directory with inline SHA256 hash computation
     fn extract_7z_with_progress(
         &self,
-        archive: &Path,
+        archive: &crate::archive_input::PreparedArchive,
         target: &Path,
         internal_root: Option<&str>,
         ctx: &ProgressContext,
@@ -439,10 +439,12 @@ impl Installer {
 
         // Open archive with or without password
         let mut reader = if let Some(pwd) = password {
-            sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::from(pwd))
+            archive
+                .sevenz_reader(sevenz_rust2::Password::from(pwd))
                 .map_err(|e| anyhow::anyhow!("Failed to open 7z with password: {}", e))?
         } else {
-            sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::empty())
+            archive
+                .sevenz_reader(sevenz_rust2::Password::empty())
                 .map_err(|e| anyhow::anyhow!("Failed to open 7z: {}", e))?
         };
 

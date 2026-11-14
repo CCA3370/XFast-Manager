@@ -3,6 +3,8 @@
 mod app_dirs;
 #[path = "core/archive_input.rs"]
 mod archive_input;
+#[path = "core/archive_reader.rs"]
+mod archive_reader;
 #[path = "core/cache.rs"]
 mod cache;
 #[path = "core/error.rs"]

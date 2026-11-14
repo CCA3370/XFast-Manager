@@ -1,61 +1,5 @@
 use super::*;
 
-struct BoundedReader<R: std::io::Read + std::io::Seek> {
-    inner: R,
-    start: u64,
-    len: u64,
-    pos: u64,
-}
-
-impl<R: std::io::Read + std::io::Seek> BoundedReader<R> {
-    fn new(mut inner: R, start: u64, len: u64) -> std::io::Result<Self> {
-        inner.seek(std::io::SeekFrom::Start(start))?;
-        Ok(Self {
-            inner,
-            start,
-            len,
-            pos: 0,
-        })
-    }
-}
-
-impl<R: std::io::Read + std::io::Seek> std::io::Read for BoundedReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let remaining = self.len.saturating_sub(self.pos);
-        if remaining == 0 {
-            return Ok(0);
-        }
-
-        let max_len = remaining.min(buf.len() as u64) as usize;
-        let bytes_read = self.inner.read(&mut buf[..max_len])?;
-        self.pos += bytes_read as u64;
-        Ok(bytes_read)
-    }
-}
-
-impl<R: std::io::Read + std::io::Seek> std::io::Seek for BoundedReader<R> {
-    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
-        let next_pos = match pos {
-            std::io::SeekFrom::Start(offset) => offset as i128,
-            std::io::SeekFrom::End(offset) => self.len as i128 + offset as i128,
-            std::io::SeekFrom::Current(offset) => self.pos as i128 + offset as i128,
-        };
-
-        if !(0..=self.len as i128).contains(&next_pos) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "seek out of bounds for bounded reader",
-            ));
-        }
-
-        let next_pos = next_pos as u64;
-        self.inner
-            .seek(std::io::SeekFrom::Start(self.start + next_pos))?;
-        self.pos = next_pos;
-        Ok(self.pos)
-    }
-}
-
 fn read_zip_entry_text<R: std::io::Read + std::io::Seek>(
     archive: &mut ::zip::ZipArchive<R>,
     index: usize,
@@ -496,7 +440,7 @@ impl Scanner {
                     file_index: index,
                     nested_path: nested_path.as_str(),
                     parent_path: zip_path,
-                    read_path: package.read_path(),
+                    input: package.input(),
                     ctx,
                     parent_password: password_bytes,
                     is_encrypted,
@@ -601,7 +545,7 @@ impl Scanner {
             file_index,
             nested_path,
             parent_path,
-            read_path,
+            input,
             ctx,
             parent_password,
             is_encrypted,
@@ -687,8 +631,7 @@ impl Scanner {
                 );
 
                 let scan_result = (|| -> Result<Vec<DetectedItem>> {
-                    let outer_file = fs::File::open(read_path)?;
-                    let bounded = BoundedReader::new(outer_file, data_start, compressed_size)?;
+                    let bounded = input.range(data_start, compressed_size)?;
                     let buffered = std::io::BufReader::with_capacity(1024 * 1024, bounded);
                     let password = match nested_info.password.as_deref() {
                         Some(pwd) => sevenz_rust2::Password::from(pwd),
@@ -1066,8 +1009,8 @@ impl Scanner {
             zip_path,
             crate::archive_input::ArchiveFormat::Zip,
         )?;
-        let file = fs::File::open(prepared_archive.read_path())?;
-        let mut archive: ZipArchive<fs::File> = ZipArchive::new(file)?;
+        let file = prepared_archive.reader()?;
+        let mut archive = ZipArchive::new(file)?;
 
         // Check for empty archive
         if archive.is_empty() {
@@ -1342,34 +1285,5 @@ impl Scanner {
 
         scenery_options::attach_archive_options(&archive_files, &mut detected);
         Ok(detected)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::BoundedReader;
-    use std::io::{Cursor, Read, Seek, SeekFrom};
-
-    #[test]
-    fn bounded_reader_reads_only_selected_range() {
-        let source = Cursor::new(b"0123456789".to_vec());
-        let mut reader = BoundedReader::new(source, 2, 4).expect("bounded reader");
-        let mut buf = String::new();
-
-        reader.read_to_string(&mut buf).expect("read range");
-
-        assert_eq!(buf, "2345");
-    }
-
-    #[test]
-    fn bounded_reader_seeks_within_range() {
-        let source = Cursor::new(b"abcdefghij".to_vec());
-        let mut reader = BoundedReader::new(source, 3, 5).expect("bounded reader");
-        let mut buf = [0u8; 2];
-
-        reader.seek(SeekFrom::Start(2)).expect("seek");
-        reader.read_exact(&mut buf).expect("read after seek");
-
-        assert_eq!(&buf, b"fg");
     }
 }
