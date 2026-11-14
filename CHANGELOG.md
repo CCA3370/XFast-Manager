@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.1] - Unreleased
 
-Release notes pending.
+### Added
+
+- **Scenery Installation Options** - Choose a scenery variant before installing packages that include alternatives, or keep the package's default.
+
+### Changed
+
+- **Installation Progress** - See when the app is preparing an installation, before files start copying.
+- **Faster Installation** - Large ZIP archives and add-on folders take less time to prepare and install.
+
+### Fixed
+
+- **ZIP Installation Verification** - The app now checks files in their final locations, avoiding false verification failures when the installed folder layout differs from the archive.
+- **FlyWithLua Script Bundles** - Bundles with nested folders are now recognized and verified correctly.
 
 ## [1.3.0] - 2026-11-09
 
