@@ -266,7 +266,10 @@ impl Installer {
 
     /// Build the list of Lua bundle entries to install:
     /// the script itself plus detected companion paths.
-    fn get_lua_bundle_entries(task: &InstallTask, target: &Path) -> Result<Vec<PathBuf>> {
+    pub(super) fn get_lua_bundle_entries(
+        task: &InstallTask,
+        target: &Path,
+    ) -> Result<Vec<PathBuf>> {
         use std::collections::HashSet;
 
         let script_name = target
@@ -315,42 +318,6 @@ impl Installer {
     }
 
     /// Copy selected Lua bundle entries from a source directory to Scripts with progress tracking.
-    fn copy_lua_bundle_from_directory_with_progress(
-        &self,
-        source_dir: &Path,
-        scripts_dir: &Path,
-        bundle_entries: &[PathBuf],
-        ctx: &ProgressContext,
-        should_overwrite: bool,
-    ) -> Result<()> {
-        for entry in bundle_entries {
-            let source_path = source_dir.join(entry);
-            if !source_path.exists() {
-                logger::log_info(
-                    &format!(
-                        "Lua bundle entry not found in source directory, skipping: {:?}",
-                        source_path
-                    ),
-                    Some("installer"),
-                );
-                continue;
-            }
-
-            let target_path = scripts_dir.join(entry);
-            if !should_overwrite && target_path.exists() {
-                self.remove_existing_target_path(&target_path)?;
-            }
-
-            if source_path.is_dir() {
-                self.copy_directory_with_progress(&source_path, &target_path, ctx)?;
-            } else {
-                self.copy_single_file_with_progress(&source_path, &target_path, ctx)?;
-            }
-        }
-
-        Ok(())
-    }
-
     /// Copy selected Lua bundle entries from a staging directory to Scripts.
     /// This phase intentionally avoids progress updates because archive extraction
     /// has already reported byte progress.
@@ -597,27 +564,19 @@ impl Installer {
             return Ok(());
         }
 
-        let source_dir = if source.is_file() {
-            source
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("Lua source file has no parent directory"))?
-        } else if source.is_dir() {
-            source
-        } else {
-            anyhow::bail!(
-                "Source path is not a regular file or directory: {}",
-                source.display()
-            );
-        };
-        let hashes = Self::prepare_lua_bundle(task, source_dir, &bundle_entries)?;
-        self.copy_lua_bundle_from_directory_with_progress(
-            source_dir,
-            scripts_dir,
-            &bundle_entries,
-            ctx,
-            task.should_overwrite,
-        )?;
-        task.file_hashes = hashes;
+        let plan = ctx
+            .directory_plan
+            .as_ref()
+            .context("Missing Lua file list")?;
+        if !task.should_overwrite {
+            for entry in &bundle_entries {
+                if plan.base.source.join(entry).exists() {
+                    self.remove_existing_target_path(&scripts_dir.join(entry))?;
+                }
+            }
+        }
+        task.file_hashes =
+            Some(self.copy_planned_directory(&plan.base, scripts_dir, ctx, plan.verify)?);
         Ok(())
     }
 
@@ -743,7 +702,13 @@ impl Installer {
                     "installer_timing"
                 );
                 // Clean install mode: delete old folder first
-                self.handle_clean_install_with_progress(task, source, target, ctx, password)?;
+                let restored =
+                    self.handle_clean_install_with_progress(task, source, target, ctx, password)?;
+                if let Some(hashes) = &mut task.file_hashes {
+                    for name in restored {
+                        hashes.remove(&name);
+                    }
+                }
             } else {
                 crate::log_debug!(
                     "[TIMING] Direct overwrite mode for regular archive",
@@ -766,7 +731,8 @@ impl Installer {
                 if let Some(hashes) = &task.file_hashes {
                     if !hashes.is_empty() {
                         ctx.inline_verified.store(true, Ordering::SeqCst);
-                        ctx.inline_verified_count.store(hashes.len() as u64, Ordering::SeqCst);
+                        ctx.inline_verified_count
+                            .store(hashes.len() as u64, Ordering::SeqCst);
                     }
                 }
             }
@@ -784,7 +750,12 @@ impl Installer {
         ctx: &ProgressContext,
         password: Option<&str>,
     ) -> Result<()> {
-        if source.is_dir() {
+        if ctx
+            .directory_plan
+            .as_ref()
+            .is_some_and(|plan| plan.base.source == source)
+            || source.is_dir()
+        {
             self.copy_directory_with_progress(source, target, ctx)?;
         } else if source.is_file() {
             if ctx
@@ -1398,7 +1369,7 @@ impl Installer {
         target: &Path,
         ctx: &ProgressContext,
         password: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
         match task.addon_type {
             AddonType::Aircraft => {
                 // For Aircraft: backup liveries and prefs, delete, install, restore
@@ -1414,7 +1385,7 @@ impl Installer {
                         config_patterns: &task.config_file_patterns,
                     },
                 };
-                self.handle_aircraft_clean_install_with_progress(params)?;
+                return self.handle_aircraft_clean_install_with_progress(params);
             }
             AddonType::Navdata => {
                 // For Navdata: backup matching old files before installing new ones
@@ -1441,14 +1412,14 @@ impl Installer {
                 )?;
             }
         }
-        Ok(())
+        Ok(Vec::new())
     }
 
     /// Aircraft clean install with progress tracking
     fn handle_aircraft_clean_install_with_progress(
         &self,
         params: AircraftProgressInstallParams<'_>,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
         let AircraftProgressInstallParams {
             source,
             target,
@@ -1516,13 +1487,16 @@ impl Installer {
 
         // Step 6: Cleanup temp backup directory ONLY if restore was verified
         if restore_verified {
-            if let Some(backup_data) = backup {
+            if let Some(backup_data) = &backup {
                 let _ = fs::remove_dir_all(&backup_data.temp_dir);
             }
         }
 
         install_result?;
-        Ok(())
+        Ok(backup
+            .into_iter()
+            .flat_map(|backup| backup.pref_files.into_iter().map(|(name, _)| name))
+            .collect())
     }
 
     /// Backup aircraft liveries folder and config files
@@ -1768,6 +1742,7 @@ impl Installer {
                 let size = fs::metadata(backup_path)?.len();
                 fs::copy(backup_path, &target_path)
                     .context(format!("Failed to restore pref file: {}", filename))?;
+                ctx.inline_hashes.lock().unwrap().remove(filename);
 
                 // Update progress for each config file with filename for real-time display
                 ctx.add_bytes(size);
@@ -2329,7 +2304,19 @@ impl Installer {
                 .parent()
                 .context("Missing staging parent")?;
             let replacements = tempfile::tempdir_in(stage_parent)?;
-            if source.is_dir() {
+            let mut option_hashes = None;
+            if let Some(directory) = &ctx.directory_plan {
+                let plan = directory
+                    .option
+                    .as_ref()
+                    .context("Missing scenery option file list")?;
+                option_hashes = Some(self.copy_planned_directory(
+                    plan,
+                    replacements.path(),
+                    ctx,
+                    directory.verify,
+                )?);
+            } else if source.is_dir() {
                 self.copy_directory_with_progress(
                     Path::new(&option.root),
                     replacements.path(),
@@ -2357,17 +2344,28 @@ impl Installer {
 
             let files = apply_scenery_option(atomic.temp_dir(), replacements.path(), option)?;
             if task.enable_verification {
-                let collector = crate::hash_collector::HashCollector::new();
-                let hashes = match task.file_hashes.take() {
-                    Some(mut base_hashes) if !base_hashes.is_empty() => {
-                        base_hashes.extend(
-                            collector.collect_directory_hashes(replacements.path(), &files)?,
-                        );
-                        base_hashes
+                if let Some(mut option_hashes) = option_hashes {
+                    let mut base_hashes = ctx.inline_hashes.lock().unwrap();
+                    for file in &files {
+                        let path = file.to_string_lossy().replace('\\', "/");
+                        let hash = option_hashes
+                            .remove(&path)
+                            .context("Missing scenery option hash")?;
+                        base_hashes.insert(path, hash);
                     }
-                    _ => collector.collect_directory_hashes(atomic.temp_dir(), &[])?,
-                };
-                task.file_hashes = Some(hashes);
+                } else {
+                    let collector = crate::hash_collector::HashCollector::new();
+                    let hashes = match task.file_hashes.take() {
+                        Some(mut base_hashes) if !base_hashes.is_empty() => {
+                            base_hashes.extend(
+                                collector.collect_directory_hashes(replacements.path(), &files)?,
+                            );
+                            base_hashes
+                        }
+                        _ => collector.collect_directory_hashes(atomic.temp_dir(), &[])?,
+                    };
+                    task.file_hashes = Some(hashes);
+                }
             }
             if self.task_control.is_cancelled() {
                 anyhow::bail!("Installation cancelled");
@@ -2378,6 +2376,7 @@ impl Installer {
             }
         }
 
+        directory::check_copy_cancelled(&self.task_control)?;
         // Step 2: Perform atomic installation based on scenario
         if !target.exists() {
             // Scenario 1: Fresh installation
@@ -2388,7 +2387,15 @@ impl Installer {
             if matches!(task.addon_type, AddonType::Navdata) {
                 atomic.install_clean_navdata_with_backup(task.backup_navdata)?;
             } else {
-                atomic.install_clean(task)?;
+                let mut restored = Vec::new();
+                atomic.install_clean(task, |name| restored.push(name.to_owned()))?;
+                let mut inline = ctx.inline_hashes.lock().unwrap();
+                for name in restored {
+                    inline.remove(&name);
+                    if let Some(hashes) = &mut task.file_hashes {
+                        hashes.remove(&name);
+                    }
+                }
             }
         } else {
             // Scenario 3: Overwrite installation (should_overwrite=true means merge)

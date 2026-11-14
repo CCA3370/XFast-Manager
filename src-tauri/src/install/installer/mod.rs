@@ -18,11 +18,14 @@ use crate::models::{
     ParallelTaskProgress, TaskResult,
 };
 use crate::task_control::TaskControl;
-use crate::zip_package::{ZipEntry, ZipPackage};
+use crate::zip_package::{FileSnapshot, ZipEntry, ZipPackage};
 
+mod directory;
 mod extraction;
 mod handlers;
 mod verification;
+
+use directory::DirectoryPlan;
 
 /// Maximum allowed extraction size (20 GB) - archives larger than this will show a warning
 pub const MAX_EXTRACTION_SIZE: u64 = 20 * 1024 * 1024 * 1024;
@@ -254,14 +257,14 @@ fn copy_file_optimized<R: std::io::Read + ?Sized, W: std::io::Write>(
     reader: &mut R,
     writer: &mut W,
 ) -> std::io::Result<u64> {
-    copy_with_buffer(reader, writer, &mut vec![0; STREAM_BUFFER_SIZE], |_| {})
+    copy_with_buffer(reader, writer, &mut vec![0; STREAM_BUFFER_SIZE], |_| Ok(()))
 }
 
 fn copy_with_buffer<R: std::io::Read + ?Sized, W: std::io::Write>(
     reader: &mut R,
     writer: &mut W,
     buffer: &mut [u8],
-    mut on_write: impl FnMut(&[u8]),
+    mut on_write: impl FnMut(&[u8]) -> std::io::Result<()>,
 ) -> std::io::Result<u64> {
     let mut total_bytes = 0u64;
 
@@ -274,7 +277,7 @@ fn copy_with_buffer<R: std::io::Read + ?Sized, W: std::io::Write>(
             break;
         }
         writer.write_all(&buffer[..bytes_read])?;
-        on_write(&buffer[..bytes_read]);
+        on_write(&buffer[..bytes_read])?;
         total_bytes += bytes_read as u64;
     }
 
@@ -523,6 +526,7 @@ struct ProgressContext {
     /// Whether current task should compute 7z SHA256 inline during extraction.
     inline_hash_collection_enabled: Arc<std::sync::atomic::AtomicBool>,
     zip_package: Option<Arc<ZipPackage>>,
+    directory_plan: Option<DirectoryInstall>,
     /// Optional parallel emit callback: when set, emit_progress updates tracker data
     /// and calls this instead of emitting directly
     parallel_emit: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -549,6 +553,7 @@ impl ProgressContext {
             inline_hashes: Arc::new(Mutex::new(HashMap::new())),
             inline_hash_collection_enabled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             zip_package: None,
+            directory_plan: None,
             parallel_emit: None,
             parallel_current_file: None,
         }
@@ -1204,6 +1209,14 @@ pub struct Installer {
 struct PreparedInstall {
     size: u64,
     zip: Option<Arc<ZipPackage>>,
+    directory: Option<DirectoryInstall>,
+}
+
+#[derive(Clone)]
+struct DirectoryInstall {
+    base: Arc<DirectoryPlan>,
+    option: Option<Arc<DirectoryPlan>>,
+    verify: bool,
 }
 
 struct InstallBatch {
@@ -1523,6 +1536,7 @@ impl Installer {
                 }
             };
             ctx.zip_package = preparation.zip;
+            ctx.directory_plan = preparation.directory;
 
             let task_start = Instant::now();
             crate::log_debug!(
@@ -1567,15 +1581,16 @@ impl Installer {
             match self.install_task_with_progress(task, &ctx, atomic_install_enabled, &xplane_path)
             {
                 Ok(_) => {
-                    // Transfer inline-computed hashes to the task (for 7z SHA256)
+                    // Directory copies still verify the final target after installation.
                     {
-                        let inline = ctx.inline_hashes.lock().unwrap();
+                        let inline = std::mem::take(&mut *ctx.inline_hashes.lock().unwrap());
                         if !inline.is_empty() {
-                            task.file_hashes = Some(inline.clone());
-                            ctx.inline_verified
-                                .store(true, std::sync::atomic::Ordering::SeqCst);
-                            ctx.inline_verified_count
-                                .store(inline.len() as u64, Ordering::SeqCst);
+                            if ctx.directory_plan.is_none() {
+                                ctx.inline_verified.store(true, Ordering::SeqCst);
+                                ctx.inline_verified_count
+                                    .store(inline.len() as u64, Ordering::SeqCst);
+                            }
+                            task.file_hashes = Some(inline);
                         }
                     }
 
@@ -2052,26 +2067,35 @@ impl Installer {
                     let task_view = ctx.get_task_view(index);
                     let mut progress_ctx = task_view.as_progress_context();
                     progress_ctx.zip_package = preparation.zip;
+                    progress_ctx.directory_plan = preparation.directory;
                     let installer = Installer::new(ah);
 
                     let mut task = task;
-                    match installer.install_task_with_progress(
-                        &mut task,
-                        &progress_ctx,
-                        atomic,
-                        &xp,
-                    ) {
+                    let install_started = Instant::now();
+                    let installation =
+                        installer.install_task_with_progress(&mut task, &progress_ctx, atomic, &xp);
+                    crate::log_debug!(
+                        &format!(
+                            "[TIMING] Parallel task {} extraction/copy and placement took {:.2}ms",
+                            index + 1,
+                            install_started.elapsed().as_secs_f64() * 1000.0
+                        ),
+                        "installer_timing"
+                    );
+                    match installation {
                         Ok(_) => {
                             {
-                                let inline = progress_ctx.inline_hashes.lock().unwrap();
+                                let inline = std::mem::take(
+                                    &mut *progress_ctx.inline_hashes.lock().unwrap(),
+                                );
                                 if !inline.is_empty() {
-                                    task.file_hashes = Some(inline.clone());
-                                    progress_ctx
-                                        .inline_verified
-                                        .store(true, std::sync::atomic::Ordering::SeqCst);
-                                    progress_ctx
-                                        .inline_verified_count
-                                        .store(inline.len() as u64, Ordering::SeqCst);
+                                    if progress_ctx.directory_plan.is_none() {
+                                        progress_ctx.inline_verified.store(true, Ordering::SeqCst);
+                                        progress_ctx
+                                            .inline_verified_count
+                                            .store(inline.len() as u64, Ordering::SeqCst);
+                                    }
+                                    task.file_hashes = Some(inline);
                                 }
                             }
 
@@ -2085,7 +2109,17 @@ impl Installer {
                                 InstallPhase::Verifying,
                             );
 
-                            match installer.verify_installation(&task, &progress_ctx) {
+                            let verify_started = Instant::now();
+                            let verification = installer.verify_installation(&task, &progress_ctx);
+                            crate::log_debug!(
+                                &format!(
+                                    "[TIMING] Parallel task {} verification took {:.2}ms",
+                                    index + 1,
+                                    verify_started.elapsed().as_secs_f64() * 1000.0
+                                ),
+                                "installer_timing"
+                            );
+                            match verification {
                                 Ok(verification_stats) => {
                                     ctx.mark_completed(index);
                                     logger::log_info(
@@ -2200,6 +2234,7 @@ impl Installer {
         ctx.emit_final();
 
         // Auto-sort scenery for successful scenery tasks
+        let finalize_start = Instant::now();
         if auto_sort_scenery {
             for (i, result) in task_results.iter().enumerate() {
                 if !result.success {
@@ -2266,10 +2301,11 @@ impl Installer {
 
         crate::log_debug!(
             &format!(
-                "[TIMING] Parallel installation completed in {:.2}ms: {} successful, {} failed",
+                "[TIMING] Parallel installation completed in {:.2}ms: {} successful, {} failed; finalization took {:.2}ms",
                 install_start.elapsed().as_secs_f64() * 1000.0,
                 successful,
-                failed
+                failed,
+                finalize_start.elapsed().as_secs_f64() * 1000.0,
             ),
             "installer_timing"
         );
@@ -2347,16 +2383,27 @@ impl Installer {
             .with_context(|| format!("Source is no longer available: {}", source.display()))?;
         let mut prepared = PreparedInstall::default();
         if metadata.is_dir() && task.zip_source.is_none() {
-            prepared.size = if task.addon_type == AddonType::LuaScript {
-                self.get_lua_bundle_size_from_directory(task, source)?
-            } else {
-                let base = self.get_directory_size(source)?;
+            if task.addon_type == AddonType::LuaScript {
+                return self.prepare_lua_directory(task, source);
+            }
+            prepared.size = {
+                let base = Arc::new(DirectoryPlan::read(source, &self.task_control)?);
                 let option = task
                     .scenery_option()
-                    .map(|option| self.get_directory_size(Path::new(&option.root)))
-                    .transpose()?
-                    .unwrap_or_default();
-                base.saturating_add(option)
+                    .map(|option| {
+                        DirectoryPlan::read(Path::new(&option.root), &self.task_control)
+                            .map(Arc::new)
+                    })
+                    .transpose()?;
+                let size = base
+                    .size
+                    .saturating_add(option.as_ref().map_or(0, |plan| plan.size));
+                prepared.directory = Some(DirectoryInstall {
+                    base,
+                    option,
+                    verify: task.enable_verification,
+                });
+                size
             };
             return Ok(prepared);
         }
@@ -2398,7 +2445,7 @@ impl Installer {
             prepared.size = if format.is_some() {
                 self.get_lua_bundle_size_in_archive(task, source)?
             } else if let Some(parent) = source.parent() {
-                self.get_lua_bundle_size_from_directory(task, parent)?
+                return self.prepare_lua_directory(task, parent);
             } else {
                 metadata.len()
             };
@@ -2414,6 +2461,27 @@ impl Installer {
             }
         }
         Ok(prepared)
+    }
+
+    fn prepare_lua_directory(&self, task: &InstallTask, source: &Path) -> Result<PreparedInstall> {
+        let target = Path::new(&task.target_path);
+        let entries = Self::get_lua_bundle_entries(task, target)?;
+        let plan = DirectoryPlan::read_entries(source, &entries, &self.task_control)?;
+        let script = Path::new(target.file_name().context("Missing Lua script name")?);
+        anyhow::ensure!(
+            plan.contains_file(script),
+            "Lua script is missing: {}",
+            script.display()
+        );
+        Ok(PreparedInstall {
+            size: plan.size,
+            directory: Some(DirectoryInstall {
+                base: Arc::new(plan),
+                option: None,
+                verify: task.enable_verification,
+            }),
+            zip: None,
+        })
     }
 
     fn get_lua_bundle_entries_for_size(&self, task: &InstallTask) -> Vec<PathBuf> {
@@ -2437,19 +2505,6 @@ impl Installer {
         }
 
         entries
-    }
-
-    /// Calculate Lua bundle size from an on-disk source directory.
-    fn get_lua_bundle_size_from_directory(
-        &self,
-        task: &InstallTask,
-        source_dir: &Path,
-    ) -> Result<u64> {
-        let mut total = 0u64;
-        for entry in self.get_lua_bundle_entries_for_size(task) {
-            total = total.saturating_add(self.get_path_size(&source_dir.join(entry))?);
-        }
-        Ok(total)
     }
 
     /// Whether an archive-relative path belongs to a Lua bundle entry.
@@ -2543,17 +2598,6 @@ impl Installer {
     }
 
     /// Get size of a file or a directory path. Missing paths return 0.
-    fn get_path_size(&self, path: &Path) -> Result<u64> {
-        if path.is_dir() {
-            self.get_directory_size(path)
-        } else if path.is_file() {
-            Ok(fs::metadata(path)?.len())
-        } else {
-            Ok(0)
-        }
-    }
-
-    /// Get total size of config files matching patterns in a directory
     #[allow(dead_code)]
     fn get_config_files_size(&self, dir: &Path, patterns: &[String]) -> u64 {
         // Pre-compile patterns once for efficiency
@@ -2577,31 +2621,6 @@ impl Installer {
         total
     }
 
-    /// Get total size of files in a directory
-    fn get_directory_size(&self, dir: &Path) -> Result<u64> {
-        // Check cache first
-        if let Some(cached) = crate::cache::get_cached_directory_metadata(dir) {
-            return Ok(cached.total_size);
-        }
-
-        // Calculate size if not cached
-        let mut size = 0u64;
-        let mut file_count = 0usize;
-        for entry in walkdir::WalkDir::new(dir).follow_links(false) {
-            let entry = entry?;
-            if entry.file_type().is_file() {
-                size += entry.metadata()?.len();
-                file_count += 1;
-            }
-        }
-
-        // Cache the result
-        crate::cache::cache_directory_metadata(dir, size, file_count);
-
-        Ok(size)
-    }
-
-    /// Get uncompressed size of archive
     fn get_archive_size(&self, archive: &Path, internal_root: Option<&str>) -> Result<u64> {
         match crate::archive_input::detect_archive_format(archive) {
             Some(crate::archive_input::ArchiveFormat::Zip) => Ok(zip_install_entries(

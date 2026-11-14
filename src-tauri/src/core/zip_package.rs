@@ -17,11 +17,11 @@ pub struct FileSnapshot {
     modified: Option<SystemTime>,
     created: Option<SystemTime>,
     #[cfg(unix)]
-    inode: u64,
+    inode: String,
     #[cfg(unix)]
-    device: u64,
+    device: String,
     #[cfg(windows)]
-    file_id: Option<(u32, u64)>,
+    file_id: Option<String>,
 }
 
 impl FileSnapshot {
@@ -34,9 +34,9 @@ impl FileSnapshot {
             modified: metadata.modified().ok(),
             created: metadata.created().ok(),
             #[cfg(unix)]
-            inode: metadata.ino(),
+            inode: metadata.ino().to_string(),
             #[cfg(unix)]
-            device: metadata.dev(),
+            device: metadata.dev().to_string(),
             #[cfg(windows)]
             file_id: None,
         }
@@ -57,7 +57,7 @@ impl FileSnapshot {
                     let info = info.assume_init();
                     let index =
                         (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
-                    Some((info.dwVolumeSerialNumber, index))
+                    Some(format!("{:08x}:{index:016x}", info.dwVolumeSerialNumber))
                 } else {
                     None
                 }

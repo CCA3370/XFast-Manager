@@ -120,14 +120,8 @@ impl Installer {
 
         // Get expected hashes (must be available at this point)
         // Note: For 7z archives, hashes should have been computed during extraction if verification was enabled
-        let expected_hashes: HashMap<_, _> = match &task.file_hashes {
-            Some(hashes) if !hashes.is_empty() => hashes
-                .iter()
-                .filter(|(path, _)| {
-                    !crate::package_artifacts::is_ignored_package_artifact_archive_path(path)
-                })
-                .map(|(path, hash)| (path.clone(), hash.clone()))
-                .collect(),
+        let expected_hashes = match &task.file_hashes {
+            Some(hashes) if !hashes.is_empty() => hashes,
             _ => {
                 // No hashes available - this can happen for:
                 // 1. 7z/RAR archives (hashes computed during extraction)
@@ -140,14 +134,6 @@ impl Installer {
                 return Ok(None);
             }
         };
-
-        if expected_hashes.is_empty() {
-            logger::log_info(
-                "Only operating-system metadata was present in the verification list",
-                Some("installer"),
-            );
-            return Ok(None);
-        }
 
         let total_expected = expected_hashes.len();
 
@@ -170,7 +156,7 @@ impl Installer {
         let ctx_clone = ctx.clone();
         let mut failed_files = verifier.verify_files_with_progress(
             target,
-            &expected_hashes,
+            expected_hashes,
             move |verified, total| {
                 if total > 0 {
                     // Map verified/total to 15% -> 70% range
@@ -206,7 +192,7 @@ impl Installer {
             );
 
             retried_count = failed_files.len();
-            failed_files = self.retry_failed_files(task, ctx, failed_files, &expected_hashes)?;
+            failed_files = self.retry_failed_files(task, ctx, failed_files, expected_hashes)?;
 
             ctx.set_verification_progress(95.0);
         } else {

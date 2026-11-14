@@ -251,7 +251,11 @@ impl AtomicInstaller {
     /// 4. Atomic move temp -> target
     /// 5. Restore backup files from backup
     /// 6. Delete backup
-    pub fn install_clean(&mut self, task: &InstallTask) -> Result<()> {
+    pub fn install_clean(
+        &mut self,
+        task: &InstallTask,
+        mut on_preference_restored: impl FnMut(&str),
+    ) -> Result<()> {
         logger::log_info(
             "Atomic install: Clean installation (delete old, install new)",
             Some("atomic_installer"),
@@ -339,7 +343,9 @@ impl AtomicInstaller {
         // Step 3: Restore backup files (liveries, config files)
         if task.backup_liveries || task.backup_config_files {
             self.emit_progress("Restoring backup files...", InstallPhase::Installing);
-            if let Err(e) = self.restore_backup_files(task, &backup_dir) {
+            if let Err(e) =
+                self.restore_backup_files(task, &backup_dir, &mut on_preference_restored)
+            {
                 logger::log_error(
                     &format!("Failed to restore backup files: {}", e),
                     Some("atomic_installer"),
@@ -774,7 +780,12 @@ impl AtomicInstaller {
     }
 
     /// Restore backup files (liveries and config files) from backup directory
-    fn restore_backup_files(&self, task: &InstallTask, backup_dir: &Path) -> Result<()> {
+    fn restore_backup_files(
+        &self,
+        task: &InstallTask,
+        backup_dir: &Path,
+        on_preference_restored: &mut impl FnMut(&str),
+    ) -> Result<()> {
         use glob::Pattern;
 
         logger::log_info(
@@ -833,6 +844,7 @@ impl AtomicInstaller {
 
                             fs::copy(&path, &target_file)
                                 .context(format!("Failed to restore config file: {}", filename))?;
+                            on_preference_restored(filename);
                         }
                     }
                 }

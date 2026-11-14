@@ -92,7 +92,33 @@ impl Installer {
         target: &Path,
         ctx: &ProgressContext,
     ) -> Result<()> {
+        if let Some(plan) = ctx
+            .directory_plan
+            .as_ref()
+            .filter(|plan| plan.base.source == source)
+        {
+            let hashes = self.copy_planned_directory(&plan.base, target, ctx, plan.verify)?;
+            *ctx.inline_hashes.lock().unwrap() = hashes;
+            return Ok(());
+        }
         self.copy_directory_internal(source, target, Some(ctx))
+    }
+
+    pub(super) fn copy_planned_directory(
+        &self,
+        plan: &DirectoryPlan,
+        target: &Path,
+        ctx: &ProgressContext,
+        verify: bool,
+    ) -> Result<HashMap<String, FileHash>> {
+        plan.copy(target, &self.task_control, verify, |path, bytes| {
+            ctx.add_bytes(bytes);
+            ctx.emit_progress(
+                path.file_name()
+                    .map(|name| name.to_string_lossy().into_owned()),
+                InstallPhase::Installing,
+            );
+        })
     }
 
     /// Copy a directory recursively without progress tracking
@@ -333,7 +359,9 @@ impl Installer {
             let outpath = target.join(&entry.destination);
             let mut output = fs::File::create(&outpath)?;
             // Reading through EOF runs the decoder's CRC or authentication check.
-            let bytes = copy_with_buffer(&mut file, &mut output, buffer, |_| {})?;
+            let bytes = copy_with_buffer(&mut file, &mut output, buffer, |_| {
+                directory::check_copy_cancelled(&self.task_control)
+            })?;
             anyhow::ensure!(
                 bytes == entry.source.size,
                 "ZIP entry size changed: {}",

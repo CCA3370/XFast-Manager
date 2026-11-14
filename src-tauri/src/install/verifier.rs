@@ -4,11 +4,15 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use crate::models::{FileHash, FileVerificationResult, HashAlgorithm, VerificationStats};
+
+const HASH_BUFFER_SIZE: usize = 256 * 1024;
 
 pub struct FileVerifier {
     /// Maximum retry attempts per file
@@ -45,7 +49,7 @@ impl FileVerifier {
     where
         F: Fn(usize, usize) + Send + Sync,
     {
-        let mut files_to_verify: Vec<(Option<PathBuf>, String, FileHash)> = expected_hashes
+        let mut files_to_verify: Vec<_> = expected_hashes
             .iter()
             .filter(|(relative_path, _)| {
                 !crate::package_artifacts::is_ignored_package_artifact_archive_path(relative_path)
@@ -54,10 +58,10 @@ impl FileVerifier {
                 let file_path =
                     crate::package_artifacts::normalize_safe_relative_path(relative_path)
                         .map(|relative| target_dir.join(relative));
-                (file_path, relative_path.clone(), expected.clone())
+                (file_path, relative_path, expected)
             })
             .collect();
-        files_to_verify.sort_by(|left, right| left.1.cmp(&right.1));
+        files_to_verify.sort_by(|left, right| left.1.cmp(right.1));
 
         crate::logger::log_info(
             &format!(
@@ -74,25 +78,32 @@ impl FileVerifier {
         // Parallel verification with progress tracking
         let results: Vec<FileVerificationResult> = files_to_verify
             .par_iter()
-            .map(|(path, relative_path, expected)| {
-                let result = match path {
-                    Some(path) => self.verify_single_file(path, relative_path, expected),
-                    None => FileVerificationResult {
-                        path: relative_path.clone(),
-                        expected_hash: expected.hash.clone(),
-                        actual_hash: None,
-                        success: false,
-                        retry_count: 0,
-                        error: Some("Unsafe relative path in verification metadata".to_string()),
-                    },
-                };
+            .map_init(
+                || vec![0; HASH_BUFFER_SIZE],
+                |buffer, (path, relative_path, expected)| {
+                    let result = match path {
+                        Some(path) => {
+                            self.verify_with_buffer(path, relative_path, expected, buffer)
+                        }
+                        None => FileVerificationResult {
+                            path: relative_path.to_string(),
+                            expected_hash: expected.hash.clone(),
+                            actual_hash: None,
+                            success: false,
+                            retry_count: 0,
+                            error: Some(
+                                "Unsafe relative path in verification metadata".to_string(),
+                            ),
+                        },
+                    };
 
-                // Update progress
-                let count = verified_count.fetch_add(1, Ordering::SeqCst) + 1;
-                progress_callback(count, total);
+                    // Update progress
+                    let count = verified_count.fetch_add(1, Ordering::SeqCst) + 1;
+                    progress_callback(count, total);
 
-                result
-            })
+                    result
+                },
+            )
             .collect();
 
         // Filter failed files
@@ -121,7 +132,26 @@ impl FileVerifier {
         relative_path: &str,
         expected: &FileHash,
     ) -> FileVerificationResult {
-        match self.compute_file_hash(file_path, &expected.algorithm) {
+        self.verify_with_buffer(
+            file_path,
+            relative_path,
+            expected,
+            &mut vec![0; HASH_BUFFER_SIZE],
+        )
+    }
+
+    fn verify_with_buffer(
+        &self,
+        file_path: &Path,
+        relative_path: &str,
+        expected: &FileHash,
+        buffer: &mut [u8],
+    ) -> FileVerificationResult {
+        let hash = match expected.algorithm {
+            HashAlgorithm::Crc32 => Self::crc32(file_path, buffer),
+            HashAlgorithm::Sha256 => Self::sha256(file_path, buffer),
+        };
+        match hash {
             Ok(actual_hash) => {
                 let success = actual_hash == expected.hash;
 
@@ -163,24 +193,25 @@ impl FileVerifier {
         }
     }
 
-    /// Compute hash of a file based on algorithm
-    fn compute_file_hash(&self, path: &Path, algorithm: &HashAlgorithm) -> Result<String> {
-        match algorithm {
-            HashAlgorithm::Crc32 => self.compute_crc32(path),
-            HashAlgorithm::Sha256 => self.compute_sha256(path),
-        }
+    #[cfg(test)]
+    fn compute_crc32(&self, path: &Path) -> Result<String> {
+        Self::crc32(path, &mut vec![0; HASH_BUFFER_SIZE])
+    }
+
+    #[cfg(test)]
+    fn compute_sha256(&self, path: &Path) -> Result<String> {
+        Self::sha256(path, &mut vec![0; HASH_BUFFER_SIZE])
     }
 
     /// Compute CRC32 hash
-    fn compute_crc32(&self, path: &Path) -> Result<String> {
+    fn crc32(path: &Path, buffer: &mut [u8]) -> Result<String> {
         use crc32fast::Hasher;
 
         let mut file = fs::File::open(path)?;
         let mut hasher = Hasher::new();
-        let mut buffer = vec![0u8; 8 * 1024 * 1024]; // 8MB buffer
 
         loop {
-            let bytes_read = file.read(&mut buffer)?;
+            let bytes_read = file.read(buffer)?;
             if bytes_read == 0 {
                 break;
             }
@@ -191,13 +222,12 @@ impl FileVerifier {
     }
 
     /// Compute SHA256 hash
-    pub fn compute_sha256(&self, path: &Path) -> Result<String> {
+    fn sha256(path: &Path, buffer: &mut [u8]) -> Result<String> {
         let mut file = fs::File::open(path)?;
         let mut hasher = Sha256::new();
-        let mut buffer = vec![0u8; 8 * 1024 * 1024]; // 8MB buffer
 
         loop {
-            let bytes_read = file.read(&mut buffer)?;
+            let bytes_read = file.read(buffer)?;
             if bytes_read == 0 {
                 break;
             }
