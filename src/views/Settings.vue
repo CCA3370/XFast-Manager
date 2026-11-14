@@ -2,20 +2,20 @@
   <div
     class="settings-view mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden p-4 sm:p-6"
   >
-    <h1 class="mb-3 text-xl font-semibold">{{ t('common.settings') }}</h1>
+    <h1 class="mb-3 shrink-0 text-xl font-semibold">{{ t('common.settings') }}</h1>
     <nav
       :aria-label="t('common.settings')"
-      class="mb-4 flex shrink-0 flex-wrap gap-1 border-b border-gray-200 pb-3 dark:border-gray-700"
+      class="mb-4 flex shrink-0 flex-wrap gap-1 rounded-xl border border-gray-200 bg-gray-100/70 p-1 dark:border-gray-700/60 dark:bg-gray-800/60"
     >
       <button
         v-for="group in groups"
         :key="group.id"
         type="button"
-        class="rounded-lg px-3 py-2 text-sm font-medium"
+        class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         :class="
           activeGroup === group.id
-            ? 'bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200'
-            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+            ? 'bg-white text-blue-700 shadow-sm dark:bg-gray-700 dark:text-blue-300'
+            : 'text-gray-600 hover:bg-white/70 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700/70 dark:hover:text-gray-100'
         "
         :aria-current="activeGroup === group.id ? 'page' : undefined"
         :aria-controls="`settings-${group.id}`"
@@ -28,9 +28,8 @@
     <div class="min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
       <section v-show="activeGroup === 'xplane'" id="settings-xplane" :class="panel">
         <XplaneDirectoryForm />
-        <details :class="detailsStyle">
-          <summary :class="summaryStyle">{{ t('settingsPanels.advanced') }}</summary>
-          <label for="launch-args" class="mt-3 block text-sm font-medium">
+        <CollapsibleSection :title="t('settingsPanels.advanced')">
+          <label for="launch-args" class="block text-sm font-medium">
             {{ t('settings.xplaneLaunchArgs') }}
           </label>
           <input
@@ -44,12 +43,12 @@
             @keydown.enter.prevent="handleLaunchArgsBlur"
           />
           <p id="launch-args-help" :class="helpStyle">{{ t('settings.xplaneLaunchArgsDesc') }}</p>
-        </details>
+        </CollapsibleSection>
       </section>
 
       <section v-show="activeGroup === 'installation'" id="settings-installation" :class="panel">
         <div>
-          <h2 class="font-semibold">{{ t('settingsPanels.installTypes') }}</h2>
+          <h2 :class="sectionTitle">{{ t('settingsPanels.installTypes') }}</h2>
           <p :class="helpStyle">{{ t('settingsPanels.installTypesHelp') }}</p>
           <SettingToggle
             :label="t('settings.toggleAll')"
@@ -68,7 +67,7 @@
         </div>
         <div
           v-if="store.isWindows"
-          class="space-y-2 border-t border-gray-200 pt-2 dark:border-gray-700"
+          class="space-y-2 border-t border-gray-200 pt-3 dark:border-gray-700"
         >
           <SettingToggle
             :label="t('settings.windowsIntegration')"
@@ -86,11 +85,10 @@
           <p :class="helpStyle">{{ t('settings.atomicInstallNote') }}</p>
         </div>
 
-        <details :class="detailsStyle">
-          <summary :class="summaryStyle">{{ t('settingsPanels.advanced') }}</summary>
-          <div class="space-y-4 pt-3">
+        <CollapsibleSection :title="t('settingsPanels.advanced')">
+          <div class="space-y-4">
             <div>
-              <h2 class="font-semibold">{{ t('settings.verificationPreferences') }}</h2>
+              <h2 :class="sectionTitle">{{ t('settings.verificationPreferences') }}</h2>
               <p :class="helpStyle">{{ t('settings.verificationPreferencesDesc') }}</p>
               <div class="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
                 <SettingToggle
@@ -104,7 +102,7 @@
               <p :class="helpStyle">{{ t('settings.rarVerificationNote') }}</p>
             </div>
             <div class="border-t border-gray-200 pt-3 dark:border-gray-700">
-              <h2 class="font-semibold">{{ t('settings.aircraftBackup') }}</h2>
+              <h2 :class="sectionTitle">{{ t('settings.aircraftBackup') }}</h2>
               <p :class="helpStyle">{{ t('settings.aircraftBackupDesc') }}</p>
               <div class="mt-3 space-y-2">
                 <p id="config-pattern-help" :class="helpStyle">
@@ -157,7 +155,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="store.isWindows" class="border-t border-gray-200 pt-2 dark:border-gray-700">
+            <div v-if="store.isWindows" class="border-t border-gray-200 pt-3 dark:border-gray-700">
               <SettingToggle
                 :label="t('settings.deleteSourceTitle')"
                 :description="t('settingsPanels.deleteOriginalsWarning')"
@@ -167,11 +165,12 @@
               />
             </div>
           </div>
-        </details>
+        </CollapsibleSection>
       </section>
 
       <section v-show="activeGroup === 'scenery'" id="settings-scenery" :class="panel">
-        <RouterLink :to="{ path: '/management', query: { tab: 'scenery' } }" :class="buttonStyle">
+        <p :class="helpStyle">{{ t('sceneryManager.subtitle') }}</p>
+        <RouterLink :to="{ path: '/management', query: { tab: 'scenery' } }" :class="primaryStyle">
           {{ t('sceneryManager.openManager') }}
         </RouterLink>
       </section>
@@ -192,7 +191,7 @@
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            :class="buttonStyle"
+            :class="primaryStyle"
             :disabled="updateStore.checkInProgress"
             @click="updateStore.checkForUpdates(true)"
           >
@@ -226,9 +225,8 @@
             managementStore.setAddonUpdateOptions({ chunkedDownloadEnabled: $event })
           "
         />
-        <details :class="detailsStyle">
-          <summary :class="summaryStyle">{{ t('settingsPanels.advanced') }}</summary>
-          <div class="mt-3 grid gap-3 sm:grid-cols-3">
+        <CollapsibleSection :title="t('settingsPanels.advanced')">
+          <div class="grid gap-3 sm:grid-cols-3">
             <label class="block text-sm font-medium">
               {{ t('settings.maxParallelTasks') }}
               <select
@@ -259,7 +257,7 @@
             </label>
           </div>
           <p class="mt-3" :class="helpStyle">{{ t('settings.chunkedDownloadNote') }}</p>
-        </details>
+        </CollapsibleSection>
       </section>
 
       <section v-show="activeGroup === 'diagnostics'" id="settings-diagnostics" :class="panel">
@@ -269,8 +267,7 @@
           :model-value="store.crashAnalysisDmpEnabled"
           @update:model-value="store.toggleCrashAnalysisDmpEnabled()"
         />
-        <details :class="detailsStyle">
-          <summary :class="summaryStyle">{{ t('settingsPanels.advanced') }}</summary>
+        <CollapsibleSection :title="t('settingsPanels.advanced')">
           <SettingToggle
             :label="t('settings.crashAnalysisIgnoreDateCheck')"
             :description="t('settings.crashAnalysisIgnoreDateCheckDesc')"
@@ -278,10 +275,9 @@
             :disabled="!store.crashAnalysisDmpEnabled"
             @update:model-value="store.toggleCrashAnalysisIgnoreDateCheck()"
           />
-        </details>
-        <details :class="detailsStyle" @toggle="handleLogDetails">
-          <summary :class="summaryStyle">{{ t('settings.logs') }}</summary>
-          <div class="mt-3 space-y-3">
+        </CollapsibleSection>
+        <CollapsibleSection :title="t('settings.logs')" @toggle="handleLogDetails">
+          <div class="space-y-3">
             <label class="block text-sm font-medium">
               {{ t('settings.logLevel') }}
               <select :class="inputStyle" :value="store.logLevel" @change="changeLogLevel">
@@ -306,7 +302,7 @@
               ref="logContainer"
               tabindex="0"
               :aria-label="t('settings.logs')"
-              class="h-48 select-text overflow-y-auto rounded-lg bg-gray-900 p-3 font-mono text-xs"
+              class="h-48 select-text overflow-y-auto rounded-lg bg-gray-900 p-3 font-mono text-xs ring-1 ring-black/10"
             >
               <p v-if="recentLogs.length === 0" class="text-gray-400">{{ t('settings.noLogs') }}</p>
               <p
@@ -320,28 +316,32 @@
             </div>
             <p class="break-all" :class="helpStyle">{{ logPath }}</p>
           </div>
-        </details>
+        </CollapsibleSection>
       </section>
 
       <section v-show="activeGroup === 'about'" id="settings-about" :class="panel">
         <div class="flex items-center gap-4">
-          <img src="/icon.png" alt="" class="h-12 w-12 rounded-xl" />
+          <img
+            src="/icon.png"
+            alt=""
+            class="h-12 w-12 rounded-xl shadow-sm ring-1 ring-black/5 dark:ring-white/10"
+          />
           <div>
-            <h2 class="font-semibold">XFast Manager</h2>
+            <h2 :class="sectionTitle">XFast Manager</h2>
             <p :class="helpStyle">
               <span v-if="appVersion">v{{ appVersion }} · </span>© 2026 3370Tech
             </p>
           </div>
         </div>
         <div>
-          <h3 class="text-sm font-medium">{{ t('settings.development') }}</h3>
+          <h3 :class="subTitle">{{ t('settings.development') }}</h3>
           <button type="button" :class="buttonStyle" class="mt-2" @click="openDeveloperProfile">
             CCA3370
           </button>
         </div>
         <div>
-          <h3 class="text-sm font-medium">{{ t('settings.testing') }}</h3>
-          <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+          <h3 :class="subTitle">{{ t('settings.testing') }}</h3>
+          <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
             <li v-for="name in testers" :key="name">{{ name }}</li>
           </ul>
         </div>
@@ -358,6 +358,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
+import CollapsibleSection from '@/components/CollapsibleSection.vue'
 import FlightPlanImportPreference from '@/components/FlightPlanImportPreference.vue'
 import SettingToggle from '@/components/SettingToggle.vue'
 import XplaneDirectoryForm from '@/components/XplaneDirectoryForm.vue'
@@ -389,14 +390,16 @@ const groups = [
 const activeGroup = ref<(typeof groups)[number]['id']>('xplane')
 
 const panel =
-  'space-y-4 rounded-xl border border-gray-200 bg-white/80 p-4 dark:border-white/10 dark:bg-gray-800/40 sm:p-5'
-const detailsStyle = 'rounded-lg border border-gray-200 p-3 dark:border-gray-700'
-const summaryStyle = 'cursor-pointer rounded text-sm font-medium'
+  'space-y-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm dark:border-gray-700/60 dark:bg-gray-800/70 sm:p-5'
+const sectionTitle = 'text-base font-semibold'
+const subTitle = 'text-sm font-semibold'
 const inputStyle =
-  'mt-1 block w-full min-w-0 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900/50'
-const helpStyle = 'text-sm text-gray-600 dark:text-gray-400'
+  'mt-1 block w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/70 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-blue-400 dark:focus:ring-blue-400/30'
+const helpStyle = 'text-sm text-gray-500 dark:text-gray-400'
 const buttonStyle =
-  'inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800'
+  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:text-white'
+const primaryStyle =
+  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50'
 
 const launchArgsInput = ref(store.xplaneLaunchArgs)
 const isProcessing = ref(false)
@@ -533,7 +536,7 @@ async function saveDeleteSource(enabled: boolean) {
 }
 
 async function handleLogDetails(event: Event) {
-  if (!(event.currentTarget as HTMLDetailsElement).open) return
+  if (!(event.target as HTMLDetailsElement).open) return
   await refreshLogs()
   logPath.value = await logger.getLogPath()
 }

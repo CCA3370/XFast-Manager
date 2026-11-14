@@ -1,13 +1,13 @@
 <template>
   <div class="flex items-start justify-between gap-4 py-2">
     <div class="min-w-0">
-      <p class="text-sm font-medium">{{ label }}</p>
-      <p v-if="description" class="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
+      <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ label }}</p>
+      <p v-if="description" class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
         {{ description }}
       </p>
     </div>
     <ToggleSwitch
-      class="mt-0.5 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+      class="mt-0.5 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
       :aria-label="label"
       :model-value="modelValue"
       :disabled="disabled"

@@ -15,8 +15,8 @@ const props = withDefaults(
     disabled: false,
     ariaLabel: '',
     size: 'md',
-    activeClass: 'bg-sky-500',
-    inactiveClass: 'bg-gray-300 dark:bg-gray-600',
+    activeClass: 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-500 dark:hover:bg-blue-400',
+    inactiveClass: 'bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500',
     stopPropagation: true,
   },
 )
