@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.1] - Unreleased
 
+<div style="text-align:center;margin:0 0 1rem;"><img src="/screenshots/update1.3.1.png" alt="XFast Manager 1.3.1" style="max-width:100%;max-height:300px;display:inline-block;"></div>
+
 ### Added
 
 - **Sponsor Button for All Languages** - The赞助 (Sponsor) button now shows in every language. Non-Chinese users are taken to the Patreon shop, while Chinese users keep the original in-app sponsor dialog.

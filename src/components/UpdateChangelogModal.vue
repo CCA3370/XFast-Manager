@@ -88,12 +88,13 @@ function close() {
 }
 
 // Remote changelog images are rendered from GitHub release notes / the bundled
-// changelog. A click opens the full-size image in the user's browser.
+// changelog. A click opens the full-size image in the user's browser. Local or
+// data-URI images are skipped because they cannot be opened externally.
 async function openImage(event: MouseEvent) {
   const target = event.target as HTMLElement | null
   if (!target || target.tagName !== 'IMG') return
   const src = target.getAttribute('src')
-  if (!src) return
+  if (!src || (!src.startsWith('http://') && !src.startsWith('https://'))) return
 
   try {
     await invoke('open_url', { url: src })
