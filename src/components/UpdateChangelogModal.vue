@@ -333,6 +333,12 @@ async function openRelease() {
   font-style: italic;
 }
 
+/* When a screenshot floats at the top of the release notes, drop the first
+   heading's top margin so its top edge lines up with the floated image. */
+.markdown-content :deep(h3:first-of-type) {
+  margin-top: 0;
+}
+
 .markdown-content :deep(img) {
   display: block;
   max-width: 100%;

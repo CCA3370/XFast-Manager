@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.1] - Unreleased
 
-<div style="float:right;width:200px;margin:1.7rem 0 0.75rem 1rem;"><img src="/screenshots/update1.3.1.png" alt="XFast Manager 1.3.1" style="display:block;width:100%;margin:0;border-radius:0.5rem;" /></div>
+<div style="float:right;width:200px;margin:0 0 0.75rem 1rem;"><img src="/screenshots/update1.3.1.png" alt="XFast Manager 1.3.1" style="display:block;width:100%;margin:0;border-radius:0.5rem;" /></div>
 
 ### Added
 
