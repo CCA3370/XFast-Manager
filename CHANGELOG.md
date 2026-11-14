@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Scenery Installation Options** - Choose a scenery variant before installing, or keep the package's default. Variants stored inside the scenery folder and packages with Chinese option names are offered too; backup copies that would change nothing are left out of the list.
+- **Scenery Installation Options** - Choose a scenery variant before installing, or keep the package's default. Variants stored inside the scenery folder and packages with Chinese option names are offered too.
 
 ### Changed
 
