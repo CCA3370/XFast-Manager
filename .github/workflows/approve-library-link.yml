@@ -34,7 +34,7 @@ jobs:
 
             const fieldBySection = (name) => {
               const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              const re = new RegExp(`^###\\s*${escaped}\\s*$([\\s\\S]*?)(?=^###\\s|$)`, 'im');
+              const re = new RegExp(`^###\\s*${escaped}\\s*$([\\s\\S]*?)(?=^###\\s|(?![\\s\\S]))`, 'im');
               const m = body.match(re);
               if (!m) {
                 return null;
@@ -169,7 +169,7 @@ jobs:
               state: 'closed'
             });
 
-      - name: Comment and close on failure
+      - name: Comment on failure and keep issue open
         if: failure() && !cancelled()
         uses: actions/github-script@v8
         with:
@@ -180,12 +180,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number,
-              body: '❌ Approval automation failed (for example: issue fields could not be parsed or URL validation failed). Please fix the issue content and re-apply the `approved-link` label. Issue closed automatically.'
-            });
-
-            await github.rest.issues.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number,
-              state: 'closed'
+              body: '❌ Approval automation failed (for example: issue fields could not be parsed or URL validation failed). Please fix the issue content and re-apply the `approved-link` label. The issue remains open so the submission can be corrected and retried.'
             });
