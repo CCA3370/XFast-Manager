@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import test from 'node:test';
+import { test } from 'vitest';
 
 const workflow = readFileSync(new URL('../workflows/approve-library-link.yml', import.meta.url), 'utf8');
 const normalized = workflow.replace(/\r\n/g, '\n');
