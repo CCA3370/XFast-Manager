@@ -17,7 +17,7 @@
         </span>
         <button
           class="inline-flex items-center justify-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1.5 text-gray-600 dark:text-gray-300 hover:text-sky-600 dark:hover:text-sky-300 hover:border-sky-300 dark:hover:border-sky-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
-          :disabled="!appStore.xplanePath || isRefreshing"
+          :disabled="!xplanePath || isRefreshing"
           :title="$t('airportFlatten.refresh')"
           :aria-label="$t('airportFlatten.refresh')"
           @click="refreshAll"
@@ -41,7 +41,7 @@
     </header>
 
     <div
-      v-if="!appStore.xplanePath"
+      v-if="!xplanePath"
       class="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200"
     >
       {{ $t('airportFlatten.pathRequiredHint') }}
@@ -54,7 +54,7 @@
           type="text"
           :placeholder="$t('airportFlatten.searchPlaceholder')"
           class="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-8 text-sm text-gray-900 dark:text-white shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-500/10"
-          :disabled="!appStore.xplanePath"
+          :disabled="!xplanePath"
         />
         <button
           v-if="searchText"
@@ -96,7 +96,7 @@
         >
           <button
             class="w-full px-3 py-2 text-left flex items-center justify-between gap-3 focus:outline-none"
-            :disabled="!appStore.xplanePath"
+            :disabled="!xplanePath"
             @click="selectAirport(airport)"
           >
             <div class="min-w-0">
@@ -489,7 +489,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import {
@@ -510,7 +510,7 @@ import { getErrorMessage } from '@/types'
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const appStore = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const modalStore = useModalStore()
 const toastStore = useToastStore()
 
@@ -581,8 +581,9 @@ function syncRouteIcao(icao: string) {
 }
 
 async function loadOverrides() {
+  if (!isCurrentRoot()) return
   const seq = ++overridesSeq
-  if (!appStore.xplanePath) {
+  if (!xplanePath) {
     overrides.value = []
     isLoadingOverrides.value = false
     return
@@ -590,25 +591,26 @@ async function loadOverrides() {
 
   isLoadingOverrides.value = true
   try {
-    const result = await airportFlattenListOverrides(appStore.xplanePath)
-    if (seq !== overridesSeq) return
+    const result = await airportFlattenListOverrides(xplanePath)
+    if (!isCurrentRoot() || seq !== overridesSeq) return
     overrides.value = result
   } catch (error) {
-    if (seq === overridesSeq) {
+    if (isCurrentRoot() && seq === overridesSeq) {
       modalStore.showError(`${t('airportFlatten.loadOverridesFailed')}: ${getErrorMessage(error)}`)
     }
   } finally {
-    if (seq === overridesSeq) {
+    if (isCurrentRoot() && seq === overridesSeq) {
       isLoadingOverrides.value = false
     }
   }
 }
 
 async function runSearch(query: string, forceRefresh = false) {
+  if (!isCurrentRoot()) return
   const trimmed = query.trim()
   const seq = ++searchSeq
 
-  if (!appStore.xplanePath || !trimmed) {
+  if (!xplanePath || !trimmed) {
     searchResults.value = []
     isSearching.value = false
     return
@@ -616,13 +618,8 @@ async function runSearch(query: string, forceRefresh = false) {
 
   isSearching.value = true
   try {
-    const results = await airportFlattenSearchAirports(
-      appStore.xplanePath,
-      trimmed,
-      20,
-      forceRefresh,
-    )
-    if (seq !== searchSeq) return
+    const results = await airportFlattenSearchAirports(xplanePath, trimmed, 20, forceRefresh)
+    if (!isCurrentRoot() || seq !== searchSeq) return
     searchResults.value = results
 
     const selected = results.find((item) => item.icao === selectedIcao.value)
@@ -630,17 +627,18 @@ async function runSearch(query: string, forceRefresh = false) {
       selectedAirportName.value = selected.airportName
     }
   } catch (error) {
-    if (seq === searchSeq) {
+    if (isCurrentRoot() && seq === searchSeq) {
       modalStore.showError(`${t('airportFlatten.loadSearchFailed')}: ${getErrorMessage(error)}`)
     }
   } finally {
-    if (seq === searchSeq) {
+    if (isCurrentRoot() && seq === searchSeq) {
       isSearching.value = false
     }
   }
 }
 
 async function loadTargets(icao: string, airportName?: string, forceRefresh = false) {
+  if (!isCurrentRoot()) return
   const normalized = icao.trim().toUpperCase()
   const seq = ++targetSeq
 
@@ -652,7 +650,7 @@ async function loadTargets(icao: string, airportName?: string, forceRefresh = fa
     selectedAirportName.value = normalized
   }
 
-  if (!appStore.xplanePath || !normalized) {
+  if (!xplanePath || !normalized) {
     targets.value = []
     isLoadingTargets.value = false
     return
@@ -660,12 +658,8 @@ async function loadTargets(icao: string, airportName?: string, forceRefresh = fa
 
   isLoadingTargets.value = true
   try {
-    const nextTargets = await airportFlattenGetTargets(
-      appStore.xplanePath,
-      normalized,
-      forceRefresh,
-    )
-    if (seq !== targetSeq) return
+    const nextTargets = await airportFlattenGetTargets(xplanePath, normalized, forceRefresh)
+    if (!isCurrentRoot() || seq !== targetSeq) return
     targets.value = nextTargets
     if (nextTargets[0]) {
       selectedAirportName.value = nextTargets[0].airportName
@@ -673,18 +667,19 @@ async function loadTargets(icao: string, airportName?: string, forceRefresh = fa
       targetEmptyMessage.value = buildTargetEmptyMessage(normalized)
     }
   } catch (error) {
-    if (seq === targetSeq) {
+    if (isCurrentRoot() && seq === targetSeq) {
       targets.value = []
       targetEmptyMessage.value = `${t('airportFlatten.loadTargetsFailed')}: ${getErrorMessage(error)}`
     }
   } finally {
-    if (seq === targetSeq) {
+    if (isCurrentRoot() && seq === targetSeq) {
       isLoadingTargets.value = false
     }
   }
 }
 
 async function selectAirport(airport: AirportFlattenSearchResult) {
+  if (!isCurrentRoot()) return
   if (selectedIcao.value === airport.icao) {
     await loadTargets(airport.icao, airport.airportName)
     return
@@ -697,7 +692,8 @@ async function selectAirport(airport: AirportFlattenSearchResult) {
 }
 
 async function retryTargetsWithRefresh() {
-  if (!selectedIcao.value || !appStore.xplanePath) return
+  if (!isCurrentRoot()) return
+  if (!selectedIcao.value || !xplanePath) return
 
   await loadTargets(selectedIcao.value, selectedAirportName.value, true)
   if (hasSearchQuery.value) {
@@ -706,7 +702,8 @@ async function retryTargetsWithRefresh() {
 }
 
 async function setTargetState(target: AirportFlattenTarget, enabled: boolean) {
-  if (!appStore.xplanePath) {
+  if (!isCurrentRoot()) return
+  if (!xplanePath) {
     modalStore.showError(t('airportFlatten.pathRequiredHint'))
     return
   }
@@ -718,7 +715,7 @@ async function setTargetState(target: AirportFlattenTarget, enabled: boolean) {
 
   try {
     const updated = await airportFlattenSetState({
-      xplanePath: appStore.xplanePath,
+      xplanePath: xplanePath,
       icao: target.icao,
       sourceKind: target.sourceKind,
       folderName: target.folderName,
@@ -726,8 +723,9 @@ async function setTargetState(target: AirportFlattenTarget, enabled: boolean) {
       enabled,
     })
 
+    if (!isCurrentRoot()) return
     targets.value = targets.value.map((item) => (targetKey(item) === key ? updated : item))
-    selectedAirportName.value = updated.airportName
+    if (selectedIcao.value === updated.icao) selectedAirportName.value = updated.airportName
     toastStore.success(
       t(enabled ? 'airportFlatten.enableSuccess' : 'airportFlatten.disableSuccess', {
         icao: updated.icao,
@@ -735,6 +733,7 @@ async function setTargetState(target: AirportFlattenTarget, enabled: boolean) {
     )
     void loadOverrides()
   } catch (error) {
+    if (!isCurrentRoot()) return
     modalStore.showError(`${t('airportFlatten.toggleFailed')}: ${getErrorMessage(error)}`)
   } finally {
     const doneBusy = new Set(busyTargetKeys.value)
@@ -744,7 +743,8 @@ async function setTargetState(target: AirportFlattenTarget, enabled: boolean) {
 }
 
 async function setOverrideState(item: AirportFlattenOverride, enabled: boolean) {
-  if (!appStore.xplanePath) {
+  if (!isCurrentRoot()) return
+  if (!xplanePath) {
     modalStore.showError(t('airportFlatten.pathRequiredHint'))
     return
   }
@@ -756,13 +756,14 @@ async function setOverrideState(item: AirportFlattenOverride, enabled: boolean) 
 
   try {
     const updated = await airportFlattenSetState({
-      xplanePath: appStore.xplanePath,
+      xplanePath: xplanePath,
       icao: item.icao,
       sourceKind: item.sourceKind,
       folderName: item.folderName,
       sourcePath: item.sourcePath,
       enabled,
     })
+    if (!isCurrentRoot()) return
     toastStore.success(
       t(enabled ? 'airportFlatten.enableSuccess' : 'airportFlatten.disableSuccess', {
         icao: updated.icao,
@@ -770,6 +771,7 @@ async function setOverrideState(item: AirportFlattenOverride, enabled: boolean) 
     )
     await loadOverrides()
   } catch (error) {
+    if (!isCurrentRoot()) return
     modalStore.showError(`${t('airportFlatten.toggleFailed')}: ${getErrorMessage(error)}`)
   } finally {
     const doneBusy = new Set(busyOverrideKeys.value)
@@ -779,7 +781,8 @@ async function setOverrideState(item: AirportFlattenOverride, enabled: boolean) 
 }
 
 async function applyAllDrifted() {
-  if (!appStore.xplanePath || isApplyingAll.value) return
+  if (!isCurrentRoot()) return
+  if (!xplanePath || isApplyingAll.value) return
   if (driftedCount.value === 0) {
     toastStore.success(t('airportFlatten.applyAllNoop'))
     return
@@ -787,7 +790,8 @@ async function applyAllDrifted() {
 
   isApplyingAll.value = true
   try {
-    const result = await airportFlattenApplyAllDrifted(appStore.xplanePath)
+    const result = await airportFlattenApplyAllDrifted(xplanePath)
+    if (!isCurrentRoot()) return
     if (result.failed.length === 0) {
       toastStore.success(t('airportFlatten.applyAllSuccess', { count: result.applied }))
     } else {
@@ -801,6 +805,7 @@ async function applyAllDrifted() {
     }
     await loadOverrides()
   } catch (error) {
+    if (!isCurrentRoot()) return
     modalStore.showError(`${t('airportFlatten.applyAllFailed')}: ${getErrorMessage(error)}`)
   } finally {
     isApplyingAll.value = false
@@ -822,7 +827,8 @@ function confirmRemoveOverride(item: AirportFlattenOverride) {
 }
 
 async function removeOverride(item: AirportFlattenOverride) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
+  if (!xplanePath) return
 
   const key = overrideKey(item)
   const nextBusy = new Set(busyOverrideKeys.value)
@@ -830,9 +836,11 @@ async function removeOverride(item: AirportFlattenOverride) {
   busyOverrideKeys.value = nextBusy
 
   try {
-    await airportFlattenClearOverride(appStore.xplanePath, item.icao, item.sourcePath)
+    await airportFlattenClearOverride(xplanePath, item.icao, item.sourcePath)
+    if (!isCurrentRoot()) return
     overrides.value = overrides.value.filter((entry) => overrideKey(entry) !== key)
   } catch (error) {
+    if (!isCurrentRoot()) return
     modalStore.showError(`${t('airportFlatten.removeSavedFailed')}: ${getErrorMessage(error)}`)
   } finally {
     const doneBusy = new Set(busyOverrideKeys.value)
@@ -856,7 +864,8 @@ function clearSearch() {
 }
 
 async function refreshAll() {
-  if (!appStore.xplanePath || isRefreshing.value) return
+  if (!isCurrentRoot()) return
+  if (!xplanePath || isRefreshing.value) return
   isRefreshing.value = true
   try {
     await loadOverrides()
@@ -892,29 +901,6 @@ watch(
   },
 )
 
-watch(
-  () => appStore.xplanePath,
-  (value) => {
-    if (!value) {
-      searchResults.value = []
-      targets.value = []
-      selectedIcao.value = ''
-      selectedAirportName.value = ''
-      targetEmptyMessage.value = ''
-      overrides.value = []
-      return
-    }
-
-    if (searchText.value.trim()) {
-      void runSearch(searchText.value)
-    }
-    if (selectedIcao.value) {
-      void loadTargets(selectedIcao.value)
-    }
-    void loadOverrides()
-  },
-)
-
 onMounted(() => {
   const initialIcao =
     typeof route.query.icao === 'string' ? route.query.icao.trim().toUpperCase() : ''
@@ -922,7 +908,7 @@ onMounted(() => {
     searchText.value = initialIcao
     void loadTargets(initialIcao)
   }
-  if (appStore.xplanePath) {
+  if (xplanePath) {
     void loadOverrides()
   }
 })

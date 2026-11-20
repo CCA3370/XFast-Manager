@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { AddonType, type InstallTask, type InstallResult } from '@/types'
 import { invokeVoidCommand, tryInvokeCommand } from '@/services/api'
 import { useLockStore } from './lock'
+import { rootStorageKey } from '@/utils/xplaneStorage'
 import { getItem, saveSettings, setItem, STORAGE_KEYS } from '@/services/storage'
 
 export type LogLevel = 'basic' | 'full' | 'debug'
@@ -30,6 +31,21 @@ const XCSL_DEV_FLAG = '--xcsldev'
 
 export const useAppStore = defineStore('app', () => {
   const xplanePath = ref<string>('')
+  const xplaneGeneration = ref(0)
+  watch(
+    xplanePath,
+    () => {
+      xplaneGeneration.value += 1
+    },
+    { flush: 'sync' },
+  )
+
+  // A path comparison alone cannot detect an A → B → A switch during an await.
+  function captureXplaneContext() {
+    const path = xplanePath.value
+    const generation = xplaneGeneration.value
+    return { path, isCurrent: () => xplaneGeneration.value === generation }
+  }
   const currentTasks = ref<InstallTask[]>([])
   const isAnalyzing = ref(false)
   const isInstalling = ref(false)
@@ -92,6 +108,8 @@ export const useAppStore = defineStore('app', () => {
 
   // X-Plane launch arguments (default: empty)
   const xplaneLaunchArgs = ref('')
+  const xplaneLaunchArgsLoading = ref(false)
+  let launchArgsRevision = 0
 
   // Parallel installation (default: enabled)
   const parallelInstallEnabled = ref(true)
@@ -268,12 +286,6 @@ export const useAppStore = defineStore('app', () => {
     }
     await invokeVoidCommand('set_scenery_auto_sort', { enabled: autoSortScenery.value })
 
-    // Load X-Plane launch arguments
-    const savedLaunchArgs = await getItem<string>(STORAGE_KEYS.XPLANE_LAUNCH_ARGS)
-    if (typeof savedLaunchArgs === 'string') {
-      xplaneLaunchArgs.value = savedLaunchArgs
-    }
-
     // Load parallel install settings
     const savedParallel = await getItem<boolean>(STORAGE_KEYS.PARALLEL_INSTALL_ENABLED)
     if (typeof savedParallel === 'boolean') parallelInstallEnabled.value = savedParallel
@@ -315,6 +327,9 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function setXplanePath(path: string, completeOnboarding = false) {
+    if (path !== xplanePath.value && isInstalling.value) {
+      throw new Error('Cannot change the X-Plane directory during installation')
+    }
     await saveSettings({
       [STORAGE_KEYS.XPLANE_PATH]: path,
       ...(completeOnboarding ? { [STORAGE_KEYS.ONBOARDING_COMPLETED]: 'true' } : {}),
@@ -355,9 +370,29 @@ export const useAppStore = defineStore('app', () => {
     autoSortScenery.value = enabled
   }
 
+  async function loadXplaneLaunchArgs() {
+    const context = captureXplaneContext()
+    const revision = ++launchArgsRevision
+    xplaneLaunchArgs.value = ''
+    xplaneLaunchArgsLoading.value = !!context.path
+    if (!context.path) return
+    try {
+      const saved = await getItem<string>(
+        rootStorageKey(STORAGE_KEYS.XPLANE_LAUNCH_ARGS, context.path),
+      )
+      if (context.isCurrent() && revision === launchArgsRevision)
+        xplaneLaunchArgs.value = saved ?? ''
+    } finally {
+      if (context.isCurrent() && revision === launchArgsRevision)
+        xplaneLaunchArgsLoading.value = false
+    }
+  }
+
   async function setXplaneLaunchArgs(args: string) {
-    xplaneLaunchArgs.value = args
-    await setItem(STORAGE_KEYS.XPLANE_LAUNCH_ARGS, args)
+    const context = captureXplaneContext()
+    if (!context.path || xplaneLaunchArgsLoading.value) return
+    await setItem(rootStorageKey(STORAGE_KEYS.XPLANE_LAUNCH_ARGS, context.path), args)
+    if (context.isCurrent()) xplaneLaunchArgs.value = args
   }
 
   async function toggleParallelInstall() {
@@ -627,8 +662,12 @@ export const useAppStore = defineStore('app', () => {
     // First show the completion view (without icon)
     showCompletion.value = true
     // Small delay to let completion view render, then start animation
+    const installation = captureXplaneContext()
+    const currentResult = installResult.value
     setTimeout(() => {
-      showCompletionAnimation.value = true
+      if (installation.isCurrent() && installResult.value === currentResult) {
+        showCompletionAnimation.value = true
+      }
     }, 50)
     // Animation stays visible (doesn't hide) - it becomes the completion icon
   }
@@ -646,8 +685,23 @@ export const useAppStore = defineStore('app', () => {
     installingTasks.value = []
   }
 
+  watch(
+    xplanePath,
+    () => {
+      void loadXplaneLaunchArgs().catch(() => {})
+      clearTasks()
+      clearInstallResult()
+      isAnalyzing.value = false
+      isAnalyzeInProgress.value = false
+      isConfirmationOpen.value = false
+    },
+    { flush: 'sync' },
+  )
+
   return {
     xplanePath,
+    xplaneGeneration,
+    captureXplaneContext,
     currentTasks,
     isAnalyzing,
     isInstalling,
@@ -661,6 +715,7 @@ export const useAppStore = defineStore('app', () => {
     deleteSourceAfterInstall,
     autoSortScenery,
     xplaneLaunchArgs,
+    xplaneLaunchArgsLoading,
     parallelInstallEnabled,
     maxParallelTasks,
     crashAnalysisIgnoreDateCheck,

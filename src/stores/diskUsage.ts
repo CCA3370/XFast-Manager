@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { createXplaneScope } from '@/utils/xplaneContext'
 import { useAppStore } from './app'
 
 export interface DiskUsageReport {
@@ -111,7 +112,10 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
   let cleanupScanToken = 0
   let cleanupPath = ''
 
+  const capture = createXplaneScope(reset)
+
   async function scan() {
+    const { invoke, isCurrent } = capture()
     isScanning.value = true
     error.value = null
     try {
@@ -120,13 +124,14 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
         xplanePath: appStore.xplanePath,
       })
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
     } finally {
-      isScanning.value = false
+      if (isCurrent()) isScanning.value = false
     }
   }
 
   async function scanFolder(itemType: string, folderName: string) {
+    const { invoke, isCurrent } = capture()
     try {
       const appStore = useAppStore()
       selectedItem.value = await invoke<FolderDiskUsage>('scan_folder_disk_usage', {
@@ -135,7 +140,7 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
         folderName,
       })
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
     }
   }
 
@@ -172,14 +177,15 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
   }
 
   async function refreshOutputCleanupItems() {
+    const { isCurrent } = capture()
     isCleanupRefreshing.value = true
     try {
       await invoke('refresh_output_cleanup_items')
-      await scanOutputCleanup()
+      if (isCurrent()) await scanOutputCleanup()
     } catch {
       // Remote data is optional; keep the embedded/current catalog on failure.
     } finally {
-      isCleanupRefreshing.value = false
+      if (isCurrent()) isCleanupRefreshing.value = false
     }
   }
 
@@ -187,6 +193,7 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
     xplanePath: string,
     targets: OutputCleanupTarget[],
   ): Promise<OutputCleanupResult> {
+    const { isCurrent } = capture()
     isCleaning.value = true
     cleanupError.value = null
     try {
@@ -196,10 +203,10 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
       })
       return result
     } catch (e) {
-      cleanupError.value = String(e)
+      if (isCurrent()) cleanupError.value = String(e)
       throw e
     } finally {
-      isCleaning.value = false
+      if (isCurrent()) isCleaning.value = false
     }
   }
 
@@ -207,11 +214,12 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
     xplanePath: string,
     change: OutputCleanupStateChange,
   ) {
+    const { isCurrent } = capture()
     isChangingCleanupState.value = true
     try {
       await invoke('change_output_cleanup_item_state', { xplanePath, change })
     } finally {
-      isChangingCleanupState.value = false
+      if (isCurrent()) isChangingCleanupState.value = false
     }
   }
 
@@ -231,6 +239,10 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
 
   function reset() {
     cleanupScanToken++
+    isScanning.value = false
+    isCleanupRefreshing.value = false
+    isCleaning.value = false
+    isChangingCleanupState.value = false
     report.value = null
     error.value = null
     selectedItem.value = null

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { ManagementData, ManagementItemType } from '@/types'
-import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { getItem, setItem } from '@/services/storage'
 import { useAppStore } from './app'
 
 export interface LockedItemsData {
@@ -13,18 +13,22 @@ export interface LockedItemsData {
   lua: string[]
 }
 
+const ROOT_LOCKS_KEY = 'lockedItemsByXplanePath'
+
 type LockItemType = ManagementItemType | 'scenery' | 'lua'
 
 export const useLockStore = defineStore('lock', () => {
-  // Internal state using Sets for efficient lookup
-  const aircraft = ref<Set<string>>(new Set())
-  const plugin = ref<Set<string>>(new Set())
-  const navdata = ref<Set<string>>(new Set())
-  const scenery = ref<Set<string>>(new Set())
-  const lua = ref<Set<string>>(new Set())
-
-  // Initialization flag
+  type LockSets = Record<LockItemType, Set<string>>
+  const roots = ref(new Map<string, LockSets>())
+  const empty = new Set<string>()
   const isInitialized = ref(false)
+  let initialization: Promise<void> | undefined
+  let writeQueue = Promise.resolve()
+
+  function rootKey(path: string): string {
+    const normalized = path.trim().replaceAll('\\', '/').replace(/\/+$/, '')
+    return /^[A-Za-z]:|^\/\//.test(normalized) ? normalized.toLowerCase() : normalized
+  }
 
   function normalizeKeys(items?: string[] | null): string[] {
     if (!Array.isArray(items)) return []
@@ -53,117 +57,111 @@ export const useLockStore = defineStore('lock', () => {
     }
   }
 
-  function exportLockState(): LockedItemsData {
+  function toSets(snapshot?: Partial<LockedItemsData> | null): LockSets {
+    const normalized = normalizeSnapshot(snapshot)
     return {
-      aircraft: Array.from(aircraft.value),
-      plugin: Array.from(plugin.value),
-      navdata: Array.from(navdata.value),
-      scenery: Array.from(scenery.value),
-      lua: Array.from(lua.value),
+      aircraft: new Set(normalized.aircraft),
+      plugin: new Set(normalized.plugin),
+      navdata: new Set(normalized.navdata),
+      scenery: new Set(normalized.scenery),
+      lua: new Set(normalized.lua),
     }
   }
 
-  // Load from storage on initialization
-  async function initStore(): Promise<void> {
-    if (isInitialized.value) return
-
-    try {
-      const data = await getItem<LockedItemsData>(STORAGE_KEYS.LOCKED_ITEMS)
-      if (data) {
-        const normalized = normalizeSnapshot(data)
-        aircraft.value = new Set(normalized.aircraft)
-        plugin.value = new Set(normalized.plugin)
-        navdata.value = new Set(normalized.navdata)
-        scenery.value = new Set(normalized.scenery)
-        lua.value = new Set(normalized.lua)
-      }
-    } catch (e) {
-      console.error('Failed to load locked items from storage:', e)
-    }
-
-    isInitialized.value = true
-  }
-
-  // Save to storage
-  async function saveToStorage() {
-    await setItem(STORAGE_KEYS.LOCKED_ITEMS, exportLockState())
-  }
-
-  // Get the set for a specific type
-  function getSetForType(type: LockItemType): Set<string> {
-    switch (type) {
-      case 'aircraft':
-        return aircraft.value
-      case 'plugin':
-        return plugin.value
-      case 'navdata':
-        return navdata.value
-      case 'scenery':
-        return scenery.value
-      case 'lua':
-        return lua.value
-      default:
-        return new Set()
+  function snapshot(sets?: LockSets): LockedItemsData {
+    return {
+      aircraft: [...(sets?.aircraft ?? empty)],
+      plugin: [...(sets?.plugin ?? empty)],
+      navdata: [...(sets?.navdata ?? empty)],
+      scenery: [...(sets?.scenery ?? empty)],
+      lua: [...(sets?.lua ?? empty)],
     }
   }
 
-  // Check if an item is locked
-  function isLocked(type: LockItemType, folderName: string): boolean {
-    return getSetForType(type).has(folderName.toLowerCase())
+  function exportLockState(xplanePath = useAppStore().xplanePath): LockedItemsData {
+    return snapshot(roots.value.get(rootKey(xplanePath)))
   }
 
-  // Get all locked item names for a specific type
-  function getLockedItems(type: LockItemType): string[] {
-    return Array.from(getSetForType(type))
-  }
-
-  // Toggle lock state
-  async function toggleLock(type: LockItemType, folderName: string): Promise<boolean> {
-    const set = getSetForType(type)
-    const key = folderName.toLowerCase()
-    const wasLocked = set.has(key)
-
-    if (wasLocked) {
-      set.delete(key)
-    } else {
-      set.add(key)
-    }
-
-    await saveToStorage()
-    const newLocked = !wasLocked
-
-    // Sync to cfg file for aircraft and plugins
-    if (type === 'aircraft' || type === 'plugin') {
-      const appStore = useAppStore()
-      if (appStore.xplanePath) {
-        try {
-          await invoke('set_cfg_disabled', {
-            xplanePath: appStore.xplanePath,
-            itemType: type,
-            folderName,
-            disabled: newLocked,
-          })
-        } catch (e) {
-          // Log but don't fail - the app lock state is the source of truth
-          console.warn('Failed to sync lock state to cfg file:', e)
+  function initStore(): Promise<void> {
+    return (initialization ??= (async () => {
+      // Old global locks have no installation provenance. Leave them on disk, but
+      // do not inherit them into an arbitrary installation.
+      const data = await getItem<Record<string, LockedItemsData>>(ROOT_LOCKS_KEY)
+      if (data && typeof data === 'object') {
+        for (const [key, state] of Object.entries(data)) {
+          if (key) roots.value.set(rootKey(key), toSets(state))
         }
       }
-    }
-
-    return newLocked
+      isInitialized.value = true
+    })().catch((error: unknown) => {
+      initialization = undefined
+      throw error
+    }))
   }
 
-  // Set lock state explicitly
-  async function setLocked(type: LockItemType, folderName: string, locked: boolean) {
-    const set = getSetForType(type)
-    const key = folderName.toLowerCase()
+  function saveToStorage() {
+    const data = Object.fromEntries([...roots.value].map(([key, sets]) => [key, snapshot(sets)]))
+    const write = writeQueue.then(() => setItem(ROOT_LOCKS_KEY, data))
+    writeQueue = write.catch(() => {})
+    return write
+  }
 
-    if (locked) {
-      set.add(key)
-    } else {
-      set.delete(key)
+  function getSetForType(type: LockItemType, xplanePath = useAppStore().xplanePath) {
+    return roots.value.get(rootKey(xplanePath))?.[type] ?? empty
+  }
+
+  function isLocked(type: LockItemType, folderName: string, xplanePath?: string): boolean {
+    return getSetForType(type, xplanePath).has(folderName.trim().toLowerCase())
+  }
+
+  function getLockedItems(type: LockItemType, xplanePath?: string): string[] {
+    return [...getSetForType(type, xplanePath)]
+  }
+
+  async function toggleLock(
+    type: LockItemType,
+    folderName: string,
+    xplanePath = useAppStore().xplanePath,
+  ): Promise<boolean> {
+    await initStore()
+    const key = rootKey(xplanePath)
+    const name = folderName.trim().toLowerCase()
+    if (!key || !name) return false
+    if (!roots.value.has(key)) roots.value.set(key, toSets())
+    const set = getSetForType(type, xplanePath)
+    const locked = !set.has(name)
+    if (locked) set.add(name)
+    else set.delete(name)
+    await saveToStorage()
+    if (type === 'aircraft' || type === 'plugin') {
+      try {
+        await invoke('set_cfg_disabled', {
+          xplanePath,
+          itemType: type,
+          folderName,
+          disabled: locked,
+        })
+      } catch (error) {
+        console.warn('Failed to sync lock state to cfg file:', error)
+      }
     }
+    return locked
+  }
 
+  async function setLocked(
+    type: LockItemType,
+    folderName: string,
+    locked: boolean,
+    xplanePath = useAppStore().xplanePath,
+  ) {
+    const key = rootKey(xplanePath)
+    const name = folderName.trim().toLowerCase()
+    if (!key || !name) return
+    await initStore()
+    if (!roots.value.has(key)) roots.value.set(key, toSets())
+    const set = getSetForType(type, xplanePath)
+    if (locked) set.add(name)
+    else set.delete(name)
     await saveToStorage()
   }
 
@@ -187,40 +185,26 @@ export const useLockStore = defineStore('lock', () => {
     }
   }
 
-  async function applyLockState(snapshot?: Partial<LockedItemsData> | null, xplanePath?: string) {
-    const normalized = normalizeSnapshot(snapshot)
-
-    aircraft.value = new Set(normalized.aircraft)
-    plugin.value = new Set(normalized.plugin)
-    navdata.value = new Set(normalized.navdata)
-    scenery.value = new Set(normalized.scenery)
-    lua.value = new Set(normalized.lua)
-
+  async function applyLockState(
+    state?: Partial<LockedItemsData> | null,
+    xplanePath = useAppStore().xplanePath,
+  ) {
+    const key = rootKey(xplanePath)
+    if (!key) return
+    await initStore()
+    const sets = toSets(state)
+    roots.value.set(key, sets)
     await saveToStorage()
-
-    if (xplanePath) {
-      await syncCfgDisabledState('aircraft', xplanePath, aircraft.value)
-      await syncCfgDisabledState('plugin', xplanePath, plugin.value)
-    }
+    await syncCfgDisabledState('aircraft', xplanePath, sets.aircraft)
+    await syncCfgDisabledState('plugin', xplanePath, sets.plugin)
   }
 
-  // Check if an install target path is locked
-  // targetPath: the full path where the addon will be installed
-  // xplanePath: the X-Plane root path
   function isPathLocked(targetPath: string, xplanePath: string): boolean {
     if (!targetPath || !xplanePath) return false
-
-    // Normalize paths for comparison
-    const normalizedTarget = targetPath.replace(/\\/g, '/').toLowerCase()
-    const normalizedXplane = xplanePath.replace(/\\/g, '/').toLowerCase()
-
-    // Extract the folder name from the target path
-    const relativePath = normalizedTarget.startsWith(normalizedXplane)
-      ? normalizedTarget.substring(normalizedXplane.length)
-      : normalizedTarget
-
-    // Remove leading slash
-    const cleanPath = relativePath.replace(/^\/+/, '')
+    const root = rootKey(xplanePath)
+    const normalizedTarget = rootKey(targetPath)
+    if (!normalizedTarget.startsWith(root + '/')) return false
+    const cleanPath = normalizedTarget.slice(root.length + 1).toLowerCase()
 
     // Determine the type and folder name based on the path
     // Aircraft: Aircraft/folderName
@@ -231,7 +215,7 @@ export const useLockStore = defineStore('lock', () => {
 
     if (cleanPath.startsWith('aircraft/')) {
       const folderName = cleanPath.split('/')[1]
-      if (folderName) return aircraft.value.has(folderName)
+      if (folderName) return getSetForType('aircraft', xplanePath).has(folderName)
     } else if (cleanPath.startsWith('resources/plugins/flywithlua/scripts/')) {
       // Lua scripts and companions should be controlled by per-script Lua locks only.
       // Do NOT inherit FlyWithLua plugin lock for installation conflict checks.
@@ -242,34 +226,34 @@ export const useLockStore = defineStore('lock', () => {
       const scriptStem = scriptEntry.includes('.')
         ? scriptEntry.substring(0, scriptEntry.lastIndexOf('.'))
         : scriptEntry
-      return lua.value.has(scriptStem)
+      return getSetForType('lua', xplanePath).has(scriptStem)
     } else if (cleanPath.startsWith('resources/plugins/')) {
       const folderName = cleanPath.split('/')[2]
-      if (folderName) return plugin.value.has(folderName)
+      if (folderName) return getSetForType('plugin', xplanePath).has(folderName)
     } else if (cleanPath.startsWith('custom scenery/')) {
-      const folderName = cleanPath.split('/')[2]
-      if (folderName) return scenery.value.has(folderName)
+      const folderName = cleanPath.split('/')[1]
+      if (folderName) return getSetForType('scenery', xplanePath).has(folderName)
     } else if (cleanPath.startsWith('custom data/')) {
-      const folderName = cleanPath.split('/')[2]
-      if (folderName) return navdata.value.has(folderName)
+      const folderName = cleanPath.split('/')[1]
+      if (folderName) return getSetForType('navdata', xplanePath).has(folderName)
     }
 
     return false
   }
 
   // Computed counts
-  const lockedAircraftCount = computed(() => aircraft.value.size)
-  const lockedPluginCount = computed(() => plugin.value.size)
-  const lockedNavdataCount = computed(() => navdata.value.size)
-  const lockedSceneryCount = computed(() => scenery.value.size)
-  const lockedLuaCount = computed(() => lua.value.size)
+  const lockedAircraftCount = computed(() => getSetForType('aircraft').size)
+  const lockedPluginCount = computed(() => getSetForType('plugin').size)
+  const lockedNavdataCount = computed(() => getSetForType('navdata').size)
+  const lockedSceneryCount = computed(() => getSetForType('scenery').size)
+  const lockedLuaCount = computed(() => getSetForType('lua').size)
   const totalLockedCount = computed(
     () =>
-      aircraft.value.size +
-      plugin.value.size +
-      navdata.value.size +
-      scenery.value.size +
-      lua.value.size,
+      getSetForType('aircraft').size +
+      getSetForType('plugin').size +
+      getSetForType('navdata').size +
+      getSetForType('scenery').size +
+      getSetForType('lua').size,
   )
 
   return {

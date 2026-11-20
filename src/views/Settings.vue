@@ -29,26 +29,27 @@
 
     <div class="min-h-0 flex-1 overflow-y-auto pb-4 pr-1">
       <section v-show="activeGroup === 'xplane'" id="settings-xplane" :class="panel">
-          <XplaneDirectoryForm />
-          <CollapsibleSection :title="t('settingsPanels.advanced')">
-            <label
-              for="launch-args"
-              class="block text-sm font-medium text-gray-900 dark:text-gray-100"
-            >
-              {{ t('settings.xplaneLaunchArgs') }}
-            </label>
-            <input
-              id="launch-args"
-              v-model="launchArgsInput"
-              type="text"
-              :class="inputStyle"
-              :placeholder="t('settings.xplaneLaunchArgsPlaceholder')"
-              aria-describedby="launch-args-help"
-              @blur="handleLaunchArgsBlur"
-              @keydown.enter.prevent="handleLaunchArgsBlur"
-            />
-            <p id="launch-args-help" :class="helpStyle">{{ t('settings.xplaneLaunchArgsDesc') }}</p>
-          </CollapsibleSection>
+        <XplaneDirectoryForm />
+        <CollapsibleSection :title="t('settingsPanels.advanced')">
+          <label
+            for="launch-args"
+            class="block text-sm font-medium text-gray-900 dark:text-gray-100"
+          >
+            {{ t('settings.xplaneLaunchArgs') }}
+          </label>
+          <input
+            id="launch-args"
+            v-model="launchArgsInput"
+            type="text"
+            :class="inputStyle"
+            :placeholder="t('settings.xplaneLaunchArgsPlaceholder')"
+            aria-describedby="launch-args-help"
+            :disabled="!store.xplanePath || store.xplaneLaunchArgsLoading"
+            @blur="handleLaunchArgsBlur"
+            @keydown.enter.prevent="handleLaunchArgsBlur"
+          />
+          <p id="launch-args-help" :class="helpStyle">{{ t('settings.xplaneLaunchArgsDesc') }}</p>
+        </CollapsibleSection>
       </section>
 
       <section v-show="activeGroup === 'installation'" id="settings-installation" :class="panel">
@@ -418,7 +419,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import CollapsibleSection from '@/components/CollapsibleSection.vue'
@@ -472,6 +473,13 @@ const primaryStyle =
   'inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-all duration-150 hover:bg-blue-700 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500'
 
 const launchArgsInput = ref(store.xplaneLaunchArgs)
+watch(
+  [() => store.xplanePath, () => store.xplaneLaunchArgs],
+  () => {
+    launchArgsInput.value = store.xplaneLaunchArgs
+  },
+  { flush: 'sync' },
+)
 const isProcessing = ref(false)
 const savingDeleteSource = ref(false)
 const appVersion = ref('')
@@ -548,7 +556,14 @@ function toggleAllPreferences(enabled: boolean) {
 
 async function handleLaunchArgsBlur() {
   const value = launchArgsInput.value.trim()
-  if (value !== store.xplaneLaunchArgs) await store.setXplaneLaunchArgs(value)
+  if (value !== store.xplaneLaunchArgs) {
+    const installation = store.captureXplaneContext()
+    try {
+      await store.setXplaneLaunchArgs(value)
+    } catch (error) {
+      if (installation.isCurrent()) modal.showError(error)
+    }
+  }
 }
 
 function addPattern() {
@@ -720,14 +735,16 @@ async function saveAutoSort(enabled: boolean) {
 }
 
 async function handleRebuildIndex() {
-  if (isRebuilding.value || !store.xplanePath) return
+  const root = store.captureXplaneContext()
+  if (isRebuilding.value || !root.path) return
   isRebuilding.value = true
   try {
-    await invoke('rebuild_scenery_index', { xplanePath: store.xplanePath })
+    await invoke('rebuild_scenery_index', { xplanePath: root.path })
+    if (!root.isCurrent()) return
     await sceneryStore.loadData()
-    toast.success(t('settings.indexRebuilt'))
+    if (root.isCurrent()) toast.success(t('settings.indexRebuilt'))
   } catch (e) {
-    modal.showError(t('settings.indexRebuildFailed') + ': ' + String(e))
+    if (root.isCurrent()) modal.showError(t('settings.indexRebuildFailed') + ': ' + String(e))
   } finally {
     isRebuilding.value = false
   }

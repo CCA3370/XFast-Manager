@@ -8,7 +8,7 @@
       <div class="flex items-center gap-2">
         <button
           class="text-sm px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center gap-2"
-          :disabled="!appStore.xplanePath || store.isLoadingInstalled"
+          :disabled="!xplanePath || store.isLoadingInstalled"
           @click="handleReloadInstalled"
         >
           <div
@@ -19,9 +19,7 @@
         </button>
         <button
           class="text-sm px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-          :disabled="
-            !appStore.xplanePath || store.isCheckingUpdates || store.installed.length === 0
-          "
+          :disabled="!xplanePath || store.isCheckingUpdates || store.installed.length === 0"
           @click="handleCheckUpdates"
         >
           <span v-if="store.isCheckingUpdates">{{ $t('gatewayManager.checkingUpdates') }}</span>
@@ -49,7 +47,7 @@
     </div>
 
     <div
-      v-if="!appStore.xplanePath"
+      v-if="!xplanePath"
       class="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 mb-3"
     >
       {{ $t('gatewayManager.pathRequiredHint') }}
@@ -181,7 +179,7 @@
           </template>
           <template v-else>
             {{
-              appStore.xplanePath
+              xplanePath
                 ? $t('gatewayManager.installedEmpty')
                 : $t('gatewayManager.installedEmptyHint')
             }}
@@ -712,13 +710,17 @@ import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage, type GatewayInstalledAirport } from '@/types'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const GATEWAY_EXTERNAL_CONFLICT_MARKER = 'contains a non-Gateway airport'
 const GATEWAY_EXTERNAL_CONFLICT_KIND = 'external_airport_conflict'
 const { t } = useI18n()
 const appStore = useAppStore()
+const installation = appStore.captureXplaneContext()
+const xplanePath = installation.path
+let disposed = false
+const isCurrentView = () => !disposed && installation.isCurrent()
 const store = useGatewayStore()
 const modal = useModalStore()
 const toast = useToastStore()
@@ -747,9 +749,9 @@ const filteredInstalled = computed(() => {
 })
 
 const installDisabled = computed(() => {
-  if (!appStore.xplanePath) return true
+  if (!xplanePath) return true
   if (!store.airportDetail || store.selectedSceneryId === null) return true
-  if (isGatewayInstallBusy.value) return true
+  if (!isCurrentView() || isGatewayInstallBusy.value) return true
   return store.selectedInstalledRecord?.sceneryId === store.selectedSceneryId
 })
 
@@ -774,12 +776,12 @@ const selectedInstalledFolderLabel = computed(
 )
 
 const hasInstalledFolderActions = computed(() =>
-  Boolean(appStore.xplanePath && store.selectedInstalledRecord?.folderName),
+  Boolean(xplanePath && store.selectedInstalledRecord?.folderName),
 )
 
 const showReleaseComparisonUnavailable = computed(() =>
   Boolean(
-    appStore.xplanePath &&
+    xplanePath &&
     !store.isLoadingReleaseContext &&
     store.releaseContext &&
     !store.releaseContext.comparisonAvailable,
@@ -810,37 +812,22 @@ const selectedSceneryIsLatestUpdate = computed(
   () => store.selectedSceneryId !== null && isLatestUpdateScenery(store.selectedSceneryId),
 )
 
-watch(
-  () => appStore.xplanePath,
-  async (path) => {
-    showInstallWarning.value = false
-    pendingInstallIntent.value = null
-    try {
-      await store.loadReleaseContext(path)
-      await store.loadInstalled(path)
-      if (activeTab.value === 'search' && searchText.value) {
-        await store.searchAirports(searchText.value)
-      }
-      if (path && showAirportModal.value && store.selectedAirportIcao) {
-        await store.openAirport(store.selectedAirportIcao, store.selectedSceneryId ?? undefined)
-      }
-    } catch (error) {
-      modal.showError(`${t('gatewayManager.loadInstalledFailed')}: ${getErrorMessage(error)}`)
-    }
-  },
-  { immediate: true },
-)
+onMounted(() => {
+  void handleReloadInstalled()
+})
 
 watch(searchText, (value) => {
   if (searchTimer) {
     clearTimeout(searchTimer)
   }
 
-  if (activeTab.value === 'search') {
+  if (isCurrentView() && activeTab.value === 'search') {
     searchTimer = setTimeout(async () => {
+      if (!isCurrentView()) return
       try {
         await store.searchAirports(value)
       } catch (error) {
+        if (!isCurrentView()) return
         toast.error(`${t('gatewayManager.loadAirportFailed')}: ${getErrorMessage(error)}`)
       }
     }, 250)
@@ -848,15 +835,17 @@ watch(searchText, (value) => {
 })
 
 watch(activeTab, (tab) => {
-  if (tab === 'search' && searchText.value) {
+  if (isCurrentView() && tab === 'search' && searchText.value) {
     if (searchTimer) clearTimeout(searchTimer)
     store.searchAirports(searchText.value).catch((error) => {
+      if (!isCurrentView()) return
       toast.error(`${t('gatewayManager.loadAirportFailed')}: ${getErrorMessage(error)}`)
     })
   }
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   if (searchTimer) {
     clearTimeout(searchTimer)
   }
@@ -864,7 +853,7 @@ onBeforeUnmount(() => {
 
 function clearSearch() {
   searchText.value = ''
-  if (activeTab.value === 'search') {
+  if (isCurrentView() && activeTab.value === 'search') {
     store.clearSearch()
   }
 }
@@ -898,10 +887,12 @@ function formatDateTime(value: string): string {
 }
 
 async function openAirportModal(icao: string, preferredSceneryId?: number) {
+  if (!isCurrentView()) return
   showAirportModal.value = true
   try {
     await store.openAirport(icao, preferredSceneryId)
   } catch (error) {
+    if (!isCurrentView()) return
     modal.showError(`${t('gatewayManager.loadAirportFailed')}: ${getErrorMessage(error)}`)
     showAirportModal.value = false
   }
@@ -931,28 +922,33 @@ function isLatestUpdateScenery(sceneryId: number): boolean {
 }
 
 async function handleSelectScenery(sceneryId: number) {
+  if (!isCurrentView()) return
   try {
     await store.selectScenery(sceneryId)
   } catch (error) {
+    if (!isCurrentView()) return
     modal.showError(`${t('gatewayManager.loadSceneryFailed')}: ${getErrorMessage(error)}`)
   }
 }
 
 async function handleReloadInstalled() {
-  if (!appStore.xplanePath) return
+  if (!isCurrentView()) return
   try {
-    await store.loadReleaseContext(appStore.xplanePath)
-    await store.loadInstalled(appStore.xplanePath)
-    if (activeTab.value === 'search' && searchText.value) {
+    await store.loadReleaseContext(xplanePath)
+    if (!isCurrentView()) return
+    await store.loadInstalled(xplanePath)
+    if (isCurrentView() && activeTab.value === 'search' && searchText.value) {
       await store.searchAirports(searchText.value)
     }
   } catch (error) {
+    if (!isCurrentView()) return
     modal.showError(`${t('gatewayManager.loadInstalledFailed')}: ${getErrorMessage(error)}`)
   }
 }
 
 async function handleCheckUpdates() {
-  if (!appStore.xplanePath) {
+  if (!isCurrentView()) return
+  if (!xplanePath) {
     modal.showError(t('gatewayManager.pathRequiredHint'), t('gatewayManager.pathRequired'), {
       hideReport: true,
     })
@@ -960,41 +956,45 @@ async function handleCheckUpdates() {
   }
 
   try {
-    await store.loadReleaseContext(appStore.xplanePath)
-    await store.checkUpdates(appStore.xplanePath)
+    await store.loadReleaseContext(xplanePath)
+    if (!isCurrentView()) return
+    await store.checkUpdates(xplanePath)
   } catch (error) {
+    if (!isCurrentView()) return
     modal.showError(`${t('gatewayManager.updateCheckFailed')}: ${getErrorMessage(error)}`)
   }
 }
 
 async function handleOpenInstalledFolder() {
-  if (!appStore.xplanePath || !store.selectedInstalledRecord?.folderName) return
+  if (!isCurrentView()) return
+  if (!xplanePath || !store.selectedInstalledRecord?.folderName) return
 
   try {
     await invokeVoidCommand('open_scenery_folder', {
-      xplanePath: appStore.xplanePath,
+      xplanePath: xplanePath,
       folderName: store.selectedInstalledRecord.folderName,
     })
   } catch (error) {
+    if (!isCurrentView()) return
     modal.showError(`${t('management.openFolderFailed')}: ${getErrorMessage(error)}`)
   }
 }
 
 async function handleCopyInstalledFolder() {
+  if (!isCurrentView()) return
   if (!store.selectedInstalledRecord?.folderName) return
 
   try {
     await navigator.clipboard.writeText(store.selectedInstalledRecord.folderName)
-    toast.success(t('copy.copied'))
+    if (isCurrentView()) toast.success(t('copy.copied'))
   } catch {
-    toast.error(t('copy.copyFailed'))
+    if (isCurrentView()) toast.error(t('copy.copyFailed'))
   }
 }
 
 function createInstallIntent(): GatewayInstallIntent | null {
-  const xplanePath = appStore.xplanePath
   const selection = store.selectedInstallSelection
-  if (!xplanePath || !selection) return null
+  if (!isCurrentView() || !xplanePath || !selection) return null
 
   return {
     xplanePath,
@@ -1013,6 +1013,7 @@ async function installSelectedGateway(
     intent.autoSortScenery,
     ignoreExternalConflict,
   )
+  if (!isCurrentView()) return
   toast.success(
     t('gatewayManager.installSuccess', {
       icao: installedRecord.airportIcao,
@@ -1057,7 +1058,7 @@ async function handleInstall(
   ignoreExternalConflict = false,
   preparedIntent: GatewayInstallIntent | null = null,
 ) {
-  if (isGatewayInstallBusy.value) return
+  if (!isCurrentView() || isGatewayInstallBusy.value) return
 
   const intent = preparedIntent ?? createInstallIntent()
   if (!intent) {
@@ -1075,6 +1076,7 @@ async function handleInstall(
           intent.xplanePath,
           intent.selection.airportIcao,
         )
+        if (!isCurrentView()) return
         if (warning?.kind === GATEWAY_EXTERNAL_CONFLICT_KIND) {
           showInstallBlockedWarning(warning.message, intent)
           return
@@ -1084,8 +1086,10 @@ async function handleInstall(
       }
     }
 
+    if (!isCurrentView()) return
     await installSelectedGateway(intent, ignoreExternalConflict)
   } catch (error) {
+    if (!isCurrentView()) return
     const externalConflictMessage = getGatewayExternalConflictMessage(error)
     if (externalConflictMessage && !ignoreExternalConflict) {
       showInstallBlockedWarning(externalConflictMessage, intent)
@@ -1117,11 +1121,13 @@ function confirmUninstall(record: GatewayInstalledAirport) {
     cancelText: t('common.cancel'),
     type: 'danger',
     onConfirm: async () => {
-      if (!appStore.xplanePath) return
+      if (!isCurrentView() || !xplanePath) return
       try {
-        await store.uninstallAirportByIcao(appStore.xplanePath, record.airportIcao)
+        await store.uninstallAirportByIcao(xplanePath, record.airportIcao)
+        if (!isCurrentView()) return
         toast.success(t('gatewayManager.uninstallSuccess', { icao: record.airportIcao }))
       } catch (error) {
+        if (!isCurrentView()) return
         modal.showError(`${t('gatewayManager.uninstallFailed')}: ${getErrorMessage(error)}`)
       }
     },

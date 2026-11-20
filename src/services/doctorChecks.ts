@@ -23,6 +23,7 @@ import type {
   DoctorSystemSnapshot,
 } from '@/types/doctor'
 import { getItem, STORAGE_KEYS } from '@/services/storage'
+import { rootStorageKey } from '@/utils/xplaneStorage'
 import {
   hasAddonUpdateBetaPreference,
   getUpdateProvider,
@@ -1532,8 +1533,8 @@ function createCslUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinitio
     timeoutMs: 120_000,
     async run() {
       const [customPaths, installLocation, activeServer] = await Promise.all([
-        getItem<string[]>(STORAGE_KEYS.CSL_CUSTOM_PATHS),
-        getItem<string>(STORAGE_KEYS.CSL_INSTALL_LOCATION),
+        getItem<string[]>(rootStorageKey(STORAGE_KEYS.CSL_CUSTOM_PATHS, context.xplanePath)),
+        getItem<string>(rootStorageKey(STORAGE_KEYS.CSL_INSTALL_LOCATION, context.xplanePath)),
         getItem<string>(STORAGE_KEYS.CSL_ACTIVE_SERVER_BASE_URL),
       ])
       const serverBaseUrl = activeServer || DEFAULT_CSL_SERVER

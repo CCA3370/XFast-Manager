@@ -724,6 +724,11 @@ async fn install_addons(
     parallel_enabled: Option<bool>,
     max_parallel: Option<usize>,
 ) -> Result<InstallResult, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     log_debug!(
         &format!(
             "Installing {} tasks: {}",
@@ -749,7 +754,7 @@ async fn install_addons(
         })
         .collect();
 
-    let installer = Installer::new(app_handle);
+    let installer = Installer::new(app_handle, scoped_db.clone());
 
     let result = if parallel_enabled.unwrap_or(false) && tasks.len() > 1 {
         installer
@@ -780,7 +785,7 @@ async fn install_addons(
 
     // Log each task result
     if let Ok(ref install_result) = result {
-        let conn = db.get();
+        let conn = scoped_db.clone();
         for (i, tr) in install_result.task_results.iter().enumerate() {
             let item_type = task_info
                 .get(i)
@@ -1839,6 +1844,8 @@ async fn delete_scenery_folder(
     xplane_path: String,
     folder_name: String,
 ) -> error::ApiResult<()> {
+    let scoped_db = db.get_for_root(&xplane_path).await?;
+
     let (entry_path, base_path) = resolve_scenery_entry_path(&xplane_path, &folder_name)?;
     let metadata = fs::symlink_metadata(&entry_path)
         .map_err(|e| error::ApiError::validation(format!("Invalid path: {}", e)))?;
@@ -1861,7 +1868,7 @@ async fn delete_scenery_folder(
     // Remove only this registration; deleting a package must not reorder other entries.
     let packs_manager = scenery_packs_manager::SceneryPacksManager::new(
         std::path::Path::new(&xplane_path),
-        db.get(),
+        scoped_db.clone(),
     );
     if let Err(e) = packs_manager.remove_entry_from_ini(&folder_name).await {
         logger::log_error(
@@ -1871,7 +1878,8 @@ async fn delete_scenery_folder(
     }
 
     // Remove from scenery index if it exists
-    if let Err(e) = scenery_index::remove_scenery_entry(&db.get(), &xplane_path, &folder_name).await
+    if let Err(e) =
+        scenery_index::remove_scenery_entry(&scoped_db.clone(), &xplane_path, &folder_name).await
     {
         logger::log_error(
             &format!("Failed to remove scenery from index: {}", e),
@@ -2215,7 +2223,9 @@ async fn get_scenery_classification(
     xplane_path: String,
     folder_name: String,
 ) -> error::ApiResult<SceneryPackageInfo> {
-    let db = db.get();
+    let scoped_db = db.get_for_root(&xplane_path).await?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let scenery_path = xplane_path.join("Custom Scenery").join(&folder_name);
 
@@ -2239,10 +2249,15 @@ async fn sort_scenery_packs(
     xplane_path: String,
     locked_folder_names: Option<Vec<String>>,
 ) -> Result<bool, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     if !scenery_sorting::auto_sort_enabled() {
         return Err("Scenery auto-sorting is disabled in Settings".to_string());
     }
-    let db = db.get();
+    let db = scoped_db.clone();
     let db_for_log = db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
@@ -2292,10 +2307,15 @@ async fn rebuild_scenery_index(
     db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryIndexStats, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     // Rebuild replaces all data, so an incompatible schema can be silently fixed first.
-    // Use db.reset() (not reset_schema) so the pool is replaced with a fresh one,
+    // Use reset_for_root() (not reset_schema) so the pool is replaced with a fresh one,
     // clearing any stale sqlx prepared-statement caches.
-    if !database::is_schema_compatible(&db.get())
+    if !database::is_schema_compatible(&scoped_db.clone())
         .await
         .map_err(|e| e.to_string())?
     {
@@ -2303,10 +2323,15 @@ async fn rebuild_scenery_index(
             "Incompatible schema detected before rebuild — resetting",
             Some("database"),
         );
-        db.reset().await.map_err(|e| e.to_string())?;
+        db.reset_for_root(&xplane_path)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
-    let db = db.get();
+    let db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -2335,28 +2360,38 @@ async fn rebuild_scenery_index(
 /// Reset the scenery database by deleting it entirely
 /// This is useful when the database schema version is incompatible
 #[tauri::command]
-async fn reset_scenery_database() -> Result<bool, String> {
-    tokio::task::spawn_blocking(move || {
-        logger::log_info("Resetting scenery database", Some("database"));
-        database::delete_database().map_err(|e| format!("Failed to delete database: {}", e))
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+async fn reset_scenery_database(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+) -> Result<bool, String> {
+    db.reset_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
-/// Check whether the current database schema is compatible with the entity model.
-/// Returns `false` if columns added after the initial release are missing (old database).
 #[tauri::command]
-async fn check_database_compatibility(db: tauri::State<'_, DatabaseState>) -> Result<bool, String> {
-    database::is_schema_compatible(&db.get())
+async fn check_database_compatibility(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+) -> Result<bool, String> {
+    database::is_schema_compatible(
+        &db.get_for_root(&xplane_path)
+            .await
+            .map_err(|e| e.to_string())?,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn reset_and_reinitialize(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+) -> Result<(), String> {
+    db.reset_for_root(&xplane_path)
         .await
         .map_err(|e| e.to_string())
-}
-
-/// Delete the scenery database and exit the process so the user can relaunch with a clean slate.
-#[tauri::command]
-async fn reset_and_reinitialize(db: tauri::State<'_, DatabaseState>) -> Result<(), String> {
-    db.reset().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2364,7 +2399,12 @@ async fn get_scenery_index_stats(
     db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryIndexStats, String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -2379,7 +2419,12 @@ async fn get_scenery_index_status(
     db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryIndexStatus, String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -2395,7 +2440,12 @@ async fn quick_scan_scenery_index(
     xplane_path: String,
     locked_folder_names: Option<Vec<String>>,
 ) -> Result<SceneryIndexScanResult, String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -2419,7 +2469,12 @@ async fn sync_scenery_packs_with_folder(
     db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<usize, String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let manager = SceneryPacksManager::new(xplane_path, db);
 
@@ -2434,7 +2489,12 @@ async fn get_scenery_manager_data(
     db: State<'_, DatabaseState>,
     xplane_path: String,
 ) -> Result<SceneryManagerData, String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     let index_manager = SceneryIndexManager::new(xplane_path, db);
 
@@ -2453,7 +2513,12 @@ async fn update_scenery_entry(
     sort_order: Option<u32>,
     category: Option<models::SceneryCategory>,
 ) -> Result<(), String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     if folder_name == GLOBAL_AIRPORTS_ENTRY_NAME {
         let packs_manager = SceneryPacksManager::new(xplane_path, db);
@@ -2493,7 +2558,12 @@ async fn move_scenery_entry(
     folder_name: String,
     new_sort_order: u32,
 ) -> Result<(), String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     if folder_name == GLOBAL_AIRPORTS_ENTRY_NAME {
         return SceneryPacksManager::new(xplane_path, db)
@@ -2517,7 +2587,12 @@ async fn apply_scenery_changes(
     entries: Vec<models::SceneryEntryUpdate>,
     reorder: Option<bool>,
 ) -> Result<(), String> {
-    let db = db.get();
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let db = scoped_db.clone();
     let xplane_path = std::path::Path::new(&xplane_path);
     validate_xplane_root_path(xplane_path)?;
     let index_manager = SceneryIndexManager::new(xplane_path, db.clone());
@@ -2593,16 +2668,45 @@ async fn apply_scenery_changes(
 
 // ========== Management Commands ==========
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScopedAddonUpdateProgressEvent {
+    xplane_path: String,
+    root_generation: Option<u64>,
+    #[serde(flatten)]
+    progress: addon_updater::AddonUpdateProgressEvent,
+}
+
+fn emit_scoped_addon_update_progress(
+    app_handle: &tauri::AppHandle,
+    xplane_path: &str,
+    root_generation: Option<u64>,
+    progress: addon_updater::AddonUpdateProgressEvent,
+) {
+    let _ = app_handle.emit(
+        "addon-update-progress",
+        ScopedAddonUpdateProgressEvent {
+            xplane_path: xplane_path.to_owned(),
+            root_generation,
+            progress,
+        },
+    );
+}
+
 fn emit_addon_update_status(
     app_handle: &tauri::AppHandle,
+    xplane_path: &str,
+    root_generation: Option<u64>,
     item_type: &str,
     folder_name: &str,
     stage: &str,
     status: &str,
     message: Option<String>,
 ) {
-    let _ = app_handle.emit(
-        "addon-update-progress",
+    emit_scoped_addon_update_progress(
+        app_handle,
+        xplane_path,
+        root_generation,
         addon_updater::AddonUpdateProgressEvent {
             item_type: item_type.to_string(),
             folder_name: folder_name.to_string(),
@@ -2622,6 +2726,37 @@ fn emit_addon_update_status(
             message,
         },
     );
+}
+
+#[cfg(test)]
+mod addon_update_scope_tests {
+    #[test]
+    fn progress_payload_retains_request_root_and_generation() {
+        let payload = super::ScopedAddonUpdateProgressEvent {
+            xplane_path: "XP-A".to_owned(),
+            root_generation: Some(7),
+            progress: crate::addon_updater::AddonUpdateProgressEvent {
+                item_type: "aircraft".to_owned(),
+                folder_name: "SameName".to_owned(),
+                stage: "install".to_owned(),
+                status: "completed".to_owned(),
+                percentage: 100.0,
+                processed_units: 1,
+                total_units: 1,
+                processed_bytes: 1,
+                total_bytes: 1,
+                speed_bytes_per_sec: 0.0,
+                current_file: None,
+                message: None,
+            },
+        };
+        let json = serde_json::to_value(payload).unwrap();
+        assert_eq!(json["xplanePath"], "XP-A");
+        assert_eq!(json["rootGeneration"], 7);
+        assert_eq!(json["folderName"], "SameName");
+        assert_eq!(json["status"], "completed");
+        assert!(json.get("progress").is_none());
+    }
 }
 
 fn resolve_addon_target_path(
@@ -2766,6 +2901,7 @@ async fn build_addon_update_plan(
     app_handle: tauri::AppHandle,
     task_control: State<'_, TaskControl>,
     xplane_path: String,
+    root_generation: Option<u64>,
     item_type: String,
     folder_name: String,
     options: addon_updater::AddonUpdateOptions,
@@ -2775,6 +2911,8 @@ async fn build_addon_update_plan(
         let message = blocked_addon_update_error(&item_type, &folder_name);
         emit_addon_update_status(
             &app_handle,
+            &xplane_path,
+            root_generation,
             &item_type,
             &folder_name,
             "scan",
@@ -2784,12 +2922,13 @@ async fn build_addon_update_plan(
         return Err(message);
     }
     let event_handle = app_handle.clone();
+    let event_root = xplane_path.clone();
     let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
-        let _ = event_handle.emit("addon-update-progress", event);
+        emit_scoped_addon_update_progress(&event_handle, &event_root, root_generation, event);
     });
-    let xplane_path = std::path::Path::new(&xplane_path);
+    let xplane_root = std::path::Path::new(&xplane_path);
     match addon_updater::build_update_plan(
-        xplane_path,
+        xplane_root,
         &item_type,
         &folder_name,
         options,
@@ -2803,6 +2942,8 @@ async fn build_addon_update_plan(
             let (status, message) = addon_update_error_status_and_message(&e);
             emit_addon_update_status(
                 &app_handle,
+                &xplane_path,
+                root_generation,
                 &item_type,
                 &folder_name,
                 "scan",
@@ -2819,6 +2960,7 @@ async fn fetch_addon_update_preview(
     app_handle: tauri::AppHandle,
     task_control: State<'_, TaskControl>,
     xplane_path: String,
+    root_generation: Option<u64>,
     item_type: String,
     folder_name: String,
     options: addon_updater::AddonUpdateOptions,
@@ -2830,6 +2972,8 @@ async fn fetch_addon_update_preview(
         let message = blocked_addon_update_error(&item_type, &folder_name);
         emit_addon_update_status(
             &app_handle,
+            &xplane_path,
+            root_generation,
             &item_type,
             &folder_name,
             "check",
@@ -2839,12 +2983,13 @@ async fn fetch_addon_update_preview(
         return Err(message);
     }
     let event_handle = app_handle.clone();
+    let event_root = xplane_path.clone();
     let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
-        let _ = event_handle.emit("addon-update-progress", event);
+        emit_scoped_addon_update_progress(&event_handle, &event_root, root_generation, event);
     });
-    let xplane_path = std::path::Path::new(&xplane_path);
+    let xplane_root = std::path::Path::new(&xplane_path);
     match addon_updater::fetch_update_preview(
-        xplane_path,
+        xplane_root,
         &item_type,
         &folder_name,
         options,
@@ -2860,6 +3005,8 @@ async fn fetch_addon_update_preview(
             let (status, message) = addon_update_error_status_and_message(&e);
             emit_addon_update_status(
                 &app_handle,
+                &xplane_path,
+                root_generation,
                 &item_type,
                 &folder_name,
                 "check",
@@ -2877,15 +3024,23 @@ async fn execute_addon_update(
     db: State<'_, DatabaseState>,
     task_control: State<'_, TaskControl>,
     xplane_path: String,
+    root_generation: Option<u64>,
     item_type: String,
     folder_name: String,
     options: addon_updater::AddonUpdateOptions,
 ) -> Result<addon_updater::AddonUpdateResult, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let task_control = task_control.child_session();
     if is_xupdater_disabled_target(&xplane_path, &item_type, &folder_name) {
         let message = blocked_addon_update_error(&item_type, &folder_name);
         emit_addon_update_status(
             &app_handle,
+            &xplane_path,
+            root_generation,
             &item_type,
             &folder_name,
             "install",
@@ -2895,12 +3050,13 @@ async fn execute_addon_update(
         return Err(message);
     }
     let event_handle = app_handle.clone();
+    let event_root = xplane_path.clone();
     let progress_callback: addon_updater::AddonUpdateProgressCallback = Arc::new(move |event| {
-        let _ = event_handle.emit("addon-update-progress", event);
+        emit_scoped_addon_update_progress(&event_handle, &event_root, root_generation, event);
     });
-    let xplane_path = std::path::Path::new(&xplane_path);
+    let xplane_root = std::path::Path::new(&xplane_path);
     let result = match addon_updater::execute_update(
-        xplane_path,
+        xplane_root,
         &item_type,
         &folder_name,
         options,
@@ -2910,13 +3066,21 @@ async fn execute_addon_update(
     .await
     {
         Ok(result) => {
-            activity::log_activity(&db.get(), "update", &item_type, &folder_name, None, true).await;
+            activity::log_activity(
+                &scoped_db.clone(),
+                "update",
+                &item_type,
+                &folder_name,
+                None,
+                true,
+            )
+            .await;
             Ok(result)
         }
         Err(e) => {
             let (status, message) = addon_update_error_status_and_message(&e);
             activity::log_activity(
-                &db.get(),
+                &scoped_db.clone(),
                 "update",
                 &item_type,
                 &folder_name,
@@ -2926,6 +3090,8 @@ async fn execute_addon_update(
             .await;
             emit_addon_update_status(
                 &app_handle,
+                &xplane_path,
+                root_generation,
                 &item_type,
                 &folder_name,
                 "install",
@@ -3051,6 +3217,11 @@ async fn toggle_management_item(
     item_type: String,
     folder_name: String,
 ) -> Result<bool, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let it = item_type.clone();
     let fn_ = folder_name.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -3064,7 +3235,7 @@ async fn toggle_management_item(
 
     if let Ok(enabled) = &result {
         let op = if *enabled { "enable" } else { "disable" };
-        activity::log_activity(&db.get(), op, &it, &fn_, None, true).await;
+        activity::log_activity(&scoped_db.clone(), op, &it, &fn_, None, true).await;
     }
     result
 }
@@ -3075,6 +3246,11 @@ async fn toggle_aircraft_folder(
     xplane_path: String,
     folder_name: String,
 ) -> Result<AircraftInfo, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let folder_for_log = folder_name.clone();
     let result = tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -3087,7 +3263,15 @@ async fn toggle_aircraft_folder(
 
     if let Ok(updated) = &result {
         let op = if updated.enabled { "enable" } else { "disable" };
-        activity::log_activity(&db.get(), op, "aircraft", &folder_for_log, None, true).await;
+        activity::log_activity(
+            &scoped_db.clone(),
+            op,
+            "aircraft",
+            &folder_for_log,
+            None,
+            true,
+        )
+        .await;
     }
 
     result
@@ -3100,6 +3284,11 @@ async fn toggle_aircraft_acf_file(
     folder_name: String,
     file_name: String,
 ) -> Result<AircraftInfo, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let folder_for_log = folder_name.clone();
     let file_for_log = file_name.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -3131,7 +3320,7 @@ async fn toggle_aircraft_acf_file(
             "disable"
         };
         activity::log_activity(
-            &db.get(),
+            &scoped_db.clone(),
             op,
             "aircraft",
             &format!("{}/{}", folder_for_log, file_for_log),
@@ -3151,6 +3340,11 @@ async fn delete_management_item(
     item_type: String,
     folder_name: String,
 ) -> Result<(), String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let it = item_type.clone();
     let fn_ = folder_name.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -3162,7 +3356,15 @@ async fn delete_management_item(
     .map_err(|e| format!("Task join error: {}", e))?
     .to_tauri_error();
 
-    activity::log_activity(&db.get(), "delete", &it, &fn_, None, result.is_ok()).await;
+    activity::log_activity(
+        &scoped_db.clone(),
+        "delete",
+        &it,
+        &fn_,
+        None,
+        result.is_ok(),
+    )
+    .await;
     result
 }
 
@@ -3263,6 +3465,11 @@ async fn toggle_lua_script(
     xplane_path: String,
     file_name: String,
 ) -> Result<bool, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let fn_ = file_name.clone();
     let result = tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -3274,7 +3481,7 @@ async fn toggle_lua_script(
 
     if let Ok(enabled) = &result {
         let op = if *enabled { "enable" } else { "disable" };
-        activity::log_activity(&db.get(), op, "lua_script", &fn_, None, true).await;
+        activity::log_activity(&scoped_db.clone(), op, "lua_script", &fn_, None, true).await;
     }
     result
 }
@@ -3285,6 +3492,11 @@ async fn delete_lua_script(
     xplane_path: String,
     file_name: String,
 ) -> Result<(), String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let fn_ = file_name.clone();
     let result = tokio::task::spawn_blocking(move || {
         let xplane_path = std::path::Path::new(&xplane_path);
@@ -3295,7 +3507,7 @@ async fn delete_lua_script(
     .to_tauri_error();
 
     activity::log_activity(
-        &db.get(),
+        &scoped_db.clone(),
         "delete",
         "lua_script",
         &fn_,
@@ -3492,16 +3704,22 @@ async fn build_reddit_share_url(
 #[tauri::command]
 async fn get_activity_log(
     db: State<'_, DatabaseState>,
+    xplane_path: String,
     limit: Option<u64>,
     offset: Option<u64>,
     item_type: Option<String>,
     since: Option<i64>,
     failed_installs_and_updates: Option<bool>,
 ) -> Result<ActivityLogPage, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::activity_log;
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
 
@@ -3557,12 +3775,18 @@ async fn get_activity_log(
 #[tauri::command]
 async fn clear_activity_log(
     db: State<'_, DatabaseState>,
+    xplane_path: String,
     before_days: Option<u64>,
 ) -> Result<u64, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::activity_log;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
 
     let result = if let Some(days) = before_days {
         let cutoff = std::time::SystemTime::now()
@@ -3653,11 +3877,19 @@ async fn build_preset_snapshot(
 }
 
 #[tauri::command]
-async fn list_presets(db: State<'_, DatabaseState>) -> Result<Vec<PresetSummary>, String> {
+async fn list_presets(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+) -> Result<Vec<PresetSummary>, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::addon_presets;
     use sea_orm::{EntityTrait, QueryOrder};
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     let rows = addon_presets::Entity::find()
         .order_by_desc(addon_presets::Column::UpdatedAt)
         .all(&conn)
@@ -3688,11 +3920,16 @@ async fn save_preset(
     description: Option<String>,
     lock_state: Option<PresetLockState>,
 ) -> Result<(), String> {
+    let scoped_db = db
+        .get_for_root(xplane_path.as_deref().unwrap_or_default())
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::addon_presets;
     use sea_orm::ActiveModelTrait;
     use sea_orm::Set;
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     let snapshot = build_preset_snapshot(conn.clone(), xplane_path, lock_state).await?;
 
     let now = std::time::SystemTime::now()
@@ -3727,10 +3964,15 @@ async fn update_preset(
     update_snapshot: Option<bool>,
     lock_state: Option<PresetLockState>,
 ) -> Result<(), String> {
+    let scoped_db = db
+        .get_for_root(xplane_path.as_deref().unwrap_or_default())
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::addon_presets;
     use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     let existing = addon_presets::Entity::find_by_id(preset_id)
         .one(&conn)
         .await
@@ -3772,11 +4014,20 @@ async fn update_preset(
 }
 
 #[tauri::command]
-async fn delete_preset(db: State<'_, DatabaseState>, preset_id: i64) -> Result<(), String> {
+async fn delete_preset(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    preset_id: i64,
+) -> Result<(), String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::addon_presets;
     use sea_orm::EntityTrait;
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     addon_presets::Entity::delete_by_id(preset_id)
         .exec(&conn)
         .await
@@ -3790,10 +4041,15 @@ async fn apply_preset(
     xplane_path: String,
     preset_id: i64,
 ) -> Result<PresetApplyResult, String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::addon_presets;
     use sea_orm::EntityTrait;
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     let row = addon_presets::Entity::find_by_id(preset_id)
         .one(&conn)
         .await
@@ -3991,13 +4247,19 @@ async fn apply_preset(
 #[tauri::command]
 async fn export_preset(
     db: State<'_, DatabaseState>,
+    xplane_path: String,
     preset_id: i64,
     export_path: String,
 ) -> Result<(), String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::addon_presets;
     use sea_orm::EntityTrait;
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     let row = addon_presets::Entity::find_by_id(preset_id)
         .one(&conn)
         .await
@@ -4022,12 +4284,21 @@ async fn export_preset(
 }
 
 #[tauri::command]
-async fn import_preset(db: State<'_, DatabaseState>, import_path: String) -> Result<(), String> {
+async fn import_preset(
+    db: State<'_, DatabaseState>,
+    xplane_path: String,
+    import_path: String,
+) -> Result<(), String> {
+    let scoped_db = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
     use database::entities::addon_presets;
     use sea_orm::ActiveModelTrait;
     use sea_orm::Set;
 
-    let conn = db.get();
+    let conn = scoped_db.clone();
     let content =
         fs::read_to_string(&import_path).map_err(|e| format!("Failed to read file: {}", e))?;
     let import: PresetExportFormat = serde_json::from_str(&content)
@@ -4377,15 +4648,9 @@ pub fn run() {
                 ),
             }
 
-            // Initialize database connection and run migrations once on startup
-            let db = tauri::async_runtime::block_on(async {
-                let conn = database::open_connection_async().await?;
-                database::apply_migrations_async(&conn).await?;
-                Ok::<DatabaseConnection, error::ApiError>(conn)
-            })
-            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
-
-            app.manage(DatabaseState::new(db));
+            // Open only explicitly scoped databases on demand. The legacy shared
+            // database is preserved untouched because its ownership is ambiguous.
+            app.manage(DatabaseState::new());
 
             // Log application startup
             logger::log_info(&logger::tr(logger::LogMsg::AppStarted), Some("app"));

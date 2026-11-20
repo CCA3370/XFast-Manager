@@ -597,18 +597,23 @@ export const useDoctorStore = defineStore('doctor', () => {
     cancelActiveWork?.()
   }
 
-  async function lockedSceneryFolders(): Promise<string[]> {
+  async function lockedSceneryFolders(xplanePath: string): Promise<string[]> {
     if (!lockStore.isInitialized) await lockStore.initStore()
-    return lockStore.getLockedItems('scenery')
+    return lockStore.getLockedItems('scenery', xplanePath)
   }
 
-  async function ensureFilesystemFixIsSafe(remediation: DoctorRemediation): Promise<boolean> {
+  async function ensureFilesystemFixIsSafe(
+    remediation: DoctorRemediation,
+    isCurrent: () => boolean,
+  ): Promise<boolean> {
     if (!FILESYSTEM_REMEDIATIONS.has(remediation.id)) return true
     try {
-      xplaneRunning.value = await invoke<boolean>('is_xplane_running')
+      const running = await invoke<boolean>('is_xplane_running')
+      if (!isCurrent()) return false
+      xplaneRunning.value = running
     } catch (reason) {
       logError(`Health: X-Plane runtime check failed: ${reason}`, 'doctor')
-      error.value = String(reason)
+      if (isCurrent()) error.value = String(reason)
       return false
     }
     if (xplaneRunning.value) {
@@ -633,7 +638,7 @@ export const useDoctorStore = defineStore('doctor', () => {
       case 'sync_scenery_file': {
         const scan = await invoke<{ indexExists: boolean }>('quick_scan_scenery_index', {
           xplanePath,
-          lockedFolderNames: await lockedSceneryFolders(),
+          lockedFolderNames: await lockedSceneryFolders(xplanePath),
         })
         if (!scan.indexExists) await invoke('rebuild_scenery_index', { xplanePath })
         await invoke('apply_scenery_changes', { xplanePath, entries: [] })
@@ -642,7 +647,7 @@ export const useDoctorStore = defineStore('doctor', () => {
       case 'sort_scenery':
         await invoke('sort_scenery_packs', {
           xplanePath,
-          lockedFolderNames: await lockedSceneryFolders(),
+          lockedFolderNames: await lockedSceneryFolders(xplanePath),
         })
         await invoke('apply_scenery_changes', { xplanePath, entries: [] })
         return success
@@ -672,7 +677,7 @@ export const useDoctorStore = defineStore('doctor', () => {
       case 'refresh_scenery_index':
         await invoke('quick_scan_scenery_index', {
           xplanePath,
-          lockedFolderNames: await lockedSceneryFolders(),
+          lockedFolderNames: await lockedSceneryFolders(xplanePath),
         })
         return success
       case 'rebuild_scenery_index':
@@ -753,11 +758,13 @@ export const useDoctorStore = defineStore('doctor', () => {
     }
     if (remediation.id === 'sort_scenery' && !appStore.autoSortScenery) return false
 
+    const { isCurrent } = appStore.captureXplaneContext()
     fixingId.value = check.id
     error.value = null
     try {
-      if (!(await ensureFilesystemFixIsSafe(remediation))) return false
+      if (!(await ensureFilesystemFixIsSafe(remediation, isCurrent))) return false
       if (
+        !isCurrent() ||
         currentRunPath.value !== repairPath ||
         appStore.xplanePath !== repairPath ||
         currentRun.value?.state !== 'completed'
@@ -765,6 +772,7 @@ export const useDoctorStore = defineStore('doctor', () => {
         return false
       }
       const result = await executeAutomaticRemediation(remediation, repairPath)
+      if (!isCurrent()) return false
       if (result.errors.length) error.value = result.errors.join('\n')
       const definitionId = remediationDefinitionId(remediation.id)
       if (
@@ -785,10 +793,11 @@ export const useDoctorStore = defineStore('doctor', () => {
       return result.failed === 0
     } catch (reason) {
       logError(`Health: remediation ${remediation.id} failed: ${reason}`, 'doctor')
+      if (!isCurrent()) return false
       error.value = String(reason)
       return false
     } finally {
-      fixingId.value = null
+      if (isCurrent()) fixingId.value = null
     }
   }
 
@@ -806,6 +815,7 @@ export const useDoctorStore = defineStore('doctor', () => {
     const checks = [...new Map(candidates.map((check) => [check.remediation!.id, check])).values()]
     if (!checks.length) return { applied: 0, failed: 0 }
 
+    const { isCurrent } = appStore.captureXplaneContext()
     repairingAll.value = true
     error.value = null
     let applied = 0
@@ -818,17 +828,28 @@ export const useDoctorStore = defineStore('doctor', () => {
         .find((remediation): remediation is DoctorRemediation =>
           Boolean(remediation && FILESYSTEM_REMEDIATIONS.has(remediation.id)),
         )
-      if (filesystemRemediation && !(await ensureFilesystemFixIsSafe(filesystemRemediation))) {
+      if (
+        filesystemRemediation &&
+        !(await ensureFilesystemFixIsSafe(filesystemRemediation, isCurrent))
+      ) {
         return { applied: 0, failed: checks.length }
       }
-      if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
+      if (
+        !isCurrent() ||
+        currentRunPath.value !== repairPath ||
+        appStore.xplanePath !== repairPath
+      ) {
         return { applied: 0, failed: checks.length }
       }
 
       for (const [index, check] of checks.entries()) {
         if (!check.remediation) continue
         if (check.remediation.id === 'sort_scenery' && !appStore.autoSortScenery) continue
-        if (currentRunPath.value !== repairPath || appStore.xplanePath !== repairPath) {
+        if (
+          !isCurrent() ||
+          currentRunPath.value !== repairPath ||
+          appStore.xplanePath !== repairPath
+        ) {
           failed += checks.length - index
           break
         }
@@ -849,20 +870,26 @@ export const useDoctorStore = defineStore('doctor', () => {
           logError(`Health: remediation ${check.remediation.id} failed: ${reason}`, 'doctor')
         }
       }
-      if (currentRunPath.value === repairPath && appStore.xplanePath === repairPath) {
+      if (
+        isCurrent() &&
+        currentRunPath.value === repairPath &&
+        appStore.xplanePath === repairPath
+      ) {
         await recheckDefinitions(definitionsToRecheck, repairPath)
       }
-      if (repairErrors.length) error.value = repairErrors.join('\n')
+      if (isCurrent() && repairErrors.length) error.value = repairErrors.join('\n')
       return { applied, failed }
     } finally {
-      fixingId.value = null
-      repairingAll.value = false
+      if (isCurrent()) {
+        fixingId.value = null
+        repairingAll.value = false
+      }
     }
   }
 
   async function loadBackups(path = appStore.xplanePath): Promise<void> {
     const token = ++backupLoadToken
-    if (!path) return
+    if (!path || appStore.xplanePath !== path) return
     try {
       const result = await invoke<DoctorRepairBackup[]>('doctor_list_backups', { xplanePath: path })
       if (backupLoadToken === token && appStore.xplanePath === path) {
@@ -880,28 +907,33 @@ export const useDoctorStore = defineStore('doctor', () => {
   async function runMaintenance(action: string, backupId?: string): Promise<boolean> {
     if (!canRepairCurrentRun.value || !currentRunPath.value) return false
     const repairPath = currentRunPath.value
+    const { isCurrent } = appStore.captureXplaneContext()
     const remediation: DoctorRemediation = { id: action, kind: 'automatic', risk: 'confirm' }
     if (!FILESYSTEM_REMEDIATIONS.has(action)) return false
     fixingId.value = `maintenance:${action}`
     error.value = null
     try {
-      if (!(await ensureFilesystemFixIsSafe(remediation))) return false
-      if (appStore.xplanePath !== repairPath || currentRunPath.value !== repairPath) return false
+      if (!(await ensureFilesystemFixIsSafe(remediation, isCurrent))) return false
+      if (!isCurrent() || appStore.xplanePath !== repairPath || currentRunPath.value !== repairPath)
+        return false
       if (action === 'restore_health_backup') {
         await invoke('doctor_restore_backup', { xplanePath: repairPath, backupId })
       } else {
         await invoke('doctor_apply_repair', { xplanePath: repairPath, repair: action })
       }
+      if (!isCurrent()) return false
       await loadBackups(repairPath)
+      if (!isCurrent()) return false
       await recheckDefinitions(new Set(['environment', 'inspection']), repairPath)
       return true
     } catch (reason) {
+      if (!isCurrent()) return false
       error.value = String(reason)
       logError(`Health maintenance ${action} failed: ${reason}`, 'doctor')
       await loadBackups(repairPath)
       return false
     } finally {
-      fixingId.value = null
+      if (isCurrent()) fixingId.value = null
     }
   }
 

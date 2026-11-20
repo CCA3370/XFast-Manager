@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
-import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useModalStore } from '@/stores/modal'
 import { getCurrentAiracCycle, getNavdataCycleStatus } from '@/utils/airac'
 import { readPlan, legs, type PlanDetails } from '@/services/flightPlanDetails'
@@ -14,7 +14,7 @@ interface FlightPlan {
   modified: number
 }
 const { t } = useI18n()
-const app = useAppStore()
+const { xplanePath: root, isCurrentRoot } = useXplaneViewRoot()
 const modal = useModalStore()
 const plans = ref<FlightPlan[]>([])
 const expanded = ref<string | null>(null)
@@ -22,24 +22,24 @@ const selected = ref<string | null>(null)
 const details = ref<Record<string, PlanDetails>>({})
 const loading = ref<string | null>(null)
 async function inspect(name: string, full = false) {
+  if (!isCurrentRoot()) return
   if (!full && expanded.value === name) {
     expanded.value = null
     return
   }
   const request = ++inspection
   const current = generation
-  const root = app.xplanePath
   if (!details.value[name]) {
     loading.value = name
     try {
       const result = await readPlan(root, name)
-      if (current !== generation) return
+      if (current !== generation || !isCurrentRoot()) return
       details.value[name] = result
     } catch (e) {
-      if (current === generation) errors.value = [String(e)]
+      if (current === generation && isCurrentRoot()) errors.value = [String(e)]
       return
     } finally {
-      if (current === generation) loading.value = null
+      if (current === generation && isCurrentRoot()) loading.value = null
     }
   }
   if (request !== inspection) return
@@ -79,10 +79,10 @@ const filtered = computed(() =>
     )
   }),
 )
-async function buildIndex(root: string, list: FlightPlan[], current: number) {
+async function buildIndex(list: FlightPlan[], current: number) {
   indexing.value = true
   for (let offset = 0; offset < list.length; offset += 4) {
-    if (current !== generation) return
+    if (current !== generation || !isCurrentRoot()) return
     const batch = await Promise.all(
       list.slice(offset, offset + 4).map(async (plan) => {
         try {
@@ -100,17 +100,16 @@ async function buildIndex(root: string, list: FlightPlan[], current: number) {
         }
       }),
     )
-    if (current !== generation) return
+    if (current !== generation || !isCurrentRoot()) return
     index.value = { ...index.value, ...Object.fromEntries(batch) }
   }
-  if (current === generation) {
+  if (current === generation && isCurrentRoot()) {
     indexing.value = false
   }
 }
 async function refresh() {
   inspection++
   const current = ++generation
-  const root = app.xplanePath
   plans.value = []
   details.value = {}
   index.value = {}
@@ -118,19 +117,19 @@ async function refresh() {
   now.value = new Date()
   expanded.value = selected.value = loading.value = null
   errors.value = []
-  if (!root) return
+  if (!isCurrentRoot()) return
   try {
     const result = await invoke<FlightPlan[]>('list_flight_plans', { xplanePath: root })
-    if (current === generation) {
+    if (current === generation && isCurrentRoot()) {
       plans.value = result
-      void buildIndex(root, result, current)
+      void buildIndex(result, current)
     }
   } catch (e) {
-    if (current === generation) errors.value = [String(e)]
+    if (current === generation && isCurrentRoot()) errors.value = [String(e)]
   }
 }
 function remove(plan: FlightPlan) {
-  const root = app.xplanePath
+  if (!isCurrentRoot()) return
   modal.showConfirm({
     title: t('common.delete'),
     message: t('flightPlans.confirmDelete', { name: plan.name }),
@@ -139,28 +138,20 @@ function remove(plan: FlightPlan) {
     type: 'danger',
     onCancel: () => {},
     onConfirm: async () => {
-      if (busy.value) return
+      if (!isCurrentRoot() || busy.value) return
       busy.value = true
       errors.value = []
       try {
         await invoke('delete_flight_plan', { xplanePath: root, name: plan.name })
-        await refresh()
+        if (isCurrentRoot()) await refresh()
       } catch (e) {
-        errors.value = [String(e)]
+        if (isCurrentRoot()) errors.value = [String(e)]
       } finally {
         busy.value = false
       }
     },
   })
 }
-watch(
-  () => app.xplanePath,
-  () => {
-    errors.value = []
-    departure.value = arrival.value = cycleFilter.value = ''
-    void refresh()
-  },
-)
 onMounted(() => void refresh())
 onBeforeUnmount(() => {
   generation++
@@ -175,7 +166,7 @@ onBeforeUnmount(() => {
         <p class="mt-1 text-sm text-gray-500">{{ t('flightPlans.description') }}</p>
       </div>
     </header>
-    <p v-if="!app.xplanePath">{{ t('flightPlans.selectPath') }}</p>
+    <p v-if="!root">{{ t('flightPlans.selectPath') }}</p>
     <template v-else>
       <div
         v-if="errors.length"
@@ -317,7 +308,7 @@ onBeforeUnmount(() => {
       v-if="selected && details[selected]"
       :key="selected"
       :name="selected"
-      :root="app.xplanePath"
+      :root="root"
       :plan="details[selected]!"
       @close="selected = null"
     />

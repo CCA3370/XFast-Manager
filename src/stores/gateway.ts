@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useAppStore } from './app'
 import { CommandError } from '@/services/api'
 import {
   gatewayCheckUpdates,
@@ -48,6 +49,27 @@ export const useGatewayStore = defineStore('gateway', () => {
   const installingIcao = ref<string | null>(null)
   const uninstallingIcao = ref<string | null>(null)
 
+  const app = useAppStore()
+  let rootEpoch = 0
+  let releaseSeq = 0
+  watch(
+    () => app.xplanePath,
+    () => {
+      rootEpoch++
+      releaseSeq++
+      installedRequestSeq++
+      loadInstalledSeq++
+      checkUpdatesSeq++
+      clearSearch()
+      resetAirportSelection()
+      installed.value = []
+      releaseContext.value = null
+      isLoadingInstalled.value = isCheckingUpdates.value = isLoadingReleaseContext.value = false
+      installingIcao.value = uninstallingIcao.value = null
+    },
+    { flush: 'sync' },
+  )
+
   let searchSeq = 0
   let airportSeq = 0
   let scenerySeq = 0
@@ -95,6 +117,8 @@ export const useGatewayStore = defineStore('gateway', () => {
   )
 
   async function loadReleaseContext(xplanePath: string | null | undefined) {
+    const seq = ++releaseSeq
+    const epoch = rootEpoch
     if (!xplanePath) {
       releaseContext.value = null
       isLoadingReleaseContext.value = false
@@ -104,10 +128,11 @@ export const useGatewayStore = defineStore('gateway', () => {
     isLoadingReleaseContext.value = true
     try {
       const context = await gatewayResolveReleaseContext(xplanePath)
+      if (seq !== releaseSeq || epoch !== rootEpoch) return null
       releaseContext.value = context
       return context
     } finally {
-      isLoadingReleaseContext.value = false
+      if (seq === releaseSeq && epoch === rootEpoch) isLoadingReleaseContext.value = false
     }
   }
 
@@ -277,6 +302,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     autoSortScenery = false,
     ignoreExternalConflict = false,
   ) {
+    const epoch = rootEpoch
     const airportIcao = normalizeIcaoKey(selection.airportIcao)
     if (!airportIcao || !Number.isSafeInteger(selection.sceneryId) || selection.sceneryId <= 0) {
       throw gatewaySelectionError('No Gateway scenery selected', 'validation_failed')
@@ -297,11 +323,12 @@ export const useGatewayStore = defineStore('gateway', () => {
         autoSortScenery,
         ignoreExternalConflict,
       })
+      if (epoch !== rootEpoch) return installedRecord
       upsertInstalledRecord(installedRecord)
       await refreshInstalledAfterMutation(xplanePath)
       return installedRecord
     } finally {
-      installingIcao.value = null
+      if (epoch === rootEpoch) installingIcao.value = null
     }
   }
 
@@ -315,16 +342,18 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   async function uninstallAirportByIcao(xplanePath: string, airportIcao: string) {
+    const epoch = rootEpoch
     const normalizedIcao = normalizeIcaoKey(airportIcao)
     uninstallingIcao.value = normalizedIcao
     try {
       await gatewayUninstallAirport(xplanePath, normalizedIcao)
+      if (epoch !== rootEpoch) return
       installed.value = installed.value.filter(
         (item) => normalizeIcaoKey(item.airportIcao) !== normalizedIcao,
       )
       await refreshInstalledAfterMutation(xplanePath)
     } finally {
-      uninstallingIcao.value = null
+      if (epoch === rootEpoch) uninstallingIcao.value = null
     }
   }
 

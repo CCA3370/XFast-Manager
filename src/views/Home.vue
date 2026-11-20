@@ -198,7 +198,7 @@
             <!-- Launch X-Plane Button -->
             <button
               v-if="store.xplanePath"
-              :disabled="isLaunchingXPlane || isXPlaneRunning"
+              :disabled="isLaunchingXPlane || isXPlaneRunning || store.xplaneLaunchArgsLoading"
               :title="isXPlaneRunning ? $t('home.xplaneAlreadyRunning') : ''"
               class="mt-4 px-4 py-2 bg-white/70 dark:bg-gray-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 font-medium rounded-xl transition-all duration-300 hover:scale-105 flex items-center gap-2 border-2 border-gray-300 dark:border-gray-500/50 hover:border-blue-400 dark:hover:border-blue-500/70 shadow-sm hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
               @click.stop="handleLaunchXPlane"
@@ -455,6 +455,9 @@ const progressStore = useProgressStore()
 const sceneryStore = useSceneryStore()
 const lockStore = useLockStore()
 const patchStore = usePatchStore()
+const installation = store.captureXplaneContext()
+let isUnmounting = false
+const isCurrent = () => !isUnmounting && installation.isCurrent()
 const isDragging = ref(false)
 const showConfirmation = ref(false)
 const {
@@ -505,6 +508,7 @@ let unlistenDeletionSkipped: UnlistenFn | null = null
 watch(
   () => store.pendingCliArgs,
   async (args) => {
+    if (!isCurrent()) return
     if (args && args.length > 0) {
       // Use store mutex flag for TOCTOU-safe concurrency control
       // This prevents race conditions when multiple watch events fire quickly
@@ -525,10 +529,9 @@ watch(
         await analyzeFiles(argsCopy)
       } catch (error) {
         logError(`Failed to process CLI args: ${error}`, 'app')
-        modal.showError(getErrorMessage(error))
+        if (installation.isCurrent()) modal.showError(getErrorMessage(error))
       } finally {
-        // Always release mutex
-        store.isAnalyzeInProgress = false
+        if (installation.isCurrent()) store.isAnalyzeInProgress = false
       }
     }
   },
@@ -632,6 +635,7 @@ onMounted(async () => {
   try {
     const webview = getCurrentWebviewWindow()
     unlistenDragDrop = await webview.onDragDropEvent(async (event) => {
+      if (!isCurrent()) return
       logDebug(`Tauri drag-drop event: ${event.payload.type}`, 'drag-drop')
 
       // Do not start another drop while an import or conflict decision is pending.
@@ -671,6 +675,10 @@ onMounted(async () => {
         }
       }
     })
+    if (!isCurrent()) {
+      unlistenDragDrop()
+      return
+    }
     logDebug('Tauri drag-drop listener registered', 'drag-drop')
   } catch (error) {
     logError(`Failed to setup Tauri drag-drop listener: ${error}`, 'drag-drop')
@@ -679,6 +687,7 @@ onMounted(async () => {
   // Listen for installation progress events
   try {
     unlistenProgress = await listen<InstallProgress>('install-progress', (event) => {
+      if (!isCurrent()) return
       const payload = event.payload
       if (payload.activeTasks) {
         // Debug log for parallel mode progress
@@ -699,6 +708,10 @@ onMounted(async () => {
       }
       progressStore.update(payload)
     })
+    if (!isCurrent()) {
+      unlistenProgress()
+      return
+    }
     logDebug('Progress listener registered', 'install')
   } catch (error) {
     logError(`Failed to setup progress listener: ${error}`, 'install')
@@ -707,9 +720,14 @@ onMounted(async () => {
   // Listen for source deletion skipped events
   try {
     unlistenDeletionSkipped = await listen<string>('source-deletion-skipped', (event) => {
+      if (!isCurrent()) return
       const path = event.payload
       toast.info(t('home.sourceDeletionSkipped', { path }))
     })
+    if (!isCurrent()) {
+      unlistenDeletionSkipped()
+      return
+    }
     logDebug('Source deletion skipped listener registered', 'install')
   } catch (error) {
     logError(`Failed to setup source deletion skipped listener: ${error}`, 'install')
@@ -721,17 +739,20 @@ onMounted(async () => {
   // Check if X-Plane is running on mount and periodically
   const checkXPlaneRunning = async () => {
     try {
-      isXPlaneRunning.value = await invoke<boolean>('is_xplane_running')
+      const running = await invoke<boolean>('is_xplane_running')
+      if (isCurrent()) isXPlaneRunning.value = running
     } catch (error) {
       logDebug(`Failed to check X-Plane running status: ${error}`, 'app')
     }
   }
   await checkXPlaneRunning()
+  if (!isCurrent()) return
   xplaneCheckInterval = window.setInterval(checkXPlaneRunning, 3000) // Check every 3 seconds
 })
 
 onBeforeUnmount(() => {
-  store.setConfirmationOpen(false)
+  isUnmounting = true
+  if (installation.isCurrent()) store.setConfirmationOpen(false)
   window.removeEventListener('dragover', onWindowDragOver)
   window.removeEventListener('dragleave', onWindowDragLeave)
   window.removeEventListener('drop', onWindowDrop)
@@ -759,6 +780,7 @@ onBeforeUnmount(() => {
 })
 
 async function analyzeFiles(paths: string[], passwords?: Record<string, string>) {
+  if (!isCurrent()) return
   // Log incoming files
   logOperation('Files dropped for analysis', `${paths.length} file(s)`)
   logDebug(`Analyzing paths: ${paths.join(', ')}`, 'analysis')
@@ -781,11 +803,13 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
   try {
     const flightPlans = paths.filter((path) => /\.(fms|xml)$/i.test(path))
-    const planRoot = store.xplanePath
+    const planRoot = installation.path
     let importedPlans = 0
     for (const source of flightPlans) {
       try {
+        if (!installation.isCurrent()) return
         const result = await importPlan(planRoot, source)
+        if (!installation.isCurrent()) return
         if (result.status === 'imported') {
           importedPlans++
           if (result.renamed)
@@ -801,7 +825,7 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
         }
         if (result.preferenceSaveFailed) toast.warning(t('flightPlans.preferenceNotSaved'))
       } catch (error) {
-        modal.showError(error, '', { hideReport: true })
+        if (installation.isCurrent()) modal.showError(error, '', { hideReport: true })
       }
     }
     if (importedPlans) toast.success(t('flightPlans.imported', { count: importedPlans }))
@@ -812,11 +836,12 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
 
     const result = await invoke<AnalysisResult>('analyze_addons', {
       paths,
-      xplanePath: store.xplanePath,
+      xplanePath: installation.path,
       passwords: passwords || null,
       verificationPreferences: store.verificationPreferences,
     })
 
+    if (!installation.isCurrent()) return
     logDebug(
       `Analysis result: ${result.tasks.length} tasks, ${result.errors.length} errors`,
       'analysis',
@@ -950,9 +975,10 @@ async function analyzeFiles(paths: string[], passwords?: Record<string, string>)
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
     logError(`Analysis failed: ${error}`, 'analysis')
-    modal.showError(t('home.failedToAnalyze') + ': ' + getErrorMessage(error))
+    if (installation.isCurrent())
+      modal.showError(t('home.failedToAnalyze') + ': ' + getErrorMessage(error))
   } finally {
-    store.isAnalyzing = false
+    if (installation.isCurrent()) store.isAnalyzing = false
   }
 }
 
@@ -1034,6 +1060,7 @@ function resetPasswordState() {
 }
 
 async function handleInstall() {
+  if (!isCurrent()) return
   showConfirmation.value = false
 
   // Filter only enabled tasks
@@ -1056,6 +1083,7 @@ async function handleInstall() {
 
 // The modal submits one validated overlay task for the whole patch.
 async function handlePatchInstall(tasks: InstallTask[]) {
+  if (!isCurrent()) return
   patchStore.close()
   await executeInstall(tasks, { deleteSource: false, parallel: false })
 }
@@ -1072,6 +1100,7 @@ async function offerPatchInstall(paths: string[]) {
       type: 'warning',
       closeOnBackdrop: false,
     })
+    if (!isCurrent()) return
     if (usePatch) {
       patchStore.open(archive)
       return
@@ -1089,6 +1118,7 @@ function firstArchivePath(paths: string[]): string | undefined {
 // mis-detected) archive is actually an aircraft patch. Discard the detected
 // tasks and route the original archive into the patch flow.
 function openPatchFromConfirmation() {
+  if (!isCurrent()) return
   const task = store.currentTasks[0]
   const archive = task?.originalInputPath || task?.sourcePath
   if (!archive) {
@@ -1105,6 +1135,7 @@ async function executeInstall(
   finalTasks: InstallTask[],
   opts?: { deleteSource?: boolean; parallel?: boolean },
 ) {
+  if (!isCurrent() || store.isInstalling) return
   if (finalTasks.length === 0) {
     toast.warning(t('home.noTasksEnabled'))
     return
@@ -1127,6 +1158,11 @@ async function executeInstall(
       await lockStore.initStore()
     }
 
+    if (!installation.isCurrent()) {
+      store.isInstalling = false
+      return
+    }
+
     const overwriteCount = finalTasks.filter((t) => t.shouldOverwrite).length
     if (overwriteCount > 0) {
       logDebug(`${overwriteCount} tasks will overwrite existing files`, 'installation')
@@ -1135,13 +1171,19 @@ async function executeInstall(
     const result = await invoke<InstallResult>('install_addons', {
       tasks: finalTasks,
       atomicInstallEnabled: store.atomicInstallEnabled,
-      xplanePath: store.xplanePath,
+      xplanePath: installation.path,
       deleteSourceAfterInstall: opts?.deleteSource ?? store.deleteSourceAfterInstall,
       autoSortScenery: store.autoSortScenery,
       lockedSceneryFolderNames: lockStore.getLockedItems('scenery'),
       parallelEnabled: opts?.parallel ?? store.parallelInstallEnabled,
       maxParallel: store.maxParallelTasks,
     })
+
+    if (!installation.isCurrent()) {
+      store.isInstalling = false
+      progressStore.reset()
+      return
+    }
 
     // Log results
     if (result.failedTasks === 0) {
@@ -1172,18 +1214,15 @@ async function executeInstall(
 
     // Keep isInstalling true for a brief moment to show the animation
     // Then set it to false after animation starts
-    setTrackedTimeout(
-      () => {
-        store.isInstalling = false
-        progressStore.reset()
-      },
-      COMPLETION_ANIMATION_DELAY_MS,
-      activeTimeoutIds,
-    )
+    setTimeout(() => {
+      store.isInstalling = false
+      progressStore.reset()
+    }, COMPLETION_ANIMATION_DELAY_MS)
   } catch (error) {
     // Non-blocking log call (also prints to console.error internally)
     logError(`${t('log.installationFailed')}: ${error}`, 'installation')
-    modal.showError(t('home.installationFailed') + ': ' + getErrorMessage(error))
+    if (installation.isCurrent())
+      modal.showError(t('home.installationFailed') + ': ' + getErrorMessage(error))
     store.isInstalling = false
     progressStore.reset()
   }
@@ -1200,7 +1239,7 @@ async function handleSkipTask() {
     type: 'warning',
   })
 
-  if (confirmed) {
+  if (confirmed && isCurrent()) {
     try {
       await invoke('skip_current_task')
       toast.info(t('taskControl.taskSkipped'))
@@ -1222,7 +1261,7 @@ async function handleCancelInstallation() {
     type: 'danger',
   })
 
-  if (confirmed) {
+  if (confirmed && isCurrent()) {
     try {
       await invoke('cancel_installation')
       toast.info(t('taskControl.tasksCancelled'))
@@ -1248,10 +1287,18 @@ function showConfirmDialog(
 
 // Handle launch X-Plane button click
 async function handleLaunchXPlane() {
-  if (isLaunchingXPlane.value || isXPlaneRunning.value) return
+  if (
+    !isCurrent() ||
+    !installation.path ||
+    store.xplaneLaunchArgsLoading ||
+    isLaunchingXPlane.value ||
+    isXPlaneRunning.value
+  )
+    return
 
-  // Load fresh scenery data to check for pending changes
-  await sceneryStore.loadData()
+  // Preserve staged edits for this installation when checking before launch.
+  if (!sceneryStore.hasLocalChanges) await sceneryStore.loadData()
+  if (!isCurrent()) return
 
   if (sceneryStore.hasChanges) {
     showLaunchConfirmDialog.value = true
@@ -1262,7 +1309,14 @@ async function handleLaunchXPlane() {
 
 // Launch X-Plane directly with loading state and timeout
 async function launchXPlane() {
-  if (isLaunchingXPlane.value || isXPlaneRunning.value) return
+  if (
+    !isCurrent() ||
+    !installation.path ||
+    store.xplaneLaunchArgsLoading ||
+    isLaunchingXPlane.value ||
+    isXPlaneRunning.value
+  )
+    return
 
   isLaunchingXPlane.value = true
   const LAUNCH_TIMEOUT = 15000 // 15 seconds
@@ -1274,7 +1328,7 @@ async function launchXPlane() {
 
     // Race between launch and timeout
     const launchPromise = invoke('launch_xplane', {
-      xplanePath: store.xplanePath,
+      xplanePath: installation.path,
       args: args.length > 0 ? args : null,
     })
     const timeoutPromise = new Promise((_, reject) =>
@@ -1288,6 +1342,7 @@ async function launchXPlane() {
 
     showLaunchConfirmDialog.value = false
   } catch (error) {
+    if (!isCurrent()) return
     logError(`Failed to launch X-Plane: ${error}`, 'app')
     if (error instanceof Error && error.message === 'timeout') {
       modal.showError(t('home.launchTimeout'))
@@ -1330,7 +1385,7 @@ async function launchXPlane() {
 
 // Apply scenery changes then launch X-Plane
 async function applyAndLaunch() {
-  if (isLaunchingXPlane.value) return
+  if (!isCurrent() || isLaunchingXPlane.value) return
 
   isLaunchingXPlane.value = true
 
@@ -1340,6 +1395,7 @@ async function applyAndLaunch() {
     isLaunchingXPlane.value = false
     await launchXPlane()
   } catch (error) {
+    if (!isCurrent()) return
     logError(`Failed to apply changes and launch: ${error}`, 'app')
     modal.showError(getErrorMessage(error))
     isLaunchingXPlane.value = false

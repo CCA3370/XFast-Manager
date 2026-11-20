@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
-import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useLockStore } from '@/stores/lock'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
@@ -14,7 +14,7 @@ import type { ContextMenuItem } from '@/composables/useContextMenu'
 
 const { t } = useI18n()
 const router = useRouter()
-const appStore = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const lockStore = useLockStore()
 const modalStore = useModalStore()
 const toastStore = useToastStore()
@@ -41,23 +41,25 @@ function isScriptLocked(script: LuaScriptInfo): boolean {
 }
 
 async function handleToggleLock(script: LuaScriptInfo) {
+  if (!isCurrentRoot()) return
   try {
     await lockStore.toggleLock('lua', getLuaLockKey(script))
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(t('management.toggleFailed') + ': ' + String(e))
   }
 }
 
 async function loadScripts() {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
 
   isLoading.value = true
   loadError.value = false
   try {
-    scripts.value = await invoke<LuaScriptInfo[]>('get_lua_scripts', {
-      xplanePath: appStore.xplanePath,
-    })
+    const result = await invoke<LuaScriptInfo[]>('get_lua_scripts', { xplanePath })
+    if (isCurrentRoot()) scripts.value = result
   } catch (e) {
+    if (!isCurrentRoot()) return
     loadError.value = true
     modalStore.showError(t('scripts.loadFailed') + ': ' + String(e))
   } finally {
@@ -66,14 +68,16 @@ async function loadScripts() {
 }
 
 async function handleToggle(fileName: string) {
-  if (!appStore.xplanePath || togglingItems.value.has(fileName)) return
+  if (!isCurrentRoot() || togglingItems.value.has(fileName)) return
 
   togglingItems.value.add(fileName)
   try {
     const newEnabled = await invoke<boolean>('toggle_lua_script', {
-      xplanePath: appStore.xplanePath,
+      xplanePath,
       fileName,
     })
+
+    if (!isCurrentRoot()) return
 
     // Update local state
     const script = scripts.value.find((s) => s.fileName === fileName)
@@ -84,6 +88,7 @@ async function handleToggle(fileName: string) {
       script.fileName = script.fileName.replace(oldExt, newExt)
     }
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(t('scripts.toggleFailed') + ': ' + String(e))
   } finally {
     togglingItems.value.delete(fileName)
@@ -96,17 +101,20 @@ function confirmDelete(script: LuaScriptInfo) {
 }
 
 async function handleDeleteConfirm() {
-  if (!appStore.xplanePath || !deleteTarget.value) return
+  if (!isCurrentRoot() || !deleteTarget.value) return
 
+  const fileName = deleteTarget.value.fileName
   isDeleting.value = true
   try {
     await invoke('delete_lua_script', {
-      xplanePath: appStore.xplanePath,
-      fileName: deleteTarget.value.fileName,
+      xplanePath,
+      fileName,
     })
 
+    if (!isCurrentRoot()) return
+
     // Remove from local array
-    scripts.value = scripts.value.filter((s) => s.fileName !== deleteTarget.value!.fileName)
+    scripts.value = scripts.value.filter((s) => s.fileName !== fileName)
     toastStore.success(t('scripts.deleteSuccess'))
 
     // Navigate back if no scripts remaining
@@ -114,6 +122,7 @@ async function handleDeleteConfirm() {
       router.push('/management?tab=plugin')
     }
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(t('scripts.deleteFailed') + ': ' + String(e))
   } finally {
     isDeleting.value = false

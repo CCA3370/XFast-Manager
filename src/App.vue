@@ -355,7 +355,7 @@
       <div class="h-full overflow-y-auto">
         <router-view v-slot="{ Component }">
           <transition :name="transitionName" mode="out-in">
-            <component :is="Component" />
+            <component :is="Component" :key="installationViewKey" />
           </transition>
         </router-view>
       </div>
@@ -375,6 +375,7 @@
       @submitted="handleFeedbackSubmitted"
     />
     <AddonUpdateDrawer
+      :key="store.xplaneGeneration"
       v-model:show="addonDrawerVisible"
       :tasks="addonUpdateDrawerStore.tasks"
       :active-task-key="addonUpdateDrawerStore.activeTaskKey"
@@ -397,6 +398,8 @@ import { useIssueTrackerStore } from '@/stores/issueTracker'
 import { useFeedbackStore } from '@/stores/feedback'
 import { useManagementStore } from '@/stores/management'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
+import { usePatchStore } from '@/stores/patch'
+import { useContextMenu } from '@/composables/useContextMenu'
 import { useCslStore } from '@/stores/csl'
 import { useDoctorStore } from '@/stores/doctor'
 import { listen } from '@tauri-apps/api/event'
@@ -428,10 +431,15 @@ const issueTrackerStore = useIssueTrackerStore()
 const feedbackStore = useFeedbackStore()
 const managementStore = useManagementStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
+const patchStore = usePatchStore()
+const contextMenu = useContextMenu()
 const cslStore = useCslStore()
 const doctorStore = useDoctorStore()
 const router = useRouter()
 const route = useRoute()
+const installationViewKey = computed(() =>
+  route.path === '/settings' || route.path === '/map' ? undefined : store.xplaneGeneration,
+)
 const isOnboardingRoute = computed(() => route.path === '/onboarding')
 let startupUpdateCheckDue = false
 watch(isOnboardingRoute, checkForStartupUpdates)
@@ -976,10 +984,19 @@ watch(
 
 watch(
   () => store.xplanePath,
-  () => {
+  (_path, previousPath) => {
+    if (previousPath !== undefined) {
+      // Pending decisions about the previous installation must not target the new one.
+      modalStore.cancelAction()
+      modalStore.closeError()
+      contextMenu.hide()
+      addonUpdateDrawerStore.clearTasks()
+      patchStore.close()
+      doctorStore.reset()
+    }
     void doctorStore.loadHistory()
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 )
 
 watch(

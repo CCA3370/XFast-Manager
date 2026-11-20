@@ -12,6 +12,7 @@ import { getNavdataCycleStatus } from '@/utils/airac'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import { useLockStore } from '@/stores/lock'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useContextMenu } from '@/composables/useContextMenu'
 import type { ContextMenuItem } from '@/composables/useContextMenu'
 
@@ -52,16 +53,19 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const lockStore = useLockStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const contextMenu = useContextMenu()
 
 const showDeleteConfirmModal = ref(false)
 const isDeleting = ref(false)
 
 // Lock state
-const isItemLocked = computed(() => lockStore.isLocked(props.itemType, props.entry.folderName))
+const isItemLocked = computed(() =>
+  lockStore.isLocked(props.itemType, props.entry.folderName, xplanePath),
+)
 
 function handleToggleLock() {
-  lockStore.toggleLock(props.itemType, props.entry.folderName)
+  if (isCurrentRoot()) void lockStore.toggleLock(props.itemType, props.entry.folderName, xplanePath)
 }
 
 // Type guards

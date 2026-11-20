@@ -1287,7 +1287,9 @@ pub async fn airport_flatten_search_airports(
     let limit = limit.unwrap_or(20).clamp(1, 100);
 
     let index = get_airport_flatten_index_for_request(
-        db.get(),
+        db.get_for_root(&xplane_path)
+            .await
+            .map_err(|e| e.to_string())?,
         &xplane_root,
         force_refresh.unwrap_or(false),
     )
@@ -1328,11 +1330,15 @@ pub async fn airport_flatten_get_targets(
     }
 
     let force_refresh = force_refresh.unwrap_or(false);
+    let conn = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut index =
-        get_airport_flatten_index_for_request(db.get(), &xplane_root, force_refresh).await?;
+        get_airport_flatten_index_for_request(conn.clone(), &xplane_root, force_refresh).await?;
 
     if !index.sources_by_icao.contains_key(&normalized_icao) && !force_refresh {
-        index = get_airport_flatten_index_for_request(db.get(), &xplane_root, true).await?;
+        index = get_airport_flatten_index_for_request(conn, &xplane_root, true).await?;
     }
 
     let Some(source_refs) = index.sources_by_icao.get(&normalized_icao) else {
@@ -1356,7 +1362,11 @@ pub async fn scenery_get_flatten_target(
     let xplane_root = PathBuf::from(&xplane_path);
     crate::validate_xplane_root_path(&xplane_root)?;
 
-    let index = get_or_build_airport_flatten_index(db.get(), &xplane_root).await?;
+    let conn = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let index = get_or_build_airport_flatten_index(conn, &xplane_root).await?;
     let Some(source_ref) = index.single_custom_sources_by_folder.get(&folder_name) else {
         return Ok(None);
     };
@@ -1377,7 +1387,10 @@ pub async fn airport_flatten_set_state(
 
     let operation = if request.enabled { "enable" } else { "disable" };
     let icao_for_log = request.icao.trim().to_uppercase();
-    let conn = db.get();
+    let conn = db
+        .get_for_root(&request.xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let result = apply_flatten_state_inner(&conn, &xplane_root, request).await;
 
@@ -1622,7 +1635,10 @@ pub async fn airport_flatten_list_overrides(
     let xplane_root = PathBuf::from(&xplane_path);
     crate::validate_xplane_root_path(&xplane_root)?;
 
-    let conn = db.get();
+    let conn = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let xplane_key = normalize_xplane_root_key(&xplane_root);
 
     let rows = override_entity::Entity::find()
@@ -1682,7 +1698,10 @@ pub async fn airport_flatten_clear_override(
         return Err("ICAO is required".to_string());
     }
 
-    let conn = db.get();
+    let conn = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let xplane_key = normalize_xplane_root_key(&xplane_root);
 
     override_entity::Entity::delete_many()
@@ -1704,7 +1723,10 @@ pub async fn airport_flatten_apply_all_drifted(
     let xplane_root = PathBuf::from(&xplane_path);
     crate::validate_xplane_root_path(&xplane_root)?;
 
-    let conn = db.get();
+    let conn = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let xplane_key = normalize_xplane_root_key(&xplane_root);
 
     let rows = override_entity::Entity::find()

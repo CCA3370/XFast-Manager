@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { useManagementStore } from '@/stores/management'
-import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
@@ -15,7 +15,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const managementStore = useManagementStore()
-const appStore = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const toastStore = useToastStore()
 const modalStore = useModalStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
@@ -44,16 +44,18 @@ const aircraftDisplayName = computed(() => {
 const liveryCount = computed(() => liveries.value.length)
 
 async function loadLiveries() {
-  if (!appStore.xplanePath || !aircraftFolder.value) return
+  if (!isCurrentRoot() || !aircraftFolder.value) return
 
   isLoading.value = true
   loadError.value = false
   try {
-    liveries.value = await invoke<LiveryInfo[]>('get_aircraft_liveries', {
-      xplanePath: appStore.xplanePath,
+    const result = await invoke<LiveryInfo[]>('get_aircraft_liveries', {
+      xplanePath,
       aircraftFolder: aircraftFolder.value,
     })
+    if (isCurrentRoot()) liveries.value = result
   } catch (e) {
+    if (!isCurrentRoot()) return
     loadError.value = true
     modalStore.showError(t('livery.loadFailed') + ': ' + String(e))
   } finally {
@@ -62,14 +64,16 @@ async function loadLiveries() {
 }
 
 async function handleDeleteLivery(folderName: string) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
 
   try {
     await invoke('delete_aircraft_livery', {
-      xplanePath: appStore.xplanePath,
+      xplanePath,
       aircraftFolder: aircraftFolder.value,
       liveryFolder: folderName,
     })
+
+    if (!isCurrentRoot()) return
 
     // Remove from local array
     liveries.value = liveries.value.filter((l) => l.folderName !== folderName)
@@ -88,6 +92,7 @@ async function handleDeleteLivery(folderName: string) {
       router.push('/management')
     }
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(t('livery.deleteFailed') + ': ' + String(e))
   }
 }
@@ -139,21 +144,17 @@ function handlePointerUp() {
   isDragging.value = false
 }
 
-watch(previewSrc, (val) => {
+watch(previewSrc, (val, _old, onCleanup) => {
+  if (!val) return
   const onKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') closePreview()
   }
-  if (val) {
-    window.addEventListener('keydown', onKeydown)
-    window.addEventListener('wheel', handleWheel, { passive: false })
-    const unwatch = watch(previewSrc, (newVal) => {
-      if (!newVal) {
-        window.removeEventListener('keydown', onKeydown)
-        window.removeEventListener('wheel', handleWheel)
-        unwatch()
-      }
-    })
-  }
+  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('wheel', handleWheel, { passive: false })
+  onCleanup(() => {
+    window.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('wheel', handleWheel)
+  })
 })
 
 function goBack() {
@@ -161,14 +162,15 @@ function goBack() {
 }
 
 async function handleOpenLiveryFolder(folderName: string) {
-  if (!appStore.xplanePath || !aircraftFolder.value) return
+  if (!isCurrentRoot() || !aircraftFolder.value) return
   try {
     await invoke('open_livery_folder', {
-      xplanePath: appStore.xplanePath,
+      xplanePath,
       aircraftFolder: aircraftFolder.value,
       liveryFolder: folderName,
     })
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(t('management.openFolderFailed') + ': ' + String(e))
   }
 }
@@ -180,6 +182,7 @@ function buildLiveryUpdateTarget(folderName: string): string {
 }
 
 function handleOpenLiveryUpdate(folderName: string) {
+  if (!isCurrentRoot()) return
   const livery = liveries.value.find((item) => item.folderName === folderName)
   addonUpdateDrawerStore.openTask({
     itemType: 'livery',

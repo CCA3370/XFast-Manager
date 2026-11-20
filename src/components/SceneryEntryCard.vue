@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useLockStore } from '@/stores/lock'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useSceneryStore } from '@/stores/scenery'
 import ToggleSwitch from '@/components/ToggleSwitch.vue'
 import type { SceneryManagerEntry } from '@/types'
@@ -53,6 +54,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const modalStore = useModalStore()
 const lockStore = useLockStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const sceneryStore = useSceneryStore()
 const contextMenu = useContextMenu()
 
@@ -173,10 +175,12 @@ const assignedCustomGroup = computed(() =>
 )
 
 // Lock state
-const isItemLocked = computed(() => lockStore.isLocked('scenery', props.entry.folderName))
+const isItemLocked = computed(() =>
+  lockStore.isLocked('scenery', props.entry.folderName, xplanePath),
+)
 
 function handleToggleLock() {
-  lockStore.toggleLock('scenery', props.entry.folderName)
+  if (isCurrentRoot()) void lockStore.toggleLock('scenery', props.entry.folderName, xplanePath)
 }
 
 async function handleDoubleClick() {

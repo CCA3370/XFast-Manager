@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import {
@@ -15,6 +15,7 @@ import { useManagementStore } from './management'
 import { useToastStore } from './toast'
 import { logDebug, logError } from '@/services/logger'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
+import { rootStorageKey } from '@/utils/xplaneStorage'
 
 type InstallSource = 'csl' | 'altitude'
 
@@ -105,18 +106,61 @@ export const useCslStore = defineStore('csl', () => {
   let descriptionLoadRunning = false
   let descriptionLoadGeneration = 0
   let scanGeneration = 0
+  let altitudeScanGeneration = 0
+  let rootGeneration = 0
   let linkSyncDrainPromise: Promise<void> | null = null
   let customPathsLoadPromise: Promise<void> | null = null
   let installLocationLoadPromise: Promise<void> | null = null
   let pendingMissingLinkSyncAllTargets = false
   let pendingMissingLinkSyncInteractive = false
   let activeLinkSyncRequestId = ''
+  let activeInstallRequestId = ''
   let isCustomPathsLoaded = false
   let isInstallLocationLoaded = false
   const descriptionLoadQueue = new Set<string>()
   const pendingReconcileLinkSyncPackages = new Set<string>()
   const pendingMissingLinkSyncTargets = new Set<string>()
   const pendingLinkCleanupPaths = new Set<string>()
+
+  watch(
+    () => appStore.xplanePath,
+    () => {
+      rootGeneration += 1
+      scanGeneration += 1
+      altitudeScanGeneration += 1
+      packages.value = []
+      paths.value = []
+      customPaths.value = []
+      installLocation.value = ''
+      serverVersion.value = ''
+      lastScannedXplanePath.value = ''
+      lastAltitudeScannedXplanePath.value = ''
+      altitudePackages.value = []
+      isLoading.value = false
+      altitudeLoading.value = false
+      error.value = null
+      progressMap.value = {}
+      altitudeProgressMap.value = {}
+      installQueue.value = []
+      activeInstallTask.value = null
+      activeInstallRequestId = ''
+      cancellingTaskKeys.value = []
+      customPathsLoadPromise = null
+      installLocationLoadPromise = null
+      isCustomPathsLoaded = false
+      isInstallLocationLoaded = false
+      pendingMissingLinkSyncAllTargets = false
+      pendingMissingLinkSyncInteractive = false
+      pendingReconcileLinkSyncPackages.clear()
+      pendingMissingLinkSyncTargets.clear()
+      pendingLinkCleanupPaths.clear()
+      finishTrackedLinkSync(activeLinkSyncRequestId)
+      linkSyncProgress.value = null
+      linkSyncNotice.value = ''
+      resetDescriptionLoadState([])
+    },
+    { flush: 'sync' },
+  )
 
   const totalPackages = computed(() => packages.value.length)
   const installedCount = computed(
@@ -165,6 +209,8 @@ export const useCslStore = defineStore('csl', () => {
     () => altitudePackages.value.filter((p) => isActionableStatus(p.status)).length,
   )
 
+  // Old downloads are allowed to finish on their captured root; the pump stays
+  // serialized, but its old queue and progress become invisible after a switch.
   const queuedPackages = computed(() =>
     installQueue.value.filter((task) => task.source === 'csl').map((task) => task.name),
   )
@@ -345,6 +391,9 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function ensureCustomPathsLoaded() {
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return
     if (isCustomPathsLoaded) {
       return
     }
@@ -354,20 +403,27 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
-    customPathsLoadPromise = (async () => {
-      const savedPaths = await getItem<string[]>(STORAGE_KEYS.CSL_CUSTOM_PATHS)
+    const pending = (async () => {
+      const savedPaths = await getItem<string[]>(
+        rootStorageKey(STORAGE_KEYS.CSL_CUSTOM_PATHS, root),
+      )
+      if (generation !== rootGeneration) return
       customPaths.value = Array.isArray(savedPaths) ? normalizeCustomPaths(savedPaths) : []
       isCustomPathsLoaded = true
     })()
 
+    customPathsLoadPromise = pending
     try {
-      await customPathsLoadPromise
+      await pending
     } finally {
-      customPathsLoadPromise = null
+      if (customPathsLoadPromise === pending) customPathsLoadPromise = null
     }
   }
 
   async function ensureInstallLocationLoaded() {
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return
     if (isInstallLocationLoaded) {
       return
     }
@@ -377,16 +433,18 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
-    installLocationLoadPromise = (async () => {
-      const saved = await getItem<string>(STORAGE_KEYS.CSL_INSTALL_LOCATION)
+    const pending = (async () => {
+      const saved = await getItem<string>(rootStorageKey(STORAGE_KEYS.CSL_INSTALL_LOCATION, root))
+      if (generation !== rootGeneration) return
       installLocation.value = typeof saved === 'string' ? saved.trim() : ''
       isInstallLocationLoaded = true
     })()
 
+    installLocationLoadPromise = pending
     try {
-      await installLocationLoadPromise
+      await pending
     } finally {
-      installLocationLoadPromise = null
+      if (installLocationLoadPromise === pending) installLocationLoadPromise = null
     }
   }
 
@@ -395,7 +453,11 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function setInstallLocation(absolutePath: string): Promise<boolean> {
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return false
     await ensureInstallLocationLoaded()
+    if (generation !== rootGeneration) return false
 
     const trimmed = absolutePath.trim()
     const defaultKey = pathKey(defaultCanonicalPath.value)
@@ -406,12 +468,13 @@ export const useCslStore = defineStore('csl', () => {
     }
 
     installLocation.value = next
-    await setItem(STORAGE_KEYS.CSL_INSTALL_LOCATION, next)
+    await setItem(rootStorageKey(STORAGE_KEYS.CSL_INSTALL_LOCATION, root), next)
+    if (generation !== rootGeneration) return false
     toast.info(t('csl.installLocationChanged'))
     return true
   }
 
-  async function pruneDetectedCustomPaths(detectedPaths: CslPath[]) {
+  async function pruneDetectedCustomPaths(root: string, detectedPaths: CslPath[]) {
     const detectedPathSet = new Set(
       detectedPaths
         .filter((entry) => entry.source === 'auto')
@@ -430,7 +493,7 @@ export const useCslStore = defineStore('csl', () => {
     }
 
     customPaths.value = nextCustomPaths
-    await setItem(STORAGE_KEYS.CSL_CUSTOM_PATHS, nextCustomPaths)
+    await setItem(rootStorageKey(STORAGE_KEYS.CSL_CUSTOM_PATHS, root), nextCustomPaths)
   }
 
   function beginTrackedLinkSync(requestId: string, interactive: boolean) {
@@ -571,8 +634,8 @@ export const useCslStore = defineStore('csl', () => {
     } finally {
       descriptionLoadRunning = false
 
-      if (generation === descriptionLoadGeneration && descriptionLoadQueue.size > 0) {
-        void pumpDescriptionQueue(generation)
+      if (descriptionLoadQueue.size > 0) {
+        void pumpDescriptionQueue(descriptionLoadGeneration)
       }
     }
   }
@@ -581,11 +644,12 @@ export const useCslStore = defineStore('csl', () => {
     const { packageNames, cleanupPaths, interactive = false, targetPaths } = options
     const hasExplicitTargetPaths = targetPaths !== undefined
 
-    if (!appStore.xplanePath) {
-      return
-    }
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return
 
     await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
+    if (generation !== rootGeneration) return
 
     if (!packageNames || packageNames.length === 0) {
       if (!hasExplicitTargetPaths) {
@@ -621,11 +685,12 @@ export const useCslStore = defineStore('csl', () => {
 
     if (linkSyncDrainPromise) {
       await linkSyncDrainPromise
-      return
+      if (generation !== rootGeneration) return
     }
+    if (linkSyncDrainPromise) return
 
     const drainPromise = (async () => {
-      while (true) {
+      while (generation === rootGeneration) {
         if (
           !pendingMissingLinkSyncAllTargets &&
           pendingMissingLinkSyncTargets.size === 0 &&
@@ -667,11 +732,11 @@ export const useCslStore = defineStore('csl', () => {
         try {
           beginTrackedLinkSync(requestId, queuedInteractive)
           logDebug(
-            `[${requestId}] invoke csl_sync_links start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} packages=${queuedPackageNames?.length ?? 0} cleanup_paths=${queuedCleanupPaths.length} target_paths=${queuedTargetPaths?.length ?? 0} interactive=${queuedInteractive}`,
+            `[${requestId}] invoke csl_sync_links start xplane_path=${root} custom_paths=${customPaths.value.length} packages=${queuedPackageNames?.length ?? 0} cleanup_paths=${queuedCleanupPaths.length} target_paths=${queuedTargetPaths?.length ?? 0} interactive=${queuedInteractive}`,
             'csl',
           )
           await invoke('csl_sync_links', {
-            xplanePath: appStore.xplanePath,
+            xplanePath: root,
             customPaths: customPaths.value,
             installLocation: installLocation.value || null,
             packageNames:
@@ -683,7 +748,7 @@ export const useCslStore = defineStore('csl', () => {
           logDebug(`[${requestId}] invoke csl_sync_links success`, 'csl')
         } catch (e) {
           logError(`[${requestId}] CSL link sync failed: ${getErrorMessage(e)}`, 'csl')
-          if (queuedInteractive) {
+          if (queuedInteractive && generation === rootGeneration) {
             toast.error(t('csl.syncError'))
           }
         } finally {
@@ -716,6 +781,7 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   function enqueueInstallTask(task: QueuedInstallTask) {
+    if (!appStore.xplanePath) return
     if (isTaskActive(task) || isTaskQueued(task)) {
       logDebug(`Skip duplicate install task source=${task.source} name=${task.name}`, task.source)
       return
@@ -727,6 +793,7 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   function enqueueInstallTasks(tasks: QueuedInstallTask[]) {
+    if (!appStore.xplanePath) return
     let nextQueue = installQueue.value
     let changed = false
 
@@ -748,24 +815,30 @@ export const useCslStore = defineStore('csl', () => {
     void pumpInstallQueue()
   }
 
-  async function runInstallTask(task: QueuedInstallTask): Promise<boolean> {
+  async function runInstallTask(
+    task: QueuedInstallTask,
+    root: string,
+    generation: number,
+  ): Promise<boolean> {
     await managementStore.loadAddonUpdateOptions()
     await ensureServerConfigLoaded()
     await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
 
+    if (generation !== rootGeneration) return false
     const parallelDownloads = getParallelDownloads()
     const requestId = createOperationRequestId(
       task.source === 'altitude' ? 'altitude-install' : 'csl-install',
     )
+    activeInstallRequestId = requestId
 
     if (task.source === 'altitude') {
       try {
         logDebug(
-          `[${requestId}] invoke altitude_install_package start package=${task.name} xplane_path=${appStore.xplanePath} parallel_downloads=${parallelDownloads} server=${activeServerBaseUrl.value}`,
+          `[${requestId}] invoke altitude_install_package start package=${task.name} xplane_path=${root} parallel_downloads=${parallelDownloads} server=${activeServerBaseUrl.value}`,
           'altitude',
         )
         await invoke('altitude_install_package', {
-          xplanePath: appStore.xplanePath,
+          xplanePath: root,
           parallelDownloads,
           serverBaseUrl: activeServerBaseUrl.value,
           requestId,
@@ -775,6 +848,7 @@ export const useCslStore = defineStore('csl', () => {
           'altitude',
         )
 
+        if (generation !== rootGeneration) return false
         toast.success(t('altitude.installSuccess', { name: task.name }))
 
         for (const pkg of altitudePackages.value) {
@@ -785,6 +859,7 @@ export const useCslStore = defineStore('csl', () => {
 
         return false
       } catch (e) {
+        if (generation !== rootGeneration) return false
         if (isCancelledInstallError(e)) {
           logDebug(
             `[${requestId}] invoke altitude_install_package cancelled package=${task.name}`,
@@ -802,12 +877,12 @@ export const useCslStore = defineStore('csl', () => {
 
     try {
       logDebug(
-        `[${requestId}] invoke csl_install_package start package=${task.name} xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} parallel_downloads=${parallelDownloads} server=${activeServerBaseUrl.value}`,
+        `[${requestId}] invoke csl_install_package start package=${task.name} xplane_path=${root} custom_paths=${customPaths.value.length} parallel_downloads=${parallelDownloads} server=${activeServerBaseUrl.value}`,
         'csl',
       )
       await invoke('csl_install_package', {
         packageName: task.name,
-        xplanePath: appStore.xplanePath,
+        xplanePath: root,
         customPaths: customPaths.value,
         installLocation: installLocation.value || null,
         parallelDownloads,
@@ -816,6 +891,7 @@ export const useCslStore = defineStore('csl', () => {
       })
       logDebug(`[${requestId}] invoke csl_install_package success package=${task.name}`, 'csl')
 
+      if (generation !== rootGeneration) return false
       toast.success(t('csl.installSuccess', { name: task.name }))
 
       const pkg = packages.value.find((item) => item.name === task.name)
@@ -825,6 +901,7 @@ export const useCslStore = defineStore('csl', () => {
         pkg.update_size_bytes = 0
       }
     } catch (e) {
+      if (generation !== rootGeneration) return false
       if (isCancelledInstallError(e)) {
         logDebug(`[${requestId}] invoke csl_install_package cancelled package=${task.name}`, 'csl')
         toast.info(t('csl.cancelled', { name: task.name }))
@@ -844,11 +921,14 @@ export const useCslStore = defineStore('csl', () => {
       return
     }
 
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return
     installQueueRunning = true
     logDebug(`Install queue pump started queued=${installQueue.value.length}`, 'csl')
 
     try {
-      while (true) {
+      while (generation === rootGeneration) {
         const nextTask = installQueue.value[0]
 
         if (!nextTask) {
@@ -863,20 +943,23 @@ export const useCslStore = defineStore('csl', () => {
         )
 
         try {
-          const shouldRescan = await runInstallTask(nextTask)
+          const shouldRescan = await runInstallTask(nextTask, root, generation)
           logDebug(
             `Install queue finished source=${nextTask.source} name=${nextTask.name} should_rescan=${shouldRescan}`,
             nextTask.source,
           )
-          if (shouldRescan && nextTask.source === 'csl') {
+          if (generation === rootGeneration && shouldRescan && nextTask.source === 'csl') {
             await rescanPackages([nextTask.name])
           }
         } finally {
-          cancellingTaskKeys.value = cancellingTaskKeys.value.filter(
-            (key) => key !== taskKey(nextTask),
-          )
-          activeInstallTask.value = null
-          clearProgressForTask(nextTask)
+          if (generation === rootGeneration) {
+            cancellingTaskKeys.value = cancellingTaskKeys.value.filter(
+              (key) => key !== taskKey(nextTask),
+            )
+            activeInstallTask.value = null
+            activeInstallRequestId = ''
+            clearProgressForTask(nextTask)
+          }
         }
       }
     } finally {
@@ -890,7 +973,8 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function scanPackages(options: ScanPackagesOptions = {}) {
-    if (!appStore.xplanePath) {
+    const root = appStore.xplanePath
+    if (!root) {
       error.value = t('csl.noPathsDetected')
       return
     }
@@ -898,6 +982,7 @@ export const useCslStore = defineStore('csl', () => {
     const generation = ++scanGeneration
     await ensureServerConfigLoaded()
     await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
+    if (generation !== scanGeneration) return
     isLoading.value = true
     error.value = null
     if (options.syncLinks) {
@@ -907,11 +992,11 @@ export const useCslStore = defineStore('csl', () => {
 
     try {
       logDebug(
-        `[${requestId}] invoke csl_scan_packages start xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length} server=${activeServerBaseUrl.value}`,
+        `[${requestId}] invoke csl_scan_packages start xplane_path=${root} custom_paths=${customPaths.value.length} server=${activeServerBaseUrl.value}`,
         'csl',
       )
       const result = await invoke<CslScanResult>('csl_scan_packages', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: root,
         customPaths: customPaths.value,
         installLocation: installLocation.value || null,
         serverBaseUrl: activeServerBaseUrl.value,
@@ -922,13 +1007,15 @@ export const useCslStore = defineStore('csl', () => {
         'csl',
       )
 
+      if (generation !== scanGeneration) return
       const autoDetectedPaths = result.paths.filter((entry) => entry.source === 'auto')
 
       packages.value = result.packages
       paths.value = autoDetectedPaths
-      await pruneDetectedCustomPaths(autoDetectedPaths)
+      await pruneDetectedCustomPaths(root, autoDetectedPaths)
+      if (generation !== scanGeneration) return
       serverVersion.value = result.server_version
-      lastScannedXplanePath.value = appStore.xplanePath
+      lastScannedXplanePath.value = root
       if (result.index_warning) {
         logError(`[${requestId}] ${result.index_warning}`, 'csl')
         toast.warning(result.index_warning)
@@ -941,12 +1028,13 @@ export const useCslStore = defineStore('csl', () => {
         generation,
       )
     } catch (e) {
+      if (generation !== scanGeneration) return
       resetDescriptionLoadState([])
       error.value = getErrorMessage(e)
       logError(`[${requestId}] CSL scan failed: ${getErrorMessage(e)}`, 'csl')
       toast.error(error.value || t('csl.fetchError'))
     } finally {
-      isLoading.value = false
+      if (generation === scanGeneration) isLoading.value = false
     }
   }
 
@@ -974,7 +1062,8 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function rescanPackages(packageNames: string[], options: RescanPackagesOptions = {}) {
-    if (!appStore.xplanePath || packageNames.length === 0) {
+    const root = appStore.xplanePath
+    if (!root || packageNames.length === 0) {
       return
     }
 
@@ -991,11 +1080,11 @@ export const useCslStore = defineStore('csl', () => {
         return
       }
       logDebug(
-        `[${requestId}] invoke csl_rescan_packages start xplane_path=${appStore.xplanePath} package_count=${packageNames.length} packages=${packageNames.join(',')} server=${activeServerBaseUrl.value}`,
+        `[${requestId}] invoke csl_rescan_packages start xplane_path=${root} package_count=${packageNames.length} packages=${packageNames.join(',')} server=${activeServerBaseUrl.value}`,
         'csl',
       )
       const updated = await invoke<CslPackageInfo[]>('csl_rescan_packages', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: root,
         packageNames,
         installLocation: installLocation.value || null,
         serverBaseUrl: activeServerBaseUrl.value,
@@ -1043,23 +1132,28 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function uninstallPackage(packageName: string) {
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return
     const requestId = createOperationRequestId('csl-uninstall')
 
     try {
       await Promise.all([ensureCustomPathsLoaded(), ensureInstallLocationLoaded()])
+      if (generation !== rootGeneration) return
       logDebug(
-        `[${requestId}] invoke csl_uninstall_package start package=${packageName} xplane_path=${appStore.xplanePath} custom_paths=${customPaths.value.length}`,
+        `[${requestId}] invoke csl_uninstall_package start package=${packageName} xplane_path=${root} custom_paths=${customPaths.value.length}`,
         'csl',
       )
       await invoke('csl_uninstall_package', {
         packageName,
-        xplanePath: appStore.xplanePath,
+        xplanePath: root,
         customPaths: customPaths.value,
         installLocation: installLocation.value || null,
         requestId,
       })
       logDebug(`[${requestId}] invoke csl_uninstall_package success package=${packageName}`, 'csl')
 
+      if (generation !== rootGeneration) return
       toast.success(t('csl.uninstallSuccess', { name: packageName }))
 
       const pkg = packages.value.find((item) => item.name === packageName)
@@ -1073,12 +1167,16 @@ export const useCslStore = defineStore('csl', () => {
         `[${requestId}] CSL uninstall failed for ${packageName}: ${getErrorMessage(e)}`,
         'csl',
       )
-      toast.error(t('csl.uninstallError', { name: packageName }))
+      if (generation === rootGeneration) toast.error(t('csl.uninstallError', { name: packageName }))
     }
   }
 
   async function applyCustomPaths(nextPaths: string[]) {
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return
     await ensureCustomPathsLoaded()
+    if (generation !== rootGeneration) return
 
     const normalizedNextPaths = normalizeCustomPaths(nextPaths)
     const existingKeys = new Set(customPaths.value.map(pathKey))
@@ -1087,7 +1185,8 @@ export const useCslStore = defineStore('csl', () => {
     const removedPaths = customPaths.value.filter((path) => !nextKeys.has(pathKey(path)))
 
     customPaths.value = normalizedNextPaths
-    await setItem(STORAGE_KEYS.CSL_CUSTOM_PATHS, normalizedNextPaths)
+    await setItem(rootStorageKey(STORAGE_KEYS.CSL_CUSTOM_PATHS, root), normalizedNextPaths)
+    if (generation !== rootGeneration) return
     if (addedPaths.length > 0 || removedPaths.length > 0) {
       await syncLinks({
         targetPaths: addedPaths,
@@ -1098,6 +1197,12 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   function updateProgress(prog: CslProgress) {
+    if (
+      prog.request_id !== activeInstallRequestId ||
+      !isTaskActive({ source: 'csl', name: prog.package_name })
+    ) {
+      return
+    }
     progressMap.value = { ...progressMap.value, [prog.package_name]: prog }
   }
 
@@ -1116,19 +1221,22 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function scanAltitudePackages() {
-    if (!appStore.xplanePath) return
+    const root = appStore.xplanePath
+    if (!root) return
+    const generation = ++altitudeScanGeneration
 
     await ensureServerConfigLoaded()
+    if (generation !== altitudeScanGeneration) return
     altitudeLoading.value = true
     const requestId = createOperationRequestId('altitude-scan')
 
     try {
       logDebug(
-        `[${requestId}] invoke altitude_scan_packages start xplane_path=${appStore.xplanePath} server=${activeServerBaseUrl.value}`,
+        `[${requestId}] invoke altitude_scan_packages start xplane_path=${root} server=${activeServerBaseUrl.value}`,
         'altitude',
       )
       const result = await invoke<CslScanResult>('altitude_scan_packages', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: root,
         serverBaseUrl: activeServerBaseUrl.value,
         requestId,
       })
@@ -1137,17 +1245,19 @@ export const useCslStore = defineStore('csl', () => {
         'altitude',
       )
 
+      if (generation !== altitudeScanGeneration) return
       altitudePackages.value = result.packages
-      lastAltitudeScannedXplanePath.value = appStore.xplanePath
+      lastAltitudeScannedXplanePath.value = root
       if (result.index_warning) {
         logError(`[${requestId}] ${result.index_warning}`, 'altitude')
         toast.warning(result.index_warning)
       }
     } catch (e) {
       logError(`[${requestId}] ALTITUDE scan failed: ${getErrorMessage(e)}`, 'altitude')
-      toast.error(getErrorMessage(e) || t('altitude.fetchError'))
+      if (generation === altitudeScanGeneration)
+        toast.error(getErrorMessage(e) || t('altitude.fetchError'))
     } finally {
-      altitudeLoading.value = false
+      if (generation === altitudeScanGeneration) altitudeLoading.value = false
     }
   }
 
@@ -1174,6 +1284,7 @@ export const useCslStore = defineStore('csl', () => {
         return
       }
 
+      const generation = rootGeneration
       cancellingTaskKeys.value = [...cancellingTaskKeys.value, key]
       const requestId = createOperationRequestId(`${source}-cancel`)
 
@@ -1192,6 +1303,7 @@ export const useCslStore = defineStore('csl', () => {
           source,
         )
       } catch (e) {
+        if (generation !== rootGeneration) return
         cancellingTaskKeys.value = cancellingTaskKeys.value.filter((item) => item !== key)
         logError(`[${requestId}] Failed to cancel ${key}: ${getErrorMessage(e)}`, 'csl')
         toast.error(
@@ -1210,23 +1322,27 @@ export const useCslStore = defineStore('csl', () => {
   }
 
   async function uninstallAltitudePackage() {
-    if (!appStore.xplanePath) return
+    const root = appStore.xplanePath
+    const generation = rootGeneration
+    if (!root) return
 
     const requestId = createOperationRequestId('altitude-uninstall')
 
     try {
       await ensureServerConfigLoaded()
+      if (generation !== rootGeneration) return
       logDebug(
-        `[${requestId}] invoke altitude_uninstall_package start xplane_path=${appStore.xplanePath} server=${activeServerBaseUrl.value}`,
+        `[${requestId}] invoke altitude_uninstall_package start xplane_path=${root} server=${activeServerBaseUrl.value}`,
         'altitude',
       )
       await invoke('altitude_uninstall_package', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: root,
         serverBaseUrl: activeServerBaseUrl.value,
         requestId,
       })
       logDebug(`[${requestId}] invoke altitude_uninstall_package success`, 'altitude')
 
+      if (generation !== rootGeneration) return
       toast.success(t('altitude.uninstallSuccess', { name: 'ALTITUDE' }))
 
       for (const pkg of altitudePackages.value) {
@@ -1236,11 +1352,17 @@ export const useCslStore = defineStore('csl', () => {
       }
     } catch (e) {
       logError(`[${requestId}] ALTITUDE uninstall failed: ${getErrorMessage(e)}`, 'altitude')
-      toast.error(t('altitude.uninstallError', { name: 'ALTITUDE' }))
+      if (generation === rootGeneration) toast.error(t('altitude.uninstallError', { name: 'ALTITUDE' }))
     }
   }
 
   function updateAltitudeProgress(prog: CslProgress) {
+    if (
+      prog.request_id !== activeInstallRequestId ||
+      !isTaskActive({ source: 'altitude', name: prog.package_name })
+    ) {
+      return
+    }
     altitudeProgressMap.value = { ...altitudeProgressMap.value, [prog.package_name]: prog }
   }
 

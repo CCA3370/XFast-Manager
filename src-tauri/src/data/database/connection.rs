@@ -81,8 +81,10 @@ async fn configure_pragmas(db: &DatabaseConnection) -> Result<(), ApiError> {
 /// - Large cache size for better read performance
 /// - Memory-mapped I/O for faster reads
 pub async fn open_connection_async() -> Result<DatabaseConnection, ApiError> {
-    let db_path = get_database_path();
+    open_connection_at(&get_database_path()).await
+}
 
+pub async fn open_connection_at(db_path: &Path) -> Result<DatabaseConnection, ApiError> {
     // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {

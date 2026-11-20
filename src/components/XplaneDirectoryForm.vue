@@ -72,10 +72,14 @@ const browsing = ref(false)
 const browseFailed = ref(false)
 const pending = computed(() => status.value === 'validating' || status.value === 'saving')
 const locked = computed(
-  () => status.value === 'saving' || (props.onboarding && status.value === 'saved'),
+  () =>
+    store.isInstalling ||
+    status.value === 'saving' ||
+    (props.onboarding && status.value === 'saved'),
 )
 
 const feedback = computed(() => {
+  if (store.isInstalling) return t('home.installingNow')
   if (browseFailed.value) return t('settingsSetup.browseFailed')
   if (errorKey.value) return t(errorKey.value)
   if (pending.value) return t('settings.saving')

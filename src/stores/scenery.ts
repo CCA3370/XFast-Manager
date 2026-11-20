@@ -338,11 +338,17 @@ export const useSceneryStore = defineStore('scenery', () => {
   })
 
   // Load scenery data from backend
+  let loadSequence = 0
+
   async function loadData() {
     if (!validateXPlanePath(error)) {
       indexExists.value = false
       return
     }
+
+    const context = appStore.captureXplaneContext()
+    const sequence = ++loadSequence
+    const isCurrent = () => context.isCurrent() && sequence === loadSequence
 
     // Set isLoading before any async operations
     isLoading.value = true
@@ -351,10 +357,12 @@ export const useSceneryStore = defineStore('scenery', () => {
     try {
       // Load index status first
       await loadIndexStatus()
+      if (!isCurrent()) return
 
       const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: context.path,
       })
+      if (!isCurrent()) return
       data.value = {
         ...result,
         entries: applyRememberedSceneryUpdateState(result.entries),
@@ -368,6 +376,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       // renders immediately while remote versions trickle in.
       void checkSceneryUpdates()
     } catch (e) {
+      if (!isCurrent()) return
       const errorStr = String(e)
       error.value = errorStr
       logError(`Failed to load scenery data: ${e}`, 'scenery')
@@ -382,7 +391,7 @@ export const useSceneryStore = defineStore('scenery', () => {
         needsDatabaseReset.value = true
       }
     } finally {
-      isLoading.value = false
+      if (isCurrent()) isLoading.value = false
     }
   }
 
@@ -392,12 +401,14 @@ export const useSceneryStore = defineStore('scenery', () => {
       return
     }
 
+    const context = appStore.captureXplaneContext()
     try {
       const status = await invoke<SceneryIndexStatus>('get_scenery_index_status', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: context.path,
       })
-      indexExists.value = status.indexExists
+      if (context.isCurrent()) indexExists.value = status.indexExists
     } catch (e) {
+      if (!context.isCurrent()) return
       indexExists.value = false
       logError(`Failed to load scenery index status: ${e}`, 'scenery')
     }
@@ -414,20 +425,23 @@ export const useSceneryStore = defineStore('scenery', () => {
     if (!data.value || data.value.entries.length === 0) return
     if (!validateXPlanePath()) return
 
+    const context = appStore.captureXplaneContext()
     const managementStore = useManagementStore()
     const toastStore = useToastStore()
 
     isCheckingUpdates.value = true
     try {
       await managementStore.loadAddonUpdateOptions()
+      if (!context.isCurrent()) return
 
       // forceRefresh: rescan local data first so any cfg version edits on disk are
       // picked up before re-checking remote.
       if (forceRefresh) {
         try {
           const result = await invoke<SceneryManagerData>('get_scenery_manager_data', {
-            xplanePath: appStore.xplanePath,
+            xplanePath: context.path,
           })
+          if (!context.isCurrent()) return
           data.value = {
             ...result,
             entries: applyRememberedSceneryUpdateState(result.entries),
@@ -439,11 +453,13 @@ export const useSceneryStore = defineStore('scenery', () => {
         }
       }
 
+      if (!context.isCurrent()) return
+
       // Use a Ref view of data.value.entries so the generic helper can mutate in place.
       const entriesRef = computed({
-        get: () => data.value?.entries ?? [],
+        get: () => (context.isCurrent() ? (data.value?.entries ?? []) : []),
         set: (next: SceneryManagerEntry[]) => {
-          if (data.value) data.value.entries = next
+          if (context.isCurrent() && data.value) data.value.entries = next
         },
       })
 
@@ -453,9 +469,10 @@ export const useSceneryStore = defineStore('scenery', () => {
         checkParamName: 'scenery',
         logName: 'scenery',
         itemType: 'scenery',
-        extraArgs: { xplanePath: appStore.xplanePath },
+        extraArgs: { xplanePath: context.path },
         forceRefresh,
       })
+      if (!context.isCurrent()) return
       if (showUpToDateToast && result.failed) {
         toastStore.error(t('management.checkFailed'))
       } else if (showUpToDateToast && result.checked && result.updateCount === 0) {
@@ -463,14 +480,17 @@ export const useSceneryStore = defineStore('scenery', () => {
       }
       rememberSceneryUpdateState(data.value?.entries ?? [])
     } finally {
-      isCheckingUpdates.value = false
+      if (context.isCurrent()) isCheckingUpdates.value = false
     }
   }
 
   // Reset the database schema in-place and clear local state.
   async function resetDatabase() {
+    const context = appStore.captureXplaneContext()
+    if (!context.path) return false
     try {
-      await invoke('reset_and_reinitialize')
+      await invoke('reset_and_reinitialize', { xplanePath: context.path })
+      if (!context.isCurrent()) return true
       needsDatabaseReset.value = false
       error.value = null
       indexExists.value = false
@@ -480,7 +500,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       return true
     } catch (e) {
       logError(`Failed to reset database: ${e}`, 'scenery')
-      error.value = String(e)
+      if (context.isCurrent()) error.value = String(e)
       return false
     }
   }
@@ -618,6 +638,7 @@ export const useSceneryStore = defineStore('scenery', () => {
       return
     }
 
+    const context = appStore.captureXplaneContext()
     isSaving.value = true
     error.value = null
 
@@ -646,22 +667,24 @@ export const useSceneryStore = defineStore('scenery', () => {
       }))
 
       await invoke('apply_scenery_changes', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: context.path,
         entries: updates,
         reorder,
       })
 
+      if (!context.isCurrent() || !data.value) return
       // Update original state after successful save
       originalEntries.value = JSON.parse(JSON.stringify(normalizedEntries))
       manualOrderChanged.value = false
       // Mark as synced since we just wrote to ini
       data.value.needsSync = false
     } catch (e) {
+      if (!context.isCurrent()) return
       error.value = String(e)
       logError(`Failed to apply changes: ${e}`, 'scenery')
       throw e
     } finally {
-      isSaving.value = false
+      if (context.isCurrent()) isSaving.value = false
     }
   }
 
@@ -680,11 +703,13 @@ export const useSceneryStore = defineStore('scenery', () => {
       throw new Error(error.value!)
     }
 
+    const context = appStore.captureXplaneContext()
     try {
       await invoke('delete_scenery_folder', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: context.path,
         folderName,
       })
+      if (!context.isCurrent()) return
 
       // Remove from local data
       if (data.value) {
@@ -716,6 +741,7 @@ export const useSceneryStore = defineStore('scenery', () => {
           sortOrder: index,
         }))
     } catch (e) {
+      if (!context.isCurrent()) return
       // Parse structured error if available
       const apiError = parseApiError(e)
       if (apiError) {
@@ -764,12 +790,23 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   // Clear store state
   function clear() {
+    loadSequence += 1
+    if (recalcTimer !== null) {
+      clearTimeout(recalcTimer)
+      recalcTimer = null
+    }
+    indexExists.value = false
+    isLoading.value = false
+    isSaving.value = false
+    isCheckingUpdates.value = false
     manualOrderChanged.value = false
     data.value = null
     originalEntries.value = []
     error.value = null
     needsDatabaseReset.value = false
   }
+
+  watch(() => appStore.xplanePath, clear, { flush: 'sync' })
 
   return {
     // State

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, computed, type Ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { ref, computed, watch, type Ref } from 'vue'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import {
   getErrorMessage,
@@ -25,6 +25,7 @@ import { useLockStore } from './lock'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { logError } from '@/services/logger'
 import { validateXPlanePath } from '@/utils/validation'
+import { rootStorageKey } from '@/utils/xplaneStorage'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import {
   addonUpdateItemKey,
@@ -274,13 +275,14 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   async function fetchAircraftFolderState(folderName: string): Promise<AircraftInfo> {
+    const { operationRoot, isCurrent, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     try {
       const updated = await invoke<AircraftInfo>('get_aircraft_folder_state', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         folderName,
       })
 
@@ -291,7 +293,7 @@ export const useManagementStore = defineStore('management', () => {
         hasUpdate: updated.hasUpdate ?? existing?.hasUpdate ?? false,
       }
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
       logError(`Failed to fetch aircraft folder state ${folderName}: ${e}`, 'management')
       throw e
     }
@@ -306,7 +308,9 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
     enabled: boolean,
   ) {
+    const { operationRoot, assertCurrent } = captureOperation()
     await loadAddonUpdateOptions()
+    assertCurrent()
 
     const key = addonUpdateItemKey(itemType, folderName)
     const nextPreferences = { ...addonUpdateItemBetaPreferences.value }
@@ -318,7 +322,10 @@ export const useManagementStore = defineStore('management', () => {
 
     addonUpdateItemBetaPreferences.value = nextPreferences
     updateCache.clear()
-    await setItem(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES, nextPreferences)
+    await setItem(
+      rootStorageKey(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES, operationRoot),
+      nextPreferences,
+    )
   }
 
   function buildAddonUpdateOptionsForItem(
@@ -335,6 +342,12 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   async function loadAddonUpdateOptions() {
+    const operationRoot = appStore.xplanePath
+    const epoch = rootGeneration
+    const assertCurrent = () => {
+      if (epoch !== rootGeneration)
+        throw new Error('X-Plane directory changed; retry the operation')
+    }
     if (addonUpdateOptionsLoaded.value) return
 
     const [
@@ -348,7 +361,9 @@ export const useManagementStore = defineStore('management', () => {
       threadsPerTask,
       totalThreads,
     ] = await Promise.all([
-      getItem<AddonUpdateItemBetaPreferences>(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES),
+      getItem<AddonUpdateItemBetaPreferences>(
+        rootStorageKey(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES, operationRoot),
+      ),
       getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_INCLUDE_LIVERIES),
       getItem<boolean>(STORAGE_KEYS.ADDON_UPDATE_APPLY_BLACKLIST),
       getItem<number>(STORAGE_KEYS.ADDON_UPDATE_PARALLEL_DOWNLOADS),
@@ -359,6 +374,7 @@ export const useManagementStore = defineStore('management', () => {
       getItem<number>(STORAGE_KEYS.ADDON_UPDATE_TOTAL_THREADS),
     ])
 
+    assertCurrent()
     addonUpdateItemBetaPreferences.value =
       normalizeAddonUpdateItemBetaPreferences(itemBetaPreferences)
 
@@ -457,16 +473,18 @@ export const useManagementStore = defineStore('management', () => {
     licenseKey?: string,
     optionsOverride?: Partial<AddonUpdateOptions>,
   ): Promise<AddonUpdatePreview> {
+    const { operationRoot, invoke, assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     await loadAddonUpdateOptions()
+    assertCurrent()
     const options = buildAddonUpdateOptionsForItem(itemType, folderName, optionsOverride)
 
     try {
       return await invoke<AddonUpdatePreview>('fetch_addon_update_preview', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         itemType,
         folderName,
         options,
@@ -566,6 +584,7 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   async function loadItems<T extends LoadableItem>(config: LoadConfig<T>) {
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       return
     }
@@ -575,12 +594,13 @@ export const useManagementStore = defineStore('management', () => {
 
     try {
       const result = await invoke<ManagementData<T>>(config.scanCommand, {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
       })
 
       // Apply cached update info if applicable (only for UpdatableItem types)
       if (config.applyCache && config.cacheItemType) {
         await loadAddonUpdateOptions()
+        assertCurrent()
         config.itemsRef.value = applyCachedUpdates(
           result.entries as unknown as UpdatableItem[],
           config.cacheItemType,
@@ -596,10 +616,10 @@ export const useManagementStore = defineStore('management', () => {
         config.afterLoad()
       }
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
       logError(`Failed to load ${config.logName}: ${e}`, 'management')
     } finally {
-      isLoading.value = false
+      if (isCurrent()) isLoading.value = false
     }
   }
 
@@ -626,11 +646,13 @@ export const useManagementStore = defineStore('management', () => {
   async function checkItemUpdates<T extends UpdatableItem>(
     config: UpdateCheckConfig<T>,
   ): Promise<UpdateCheckResult> {
+    const { isCurrent, invoke, assertCurrent } = captureOperation()
     if (config.itemsRef.value.length === 0) {
       return { checked: false, updateCount: 0, failed: false }
     }
 
     await loadAddonUpdateOptions()
+    assertCurrent()
 
     if (!config.forceRefresh) {
       config.itemsRef.value = applyCachedUpdates(config.itemsRef.value, config.itemType)
@@ -698,7 +720,7 @@ export const useManagementStore = defineStore('management', () => {
       // Don't set error.value here as this is a background operation
       return { checked: false, updateCount: 0, failed: true }
     } finally {
-      isCheckingUpdates.value = false
+      if (isCurrent()) isCheckingUpdates.value = false
     }
   }
 
@@ -724,7 +746,9 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   async function refreshAircraftFolder(folderName: string): Promise<AircraftInfo> {
+    const { assertCurrent } = captureOperation()
     const merged = await fetchAircraftFolderState(folderName)
+    assertCurrent()
     return upsertAircraftEntry(merged)
   }
 
@@ -733,7 +757,9 @@ export const useManagementStore = defineStore('management', () => {
     forceRefresh: boolean = false,
     showUpToDateToast: boolean = false,
   ) {
+    const { operationRoot, invoke, assertCurrent } = captureOperation()
     await loadAddonUpdateOptions()
+    assertCurrent()
 
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
@@ -745,10 +771,10 @@ export const useManagementStore = defineStore('management', () => {
         }
       }
       // Rescan to get latest cfg state (without triggering another update check)
-      if (appStore.xplanePath) {
+      if (operationRoot) {
         try {
           const result = await invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
-            xplanePath: appStore.xplanePath,
+            xplanePath: operationRoot,
           })
           aircraft.value = applyCachedUpdates(result.entries, 'aircraft')
           aircraftTotalCount.value = result.totalCount
@@ -760,13 +786,14 @@ export const useManagementStore = defineStore('management', () => {
       }
     }
 
+    assertCurrent()
     const result = await checkItemUpdates<AircraftInfo>({
       itemsRef: aircraft,
       checkCommand: 'check_aircraft_updates',
       checkParamName: 'aircraft',
       logName: 'aircraft',
       itemType: 'aircraft',
-      extraArgs: { xplanePath: appStore.xplanePath },
+      extraArgs: { xplanePath: operationRoot },
       forceRefresh,
     })
     // Show toast when check was actually performed and no updates found
@@ -799,7 +826,9 @@ export const useManagementStore = defineStore('management', () => {
     forceRefresh: boolean = false,
     showUpToDateToast: boolean = false,
   ) {
+    const { operationRoot, invoke, assertCurrent } = captureOperation()
     await loadAddonUpdateOptions()
+    assertCurrent()
 
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
@@ -811,10 +840,10 @@ export const useManagementStore = defineStore('management', () => {
         }
       }
       // Rescan to get latest cfg state (without triggering another update check)
-      if (appStore.xplanePath) {
+      if (operationRoot) {
         try {
           const result = await invoke<ManagementData<PluginInfo>>('scan_plugins', {
-            xplanePath: appStore.xplanePath,
+            xplanePath: operationRoot,
           })
           plugins.value = applyCachedUpdates(result.entries, 'plugin')
           pluginsTotalCount.value = result.totalCount
@@ -826,13 +855,14 @@ export const useManagementStore = defineStore('management', () => {
       }
     }
 
+    assertCurrent()
     const result = await checkItemUpdates<PluginInfo>({
       itemsRef: plugins,
       checkCommand: 'check_plugins_updates',
       checkParamName: 'plugins',
       logName: 'plugins',
       itemType: 'plugin',
-      extraArgs: { xplanePath: appStore.xplanePath },
+      extraArgs: { xplanePath: operationRoot },
       forceRefresh,
     })
     // Show toast when check was actually performed and no updates found
@@ -848,17 +878,21 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
     optionsOverride?: Partial<AddonUpdateOptions>,
   ): Promise<AddonUpdatePlan> {
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
+    const rootGeneration = appStore.xplaneGeneration
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     await loadAddonUpdateOptions()
+    assertCurrent()
     const options = buildAddonUpdateOptionsForItem(itemType, folderName, optionsOverride)
 
     isBuildingUpdatePlan.value = true
     try {
       return await invoke<AddonUpdatePlan>('build_addon_update_plan', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
+        rootGeneration,
         itemType,
         folderName,
         options,
@@ -870,7 +904,7 @@ export const useManagementStore = defineStore('management', () => {
       )
       throw e
     } finally {
-      isBuildingUpdatePlan.value = false
+      if (isCurrent()) isBuildingUpdatePlan.value = false
     }
   }
 
@@ -879,17 +913,21 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
     optionsOverride?: Partial<AddonUpdateOptions>,
   ): Promise<AddonUpdateResult> {
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
+    const rootGeneration = appStore.xplaneGeneration
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     await loadAddonUpdateOptions()
+    assertCurrent()
     const options = buildAddonUpdateOptionsForItem(itemType, folderName, optionsOverride)
 
     executingUpdateCount.value += 1
     try {
       const result = await invoke<AddonUpdateResult>('execute_addon_update', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
+        rootGeneration,
         itemType,
         folderName,
         options,
@@ -906,7 +944,7 @@ export const useManagementStore = defineStore('management', () => {
       logError(`Failed to execute addon update for ${itemType}:${folderName}: ${e}`, 'management')
       throw e
     } finally {
-      executingUpdateCount.value = Math.max(0, executingUpdateCount.value - 1)
+      if (isCurrent()) executingUpdateCount.value = Math.max(0, executingUpdateCount.value - 1)
     }
   }
 
@@ -916,6 +954,7 @@ export const useManagementStore = defineStore('management', () => {
     login: string,
     licenseKey: string,
   ) {
+    const { operationRoot, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -928,7 +967,7 @@ export const useManagementStore = defineStore('management', () => {
 
     try {
       await invoke('set_addon_updater_credentials', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         itemType,
         folderName,
         login: trimmedLogin,
@@ -947,13 +986,14 @@ export const useManagementStore = defineStore('management', () => {
     itemType: AddonUpdatableItemType,
     folderName: string,
   ): Promise<AddonUpdaterCredentials | null> {
+    const { operationRoot, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     try {
       return await invoke<AddonUpdaterCredentials | null>('get_addon_updater_credentials', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         itemType,
         folderName,
       })
@@ -970,13 +1010,14 @@ export const useManagementStore = defineStore('management', () => {
     itemType: AddonUpdatableItemType,
     folderName: string,
   ): Promise<AddonDiskSpaceInfo> {
+    const { operationRoot, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     try {
       return await invoke<AddonDiskSpaceInfo>('get_addon_update_disk_space', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         itemType,
         folderName,
       })
@@ -991,6 +1032,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Load navdata (no update cache needed)
   async function loadNavdata() {
+    const { isCurrent } = captureOperation()
     await loadItems<NavdataManagerInfo>({
       scanCommand: 'scan_navdata',
       itemsRef: navdata,
@@ -1000,16 +1042,17 @@ export const useManagementStore = defineStore('management', () => {
       logName: 'navdata',
     })
     // Also load backups when loading navdata
-    await loadNavdataBackups()
+    if (isCurrent()) await loadNavdataBackups()
   }
 
   // Load navdata backups
   async function loadNavdataBackups() {
+    const { operationRoot, invoke } = captureOperation()
     if (!validateXPlanePath()) return
 
     try {
       navdataBackups.value = await invoke<NavdataBackupInfo[]>('scan_navdata_backups', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
       })
     } catch (e) {
       logError(`Failed to load navdata backups: ${e}`, 'management')
@@ -1018,6 +1061,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Restore navdata backup
   async function restoreNavdataBackup(backupFolderName: string) {
+    const { operationRoot, isCurrent, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -1025,17 +1069,17 @@ export const useManagementStore = defineStore('management', () => {
     isRestoringBackup.value = true
     try {
       await invoke('restore_navdata_backup', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         backupFolderName,
       })
       toast.info(t('management.restoreBackupSuccess'))
       await loadNavdata()
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
       logError(`Failed to restore navdata backup: ${e}`, 'management')
       throw e
     } finally {
-      isRestoringBackup.value = false
+      if (isCurrent()) isRestoringBackup.value = false
     }
   }
 
@@ -1066,27 +1110,28 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
     newEnabled: boolean,
   ) {
+    const { operationRoot, invoke } = captureOperation()
     const key = `${type}:${folderName.toLowerCase()}`
 
     if (!newEnabled) {
       // Disabling → auto-lock, but only track if not already manually locked
       if (!lockStore.isLocked(type, folderName)) {
         autoLockedByDisable.add(key)
-        await lockStore.setLocked(type, folderName, true)
+        await lockStore.setLocked(type, folderName, true, operationRoot)
       }
     } else {
       // Enabling → auto-unlock only if we auto-locked it (preserve manual locks)
       if (autoLockedByDisable.has(key)) {
         autoLockedByDisable.delete(key)
-        await lockStore.setLocked(type, folderName, false)
+        await lockStore.setLocked(type, folderName, false, operationRoot)
       }
     }
 
     // Always sync disabled state to cfg file
-    if (appStore.xplanePath) {
+    if (operationRoot) {
       try {
         await invoke('set_cfg_disabled', {
-          xplanePath: appStore.xplanePath,
+          xplanePath: operationRoot,
           itemType: type,
           folderName,
           disabled: !newEnabled,
@@ -1099,6 +1144,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Toggle enabled state
   async function toggleEnabled(itemType: ManagementItemType, folderName: string) {
+    const { operationRoot, isCurrent, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       return
     }
@@ -1115,7 +1161,7 @@ export const useManagementStore = defineStore('management', () => {
     try {
       if (itemType === 'aircraft') {
         const updated = await invoke<AircraftInfo>('toggle_aircraft_folder', {
-          xplanePath: appStore.xplanePath,
+          xplanePath: operationRoot,
           folderName,
         })
 
@@ -1132,7 +1178,7 @@ export const useManagementStore = defineStore('management', () => {
       }
 
       const newEnabled = await invoke<boolean>('toggle_management_item', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         itemType,
         folderName,
       })
@@ -1161,7 +1207,7 @@ export const useManagementStore = defineStore('management', () => {
         }
       }
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
       logError(`Failed to toggle enabled: ${e}`, 'management')
       throw e
     }
@@ -1171,13 +1217,14 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
     fileName: string,
   ): Promise<AircraftInfo> {
+    const { operationRoot, isCurrent, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     try {
       const updated = await invoke<AircraftInfo>('toggle_aircraft_acf_file', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         folderName,
         fileName,
       })
@@ -1192,7 +1239,7 @@ export const useManagementStore = defineStore('management', () => {
       await syncLockAfterToggle('aircraft', folderName, merged.enabled)
       return entry
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
       logError(`Failed to toggle aircraft ACF file ${folderName}/${fileName}: ${e}`, 'management')
       throw e
     }
@@ -1200,13 +1247,14 @@ export const useManagementStore = defineStore('management', () => {
 
   // Delete item
   async function deleteItem(itemType: ManagementItemType, folderName: string) {
+    const { operationRoot, isCurrent, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     try {
       await invoke('delete_management_item', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         itemType,
         folderName,
       })
@@ -1230,7 +1278,7 @@ export const useManagementStore = defineStore('management', () => {
           break
       }
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
       logError(`Failed to delete item: ${e}`, 'management')
       throw e
     }
@@ -1240,6 +1288,7 @@ export const useManagementStore = defineStore('management', () => {
     itemType: ManagementItemType,
     folderNames: string[],
   ): Promise<BatchDeleteResult> {
+    const { assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -1251,6 +1300,7 @@ export const useManagementStore = defineStore('management', () => {
 
     const uniqueFolderNames = [...new Set(folderNames)]
     for (const folderName of uniqueFolderNames) {
+      assertCurrent()
       try {
         await deleteItem(itemType, folderName)
         result.deleted.push(folderName)
@@ -1266,18 +1316,19 @@ export const useManagementStore = defineStore('management', () => {
 
   // Open folder
   async function openFolder(itemType: ManagementItemType, folderName: string) {
+    const { operationRoot, isCurrent, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
 
     try {
       await invoke('open_management_folder', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: operationRoot,
         itemType,
         folderName,
       })
     } catch (e) {
-      error.value = String(e)
+      if (isCurrent()) error.value = String(e)
       logError(`Failed to open folder: ${e}`, 'management')
       throw e
     }
@@ -1289,6 +1340,7 @@ export const useManagementStore = defineStore('management', () => {
     folderNames: string[],
     enabled: boolean,
   ) {
+    const { operationRoot, invoke } = captureOperation()
     if (!validateXPlanePath(error)) {
       return
     }
@@ -1312,7 +1364,7 @@ export const useManagementStore = defineStore('management', () => {
     for (const folderName of toChange) {
       try {
         await invoke<boolean>('toggle_management_item', {
-          xplanePath: appStore.xplanePath,
+          xplanePath: operationRoot,
           itemType,
           folderName,
         })
@@ -1348,8 +1400,40 @@ export const useManagementStore = defineStore('management', () => {
     activeTab.value = tab
   }
 
+  let rootGeneration = 0
+  function captureOperation() {
+    const operationRoot = appStore.xplanePath
+    const epoch = rootGeneration
+    const isCurrent = () => epoch === rootGeneration
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new Error('X-Plane directory changed; retry the operation')
+    }
+    const invoke = async <T = unknown>(
+      command: string,
+      args?: Record<string, unknown>,
+    ): Promise<T> => {
+      assertCurrent()
+      const result = await tauriInvoke<T>(command, args)
+      assertCurrent()
+      return result
+    }
+    return { operationRoot, isCurrent, assertCurrent, invoke }
+  }
+
+  watch(() => appStore.xplanePath, clear, { flush: 'sync' })
+
   // Clear store state
   function clear() {
+    rootGeneration++
+    updateCache.clear()
+    addonUpdateOptionsLoaded.value = false
+    addonUpdateItemBetaPreferences.value = {}
+    aircraftTotalCount.value = aircraftEnabledCount.value = 0
+    pluginsTotalCount.value = pluginsEnabledCount.value = 0
+    navdataTotalCount.value = navdataEnabledCount.value = 0
+    isLoading.value = isCheckingUpdates.value = isRestoringBackup.value = false
+    isBuildingUpdatePlan.value = false
+    executingUpdateCount.value = 0
     aircraft.value = []
     plugins.value = []
     navdata.value = []

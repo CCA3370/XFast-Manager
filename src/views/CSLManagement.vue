@@ -664,6 +664,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useCslStore } from '@/stores/csl'
 import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import {
   getErrorMessage,
   type CslLinkSyncProgress,
@@ -686,6 +687,7 @@ const { t } = useI18n()
 const store = useCslStore()
 const appStore = useAppStore()
 const modal = useModalStore()
+const { isCurrentRoot } = useXplaneViewRoot()
 
 const activeFilter = ref<string>('all')
 const showPathsDialog = ref(false)
@@ -796,9 +798,13 @@ function createServerEntry(url: string): EditableServerEntry {
   }
 }
 
-let unlistenProgress: UnlistenFn | null = null
-let unlistenAltitudeProgress: UnlistenFn | null = null
-let unlistenLinkSync: UnlistenFn | null = null
+const unlisteners: UnlistenFn[] = []
+
+async function trackListener(pending: Promise<UnlistenFn>) {
+  const unlisten = await pending
+  if (isCurrentRoot()) unlisteners.push(unlisten)
+  else unlisten()
+}
 
 // Combined packages: ALTITUDE first, then CSL
 const combinedPackages = computed<DisplayPackage[]>(() => {
@@ -1003,6 +1009,7 @@ function isDescriptionPending(packageName: string): boolean {
 }
 
 function handleInstall(pkg: DisplayPackage) {
+  if (!isCurrentRoot()) return
   if (pkg.source === 'altitude') {
     store.installAltitudePackage()
   } else {
@@ -1011,6 +1018,7 @@ function handleInstall(pkg: DisplayPackage) {
 }
 
 function cancelInstall(pkg: DisplayPackage) {
+  if (!isCurrentRoot()) return
   void store.cancelInstall(pkg.source, pkg.name)
 }
 
@@ -1023,6 +1031,7 @@ function handleUninstall(pkg: DisplayPackage) {
     cancelText: t('common.cancel'),
     type: 'danger',
     onConfirm: () => {
+      if (!isCurrentRoot()) return
       if (pkg.source === 'altitude') {
         store.uninstallAltitudePackage()
       } else {
@@ -1038,9 +1047,7 @@ function scanAll() {
 }
 
 function syncPageState(forceRefresh = false) {
-  if (!appStore.xplanePath) {
-    return
-  }
+  if (!isCurrentRoot()) return
 
   void store.syncLinks({ interactive: true })
 
@@ -1063,6 +1070,7 @@ function syncPageState(forceRefresh = false) {
 }
 
 function installAll() {
+  if (!isCurrentRoot()) return
   store.installAllCombined(
     combinedPackages.value
       .filter((pkg) => isActionableStatus(pkg.status))
@@ -1071,7 +1079,9 @@ function installAll() {
 }
 
 async function openPathsDialog() {
+  if (!isCurrentRoot()) return
   await Promise.all([store.ensureCustomPathsLoaded(), store.ensureInstallLocationLoaded()])
+  if (!isCurrentRoot()) return
   customPathDraft.value = [...store.customPaths]
   installLocationDraft.value = store.installLocation
   showPathsDialog.value = true
@@ -1084,12 +1094,14 @@ function closePathsDialog() {
 }
 
 async function addCustomPathDraft() {
+  if (!isCurrentRoot()) return
   const selected = await open({
     directory: true,
     multiple: false,
     title: t('csl.selectTargetPath'),
   })
 
+  if (!isCurrentRoot()) return
   if (selected && typeof selected === 'string' && !customPathDraft.value.includes(selected)) {
     customPathDraft.value = [...customPathDraft.value, selected]
   }
@@ -1103,6 +1115,7 @@ function removeCustomPathDraft(path: string) {
 }
 
 async function confirmPathDraft() {
+  if (!isCurrentRoot()) return
   const nextPaths = [...customPathDraft.value]
   const nextInstallLocation = installLocationDraft.value
   const installLocationChanged = !pathsEqual(nextInstallLocation, store.installLocation)
@@ -1110,13 +1123,14 @@ async function confirmPathDraft() {
 
   if (installLocationChanged) {
     await store.setInstallLocation(nextInstallLocation)
+    if (!isCurrentRoot()) return
   }
 
   await store.applyCustomPaths(nextPaths)
 
-  if (installLocationChanged) {
+  if (installLocationChanged && isCurrentRoot()) {
     await store.syncLinks({ interactive: true })
-    await store.scanPackages()
+    if (isCurrentRoot()) await store.scanPackages()
   }
 }
 
@@ -1242,6 +1256,7 @@ watch(
   filteredPackages,
   async () => {
     await nextTick()
+    if (!isCurrentRoot()) return
     if (!descriptionObserver) {
       setupDescriptionObserver()
       return
@@ -1251,51 +1266,38 @@ watch(
   { flush: 'post' },
 )
 
-watch(
-  () => appStore.xplanePath,
-  (path, previousPath) => {
-    if (!path || path === previousPath) {
-      return
-    }
-
-    syncPageState(true)
-  },
-)
-
 onMounted(async () => {
   await store.ensureServerConfigLoaded()
+  if (!isCurrentRoot()) return
   await store.ensureCustomPathsLoaded()
+  if (!isCurrentRoot()) return
 
-  // Listen for CSL progress events
-  unlistenProgress = await listen<CslProgress>('csl-progress', (event) => {
-    store.updateProgress(event.payload)
-  })
-
-  // Listen for ALTITUDE progress events
-  unlistenAltitudeProgress = await listen<CslProgress>('altitude-progress', (event) => {
-    store.updateAltitudeProgress(event.payload)
-  })
-
-  unlistenLinkSync = await listen<CslLinkSyncProgress>('csl-link-sync-progress', (event) => {
-    store.updateLinkSyncProgress(event.payload)
-  })
-
+  await Promise.all([
+    trackListener(
+      listen<CslProgress>('csl-progress', (event) => {
+        if (isCurrentRoot()) store.updateProgress(event.payload)
+      }),
+    ),
+    trackListener(
+      listen<CslProgress>('altitude-progress', (event) => {
+        if (isCurrentRoot()) store.updateAltitudeProgress(event.payload)
+      }),
+    ),
+    trackListener(
+      listen<CslLinkSyncProgress>('csl-link-sync-progress', (event) => {
+        if (isCurrentRoot()) store.updateLinkSyncProgress(event.payload)
+      }),
+    ),
+  ])
+  if (!isCurrentRoot()) return
   syncPageState()
 
   await nextTick()
-  setupDescriptionObserver()
+  if (isCurrentRoot()) setupDescriptionObserver()
 })
 
 onUnmounted(() => {
-  if (unlistenProgress) {
-    unlistenProgress()
-  }
-  if (unlistenAltitudeProgress) {
-    unlistenAltitudeProgress()
-  }
-  if (unlistenLinkSync) {
-    unlistenLinkSync()
-  }
+  for (const unlisten of unlisteners) unlisten()
   if (descriptionObserver) {
     descriptionObserver.disconnect()
     descriptionObserver = null

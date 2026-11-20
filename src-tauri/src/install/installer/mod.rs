@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::database::DatabaseState;
 use crate::logger;
 use crate::logger::{tr, LogMsg};
 use crate::models::{
@@ -1427,10 +1426,9 @@ impl Drop for TaskCompletionGuard {
 }
 
 impl Installer {
-    pub fn new(app_handle: AppHandle) -> Self {
+    pub fn new(app_handle: AppHandle, db: DatabaseConnection) -> Self {
         // Get TaskControl from app state
         let task_control = app_handle.state::<TaskControl>().inner().clone();
-        let db = app_handle.state::<DatabaseState>().get();
         Installer {
             app_handle,
             task_control,
@@ -2076,6 +2074,7 @@ impl Installer {
             let tc = task_control.clone();
             let ah = app_handle.clone();
             let xp = xplane_path.clone();
+            let db = self.db.clone();
             let atomic = atomic_install_enabled;
             let dependencies: Vec<_> = install_dependencies[index]
                 .iter()
@@ -2152,7 +2151,7 @@ impl Installer {
                     progress_ctx.zip_package = preparation.zip;
                     progress_ctx.sevenz_package = preparation.sevenz;
                     progress_ctx.directory_plan = preparation.directory;
-                    let mut installer = Installer::new(ah);
+                    let mut installer = Installer::new(ah, db);
                     installer.task_control = tc.child_session();
 
                     let mut task = task;

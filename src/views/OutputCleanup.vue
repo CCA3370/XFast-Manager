@@ -343,6 +343,7 @@ import {
   type OutputCleanupTarget,
 } from '@/stores/diskUsage'
 import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useToastStore } from '@/stores/toast'
 import { useModalStore } from '@/stores/modal'
 import { useIssueTrackerStore } from '@/stores/issueTracker'
@@ -351,6 +352,7 @@ const { t, locale } = useI18n()
 
 const store = useDiskUsageStore()
 const appStore = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const toast = useToastStore()
 const modal = useModalStore()
 const issueTracker = useIssueTrackerStore()
@@ -525,8 +527,9 @@ function resetCleanupSelectionToDefaults() {
 }
 
 async function scanCleanup(resetToEmbedded = false) {
+  if (!isCurrentRoot()) return
   await store.scanOutputCleanup(resetToEmbedded)
-  if (appStore.xplanePath) void store.refreshOutputCleanupItems()
+  if (isCurrentRoot()) void store.refreshOutputCleanupItems()
 }
 
 async function refreshCleanup() {
@@ -539,7 +542,7 @@ function confirmCleanSelected() {
     return
   }
 
-  const xplanePath = appStore.xplanePath
+  if (!isCurrentRoot()) return
   const targets = selectedCleanupItems.value.map(({ id, relativePath }) => ({ id, relativePath }))
   const warnings = [...new Set(selectedCleanupItems.value.map(cleanupWarningText).filter(Boolean))]
 
@@ -554,17 +557,18 @@ function confirmCleanSelected() {
     cancelText: t('common.cancel'),
     type: 'danger',
     onConfirm: () => {
-      if (xplanePath === appStore.xplanePath && !cleanupMutationBusy.value) {
-        void cleanSelected(xplanePath, targets)
+      if (isCurrentRoot() && !cleanupMutationBusy.value) {
+        void cleanSelected(targets)
       }
     },
     onCancel: () => {},
   })
 }
 
-async function cleanSelected(xplanePath: string, targets: OutputCleanupTarget[]) {
+async function cleanSelected(targets: OutputCleanupTarget[]) {
   try {
     const result = await store.cleanOutputItems(xplanePath, targets)
+    if (!isCurrentRoot()) return
     toast.success(
       t('diskUsage.outputCleanup.cleanSuccess', {
         size: formatSize(result.totalDeletedBytes),
@@ -574,14 +578,14 @@ async function cleanSelected(xplanePath: string, targets: OutputCleanupTarget[])
     selectedCleanupIds.value = new Set()
     cleanupSelectionInitialized.value = false
     await store.scanOutputCleanup()
-    void store.refreshOutputCleanupItems()
+    if (isCurrentRoot()) void store.refreshOutputCleanupItems()
   } catch (e) {
-    toast.error(String(e))
+    if (isCurrentRoot()) toast.error(String(e))
   }
 }
 
 function confirmStateChange(change: OutputCleanupStateChange, name: string) {
-  const xplanePath = appStore.xplanePath
+  if (!isCurrentRoot()) return
   const action = `diskUsage.outputCleanup.${change.action}`
   modal.showConfirm({
     title: t(`${action}Title`, { name }),
@@ -590,24 +594,22 @@ function confirmStateChange(change: OutputCleanupStateChange, name: string) {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: () => {
-      if (xplanePath === appStore.xplanePath && !cleanupMutationBusy.value) {
-        void changeItemState(xplanePath, change, action)
+      if (isCurrentRoot() && !cleanupMutationBusy.value) {
+        void changeItemState(change, action)
       }
     },
     onCancel: () => {},
   })
 }
 
-async function changeItemState(
-  xplanePath: string,
-  change: OutputCleanupStateChange,
-  action: string,
-) {
+async function changeItemState(change: OutputCleanupStateChange, action: string) {
   try {
     await store.changeOutputCleanupItemState(xplanePath, change)
+    if (!isCurrentRoot()) return
     if (change.action === 'disable') setCleanupSelected(change.target.id, false)
     toast.success(t(`${action}Success`))
   } catch (error) {
+    if (!isCurrentRoot()) return
     const reason = String(error)
     toast.error(
       reason === 'xplane_running'
@@ -615,7 +617,7 @@ async function changeItemState(
         : t('diskUsage.outputCleanup.stateChangeFailed', { reason }),
     )
   } finally {
-    await store.scanOutputCleanup()
+    if (isCurrentRoot()) await store.scanOutputCleanup()
   }
 }
 

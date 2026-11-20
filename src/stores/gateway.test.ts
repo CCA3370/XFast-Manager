@@ -26,6 +26,7 @@ const gatewayApi = vi.hoisted(() => ({
 vi.mock('@/services/gateway-api', () => gatewayApi)
 
 import { useGatewayStore } from './gateway'
+import { useAppStore } from './app'
 
 function createDeferred<T>() {
   let resolvePromise: (value: T) => void = () => {}
@@ -197,5 +198,44 @@ describe('Gateway store', () => {
 
     expect(gatewayApi.gatewayInstallScenery).toHaveBeenCalledTimes(1)
     expect(store.installingIcao).toBeNull()
+  })
+})
+
+describe('Gateway installation switches', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('ignores a release context from a previous root, including A → B → A', async () => {
+    const app = useAppStore()
+    app.xplanePath = '/A'
+    const store = useGatewayStore()
+    const pending = createDeferred<GatewayReleaseContext>()
+    gatewayApi.gatewayResolveReleaseContext.mockReturnValueOnce(pending.promise)
+    const loading = store.loadReleaseContext('/A')
+    app.xplanePath = '/B'
+    app.xplanePath = '/A'
+    pending.resolve({
+      comparisonAvailable: true,
+      matchedReleaseVersion: 'old',
+    } as GatewayReleaseContext)
+    await loading
+    expect(store.releaseContext).toBeNull()
+    expect(store.isLoadingReleaseContext).toBe(false)
+  })
+
+  it('does not refresh an old root after an in-flight installation completes', async () => {
+    const app = useAppStore()
+    app.xplanePath = '/A'
+    const store = useGatewayStore()
+    const pending = createDeferred<GatewayInstalledAirport>()
+    gatewayApi.gatewayInstallScenery.mockReturnValueOnce(pending.promise)
+    const installing = store.installSelection('/A', { airportIcao: 'EDDE', sceneryId: 110996 })
+    app.xplanePath = '/B'
+    pending.resolve(createInstalledAirport())
+    await installing
+    expect(store.installed).toEqual([])
+    expect(gatewayApi.gatewayListInstalled).not.toHaveBeenCalled()
   })
 })

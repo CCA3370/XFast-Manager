@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useManagementStore, isProtectedAircraft } from '@/stores/management'
 import { useToastStore } from '@/stores/toast'
 import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useModalStore } from '@/stores/modal'
 import { useAddonUpdateDrawerStore } from '@/stores/addonUpdateDrawer'
 import { usePatchStore } from '@/stores/patch'
@@ -32,6 +33,7 @@ const router = useRouter()
 const managementStore = useManagementStore()
 const toastStore = useToastStore()
 const appStore = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const modalStore = useModalStore()
 const patchStore = usePatchStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
@@ -137,25 +139,25 @@ watch(
 )
 
 async function loadTabData(tab: ManagementTab) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
 
   try {
     switch (tab) {
       case 'aircraft':
         await managementStore.loadAircraft()
-        if (managementStore.error) {
+        if (isCurrentRoot() && managementStore.error) {
           toastStore.warning(t('management.scanFailed') + ': ' + managementStore.error)
         }
         break
       case 'plugin':
         await managementStore.loadPlugins()
-        if (managementStore.error) {
+        if (isCurrentRoot() && managementStore.error) {
           toastStore.warning(t('management.scanFailed') + ': ' + managementStore.error)
         }
         break
       case 'navdata':
         await managementStore.loadNavdata()
-        if (managementStore.error) {
+        if (isCurrentRoot() && managementStore.error) {
           toastStore.warning(t('management.scanFailed') + ': ' + managementStore.error)
         }
         break
@@ -164,6 +166,7 @@ async function loadTabData(tab: ManagementTab) {
         break
     }
   } catch (e) {
+    if (!isCurrentRoot()) return
     toastStore.warning(t('management.scanFailed') + ': ' + String(e))
   }
 }
@@ -342,6 +345,7 @@ const canBatchDeleteSelected = computed(() => {
 })
 
 function handleBatchUpdateSelected() {
+  if (!isCurrentRoot()) return
   if (!canBatchUpdateSelected.value) return
 
   const firstTask = selectedSkunkUpdateTasks.value[0]
@@ -352,6 +356,7 @@ function handleBatchUpdateSelected() {
 }
 
 async function runBatchDeleteSelected() {
+  if (!isCurrentRoot()) return
   if (!canBatchDeleteSelected.value) return
 
   const itemType = activeTab.value as ManagementItemType
@@ -361,6 +366,7 @@ async function runBatchDeleteSelected() {
   isBatchProcessing.value = true
   try {
     const result = await managementStore.batchDeleteItems(itemType, folderNames)
+    if (!isCurrentRoot()) return
     const failedNames = new Set(result.failed.map((failure) => failure.folderName))
 
     if (itemType === 'aircraft') {
@@ -412,6 +418,7 @@ function handleBatchDeleteSelected() {
 }
 
 async function batchSetEnabled(enabled: boolean) {
+  if (!isCurrentRoot()) return
   if (isBatchProcessing.value) return
   const itemType = activeTab.value as ManagementItemType
   const folderNames = [...currentSelected.value]
@@ -420,7 +427,9 @@ async function batchSetEnabled(enabled: boolean) {
   try {
     await managementStore.batchSetEnabled(itemType, folderNames, enabled)
   } catch (e) {
+    if (!isCurrentRoot()) return
     await loadTabData(activeTab.value)
+    if (!isCurrentRoot()) return
     modalStore.showError(t('management.toggleFailed') + ': ' + String(e))
   } finally {
     isBatchProcessing.value = false
@@ -458,6 +467,7 @@ function buildUpdateAllTargets(tab: 'aircraft' | 'plugin'): AddonUpdateDrawerTas
 }
 
 function runUpdateAll(tab: 'aircraft' | 'plugin') {
+  if (!isCurrentRoot()) return
   const targets = buildUpdateAllTargets(tab)
 
   if (targets.length === 0) {
@@ -498,6 +508,7 @@ function showStaleManagementItemMessage() {
 
 // Handle toggle for non-scenery items
 async function handleToggleEnabled(itemType: ManagementItemType, folderName: string) {
+  if (!isCurrentRoot()) return
   // Prevent rapid clicks
   const key = `${itemType}:${folderName}`
   if (togglingItems.value.has(key)) {
@@ -508,8 +519,10 @@ async function handleToggleEnabled(itemType: ManagementItemType, folderName: str
   try {
     await managementStore.toggleEnabled(itemType, folderName)
   } catch (e) {
+    if (!isCurrentRoot()) return
     // Reload to get the actual state
     await loadTabData(itemType)
+    if (!isCurrentRoot()) return
     if (parseApiError(e)?.code === 'not_found') {
       showStaleManagementItemMessage()
       return
@@ -522,22 +535,27 @@ async function handleToggleEnabled(itemType: ManagementItemType, folderName: str
 
 // Handle delete for non-scenery items
 async function handleDelete(itemType: ManagementItemType, folderName: string) {
+  if (!isCurrentRoot()) return
   try {
     await managementStore.deleteItem(itemType, folderName)
+    if (!isCurrentRoot()) return
     toastStore.success(t('management.deleteSuccess'))
   } catch (e) {
-    modalStore.showError(t('management.deleteFailed') + ': ' + String(e))
+    if (isCurrentRoot()) modalStore.showError(t('management.deleteFailed') + ': ' + String(e))
   }
 }
 
 // Handle open folder for non-scenery items
 async function handleOpenFolder(itemType: ManagementItemType, folderName: string) {
+  if (!isCurrentRoot()) return
   try {
     await managementStore.openFolder(itemType, folderName)
   } catch (e) {
+    if (!isCurrentRoot()) return
     const apiError = parseApiError(e)
     if (apiError?.code === 'not_found') {
       await loadTabData(itemType)
+      if (!isCurrentRoot()) return
       showStaleManagementItemMessage()
       return
     }
@@ -553,20 +571,22 @@ function handleViewLiveries(folderName: string) {
 // Pick a patch archive for this aircraft, then open the patch flow on Home
 // (which hosts the install progress overlay) pre-targeted to this aircraft.
 async function handleInstallPatch(folderName: string) {
+  if (!isCurrentRoot()) return
   const selected = await openFileDialog({
     multiple: false,
     directory: false,
     filters: [{ name: 'Archives', extensions: ['zip', '7z', 'rar'] }],
   })
   const archive = Array.isArray(selected) ? selected[0] : selected
-  if (!archive) return
+  if (!isCurrentRoot() || !archive) return
   patchStore.open(archive, folderName)
   router.push('/')
 }
 
 function handleRestorePatch(folderName: string) {
+  if (!isCurrentRoot()) return
   patchBackupTarget.value = {
-    xplanePath: appStore.xplanePath,
+    xplanePath,
     folderName,
     displayName:
       managementStore.aircraft.find((item) => item.folderName === folderName)?.displayName ||
@@ -575,6 +595,7 @@ function handleRestorePatch(folderName: string) {
 }
 
 async function handlePatchRestored(result: PatchRestoreResult) {
+  if (!isCurrentRoot()) return
   patchBackupTarget.value = null
   const messages = []
   if (result.restoredCount)
@@ -616,6 +637,7 @@ function clearAcfManagerState() {
 }
 
 async function handleManageAcfFiles(folderName: string) {
+  if (!isCurrentRoot()) return
   const syncToken = ++acfManagerSyncToken
   acfManagerFolderName.value = folderName
   pendingCloseAcfManager.value = false
@@ -629,8 +651,10 @@ async function handleManageAcfFiles(folderName: string) {
       setAcfManagerAircraftState(refreshed)
     }
   } catch (e) {
+    if (!isCurrentRoot()) return
     if (parseApiError(e)?.code === 'not_found') {
       await loadTabData('aircraft')
+      if (!isCurrentRoot()) return
       clearAcfManagerState()
       showStaleManagementItemMessage()
       return
@@ -665,6 +689,7 @@ function handleCloseAcfManager() {
 }
 
 async function handleToggleAircraftAcfFile(fileName: string) {
+  if (!isCurrentRoot()) return
   const folderName = acfManagerFolderName.value
   if (!folderName) return
 
@@ -681,8 +706,10 @@ async function handleToggleAircraftAcfFile(fileName: string) {
       setAcfManagerAircraftState(updated)
     }
   } catch (e) {
+    if (!isCurrentRoot()) return
     if (parseApiError(e)?.code === 'not_found') {
       await loadTabData('aircraft')
+      if (!isCurrentRoot()) return
       clearAcfManagerState()
       showStaleManagementItemMessage()
       return
@@ -707,6 +734,7 @@ function handleViewScripts(_folderName: string) {
 
 // Handle manual check updates for aircraft/plugin tabs
 async function handleCheckUpdates() {
+  if (!isCurrentRoot()) return
   if (managementStore.isCheckingUpdates) return
 
   if (activeTab.value === 'aircraft') {
@@ -723,6 +751,7 @@ function handleOpenUpdate(
   currentVersion?: string,
   latestVersion?: string,
 ) {
+  if (!isCurrentRoot()) return
   const task: AddonUpdateDrawerTask = {
     itemType,
     folderName,
@@ -742,6 +771,7 @@ function getNavdataBackup(providerName: string): NavdataBackupInfo | null {
 
 // Handle restore navdata backup
 function handleRestoreBackup(backupInfo: NavdataBackupInfo) {
+  if (!isCurrentRoot()) return
   const cycle = backupInfo.verification.cycle || backupInfo.verification.airac || ''
   const backupTime = new Date(backupInfo.verification.backupTime).toLocaleString()
   // Truncate long provider names
@@ -757,10 +787,11 @@ function handleRestoreBackup(backupInfo: NavdataBackupInfo) {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: async () => {
+      if (!isCurrentRoot()) return
       try {
         await managementStore.restoreNavdataBackup(backupInfo.folderName)
       } catch (e) {
-        modalStore.showError(String(e))
+        if (isCurrentRoot()) modalStore.showError(String(e))
       }
     },
     onCancel: () => {},

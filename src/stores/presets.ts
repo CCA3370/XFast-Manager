@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { createXplaneScope } from '@/utils/xplaneContext'
 import { save, open } from '@tauri-apps/plugin-dialog'
-import { useAppStore } from './app'
 import { useLockStore, type LockedItemsData } from './lock'
 
 export interface PresetSummary {
@@ -48,29 +47,39 @@ export const usePresetsStore = defineStore('presets', () => {
   const isApplying = ref(false)
   const updatingSnapshotId = ref<number | null>(null)
 
+  const capture = createXplaneScope(() => {
+    presets.value = []
+    isLoading.value = isSaving.value = isApplying.value = false
+    updatingSnapshotId.value = null
+  })
+
   async function loadPresets() {
+    const { path, invoke, isCurrent } = capture()
+    if (!path) return
     isLoading.value = true
     try {
       presets.value = await invoke<PresetSummary[]>('list_presets')
+    } catch (error) {
+      if (isCurrent()) throw error
     } finally {
-      isLoading.value = false
+      if (isCurrent()) isLoading.value = false
     }
   }
 
   async function savePreset(name: string, description?: string) {
+    const { path, invoke, isCurrent } = capture()
     isSaving.value = true
     try {
-      const appStore = useAppStore()
       const lockStore = useLockStore()
       await invoke('save_preset', {
-        xplanePath: appStore.xplanePath || null,
+        xplanePath: path || null,
         name,
         description,
-        lockState: buildPresetLockState(lockStore.exportLockState()),
+        lockState: buildPresetLockState(lockStore.exportLockState(path)),
       })
-      await loadPresets()
+      if (isCurrent()) await loadPresets()
     } finally {
-      isSaving.value = false
+      if (isCurrent()) isSaving.value = false
     }
   }
 
@@ -80,7 +89,7 @@ export const usePresetsStore = defineStore('presets', () => {
     description?: string,
     updateSnapshot?: boolean,
   ) {
-    const appStore = useAppStore()
+    const { path, invoke, isCurrent } = capture()
     const lockStore = useLockStore()
     const shouldUpdateSnapshot = updateSnapshot === true
 
@@ -91,32 +100,35 @@ export const usePresetsStore = defineStore('presets', () => {
     try {
       await invoke('update_preset', {
         presetId,
-        xplanePath: appStore.xplanePath || null,
+        xplanePath: path || null,
         name,
         description,
         updateSnapshot,
-        lockState: shouldUpdateSnapshot ? buildPresetLockState(lockStore.exportLockState()) : null,
+        lockState: shouldUpdateSnapshot
+          ? buildPresetLockState(lockStore.exportLockState(path))
+          : null,
       })
-      await loadPresets()
+      if (isCurrent()) await loadPresets()
     } finally {
-      if (updatingSnapshotId.value === presetId) {
+      if (isCurrent() && updatingSnapshotId.value === presetId) {
         updatingSnapshotId.value = null
       }
     }
   }
 
   async function deletePreset(presetId: number) {
+    const { invoke, isCurrent } = capture()
     await invoke('delete_preset', { presetId })
-    await loadPresets()
+    if (isCurrent()) await loadPresets()
   }
 
   async function applyPreset(presetId: number): Promise<PresetApplyResult> {
+    const { path, invoke, isCurrent } = capture()
     isApplying.value = true
     try {
-      const appStore = useAppStore()
       const lockStore = useLockStore()
       const result = await invoke<PresetApplyResult>('apply_preset', {
-        xplanePath: appStore.xplanePath,
+        xplanePath: path,
         presetId,
       })
       if (result.lockState) {
@@ -124,9 +136,9 @@ export const usePresetsStore = defineStore('presets', () => {
           await lockStore.applyLockState(
             {
               ...result.lockState,
-              navdata: lockStore.exportLockState().navdata,
+              navdata: lockStore.exportLockState(path).navdata,
             },
-            appStore.xplanePath || undefined,
+            path || undefined,
           )
         } catch (e) {
           result.errors.push(`Failed to apply lock state: ${String(e)}`)
@@ -134,7 +146,7 @@ export const usePresetsStore = defineStore('presets', () => {
       }
       return result
     } finally {
-      isApplying.value = false
+      if (isCurrent()) isApplying.value = false
     }
   }
 
@@ -143,6 +155,7 @@ export const usePresetsStore = defineStore('presets', () => {
   }
 
   async function exportPreset(presetId: number) {
+    const { invoke } = capture()
     const filePath = await save({
       defaultPath: 'preset.json',
       filters: [{ name: 'JSON', extensions: ['json'] }],
@@ -152,13 +165,14 @@ export const usePresetsStore = defineStore('presets', () => {
   }
 
   async function importPreset() {
+    const { invoke, isCurrent } = capture()
     const filePath = await open({
       filters: [{ name: 'JSON', extensions: ['json'] }],
       multiple: false,
     })
     if (!filePath) return
     await invoke('import_preset', { importPath: filePath })
-    await loadPresets()
+    if (isCurrent()) await loadPresets()
   }
 
   return {

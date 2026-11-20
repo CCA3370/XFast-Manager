@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
+import { createXplaneScope } from '@/utils/xplaneContext'
 
 export interface ActivityLogEntry {
   id: number
@@ -24,7 +24,16 @@ export const useActivityLogStore = defineStore('activityLog', () => {
   const hasMore = ref(true)
   const filterItemType = ref<string | null>(null)
 
+  const capture = createXplaneScope(() => {
+    entries.value = []
+    totalCount.value = 0
+    hasMore.value = true
+    isLoading.value = false
+  })
+
   async function loadRecent() {
+    const { path, invoke, isCurrent } = capture()
+    if (!path) return
     isLoading.value = true
     try {
       const page = await invoke<ActivityLogPage>('get_activity_log', {
@@ -35,12 +44,16 @@ export const useActivityLogStore = defineStore('activityLog', () => {
       entries.value = page.entries
       totalCount.value = page.totalCount
       hasMore.value = entries.value.length < totalCount.value
+    } catch (error) {
+      if (isCurrent()) throw error
     } finally {
-      isLoading.value = false
+      if (isCurrent()) isLoading.value = false
     }
   }
 
   async function loadMore() {
+    const { path, invoke, isCurrent } = capture()
+    if (!path) return
     if (!hasMore.value || isLoading.value) return
     isLoading.value = true
     try {
@@ -52,14 +65,17 @@ export const useActivityLogStore = defineStore('activityLog', () => {
       entries.value.push(...page.entries)
       totalCount.value = page.totalCount
       hasMore.value = entries.value.length < totalCount.value
+    } catch (error) {
+      if (isCurrent()) throw error
     } finally {
-      isLoading.value = false
+      if (isCurrent()) isLoading.value = false
     }
   }
 
   async function clearLog(beforeDays?: number) {
+    const { invoke, isCurrent } = capture()
     const deleted = await invoke<number>('clear_activity_log', { beforeDays })
-    if (deleted > 0) {
+    if (isCurrent() && deleted > 0) {
       await loadRecent()
     }
     return deleted

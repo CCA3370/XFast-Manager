@@ -623,9 +623,7 @@ impl SceneryIndexManager {
     /// Check if the scenery index has been created (has any packages)
     /// Returns true if there are packages in the index, false otherwise
     pub async fn has_index(&self) -> Result<bool> {
-        SceneryQueries::has_packages(&self.db)
-            .await
-            .map_err(|e| anyhow!("{}", e))
+        Ok(self.index_status().await?.index_exists)
     }
 
     /// Load index from database or create new empty index
@@ -666,6 +664,7 @@ impl SceneryIndexManager {
             return Err(anyhow!("Custom Scenery folder not found"));
         }
 
+        let first_baseline = !self.has_index().await?;
         // Clear all existing index data for a fresh rebuild
         SceneryQueries::clear_all(&self.db)
             .await
@@ -679,7 +678,7 @@ impl SceneryIndexManager {
         let xplane_path = self.xplane_path.clone();
         let custom_scenery_path = custom_scenery_path.clone();
 
-        let index = tokio::task::spawn_blocking(move || -> Result<SceneryIndex> {
+        let mut index = tokio::task::spawn_blocking(move || -> Result<SceneryIndex> {
             // Collect all scenery folders (including symlinks and .lnk shortcuts)
             // Track shortcuts by their target path to correctly map shortcut names
             // Key: canonical target path, Value: (shortcut_name without .lnk, normalized_target_path for ini)
@@ -836,6 +835,16 @@ impl SceneryIndexManager {
         .await
         .map_err(|e| anyhow!("Blocking task failed: {}", e))??;
 
+        // A fresh database (including after upgrade) must use this installation's
+        // existing load order and enabled flags as its baseline, even with auto-sort on.
+        if first_baseline && crate::scenery_sorting::auto_sort_enabled() {
+            crate::scenery_packs_manager::SceneryPacksManager::new(
+                &self.xplane_path,
+                self.db.clone(),
+            )
+            .import_file_state(&mut index)
+            .await?;
+        }
         self.save_index(&index).await?;
         logger::log_info(
             &format!(
@@ -1248,7 +1257,12 @@ impl SceneryIndexManager {
         let total_packages = SceneryQueries::get_package_count(&self.db)
             .await
             .map_err(|e| anyhow!("{}", e))?;
-        let index_exists = total_packages > 0;
+        // A deliberately rebuilt empty installation still has a baseline.
+        let index_exists = total_packages > 0
+            || SceneryQueries::get_metadata(&self.db, "version")
+                .await
+                .map_err(|e| anyhow!("{}", e))?
+                .is_some();
 
         Ok(SceneryIndexStatus {
             index_exists,
@@ -1265,11 +1279,7 @@ impl SceneryIndexManager {
         &self,
         locked_folder_names: Vec<String>,
     ) -> Result<SceneryIndexScanResult> {
-        let has_packages = SceneryQueries::has_packages(&self.db)
-            .await
-            .map_err(|e| anyhow!("{}", e))?;
-
-        if !has_packages {
+        if !self.index_status().await?.index_exists {
             return Ok(SceneryIndexScanResult {
                 index_exists: false,
                 added: Vec::new(),

@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, w
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
-import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import type {
@@ -63,7 +63,7 @@ const editorTools: ReadonlyArray<{ key: EditorTool; label: string }> = [
 const sliderLookup = new Map(sliders.map((s) => [s.key, s]))
 
 const { t } = useI18n()
-const appStore = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const toastStore = useToastStore()
 const modalStore = useModalStore()
 
@@ -209,7 +209,7 @@ function drawVideoCoverToBlob(video: HTMLVideoElement): Promise<Blob | null> {
 }
 
 async function captureVideoCoverFromItem(item: ScreenshotMediaItem): Promise<void> {
-  if (item.mediaType !== 'video' || !item.previewable) return
+  if (!isCurrentRoot() || item.mediaType !== 'video' || !item.previewable) return
   if (videoCoverUrls.has(item.fileName) || pendingVideoCovers.has(item.fileName)) return
   pendingVideoCovers.add(item.fileName)
   const video = document.createElement('video')
@@ -239,9 +239,9 @@ async function captureVideoCoverFromItem(item: ScreenshotMediaItem): Promise<voi
       }
       video.src = toSrc(item.path)
     })
-    if (!ready || video.videoWidth <= 0 || video.videoHeight <= 0) return
+    if (!isCurrentRoot() || !ready || video.videoWidth <= 0 || video.videoHeight <= 0) return
     const blob = await drawVideoCoverToBlob(video)
-    if (!blob) return
+    if (!isCurrentRoot() || !blob) return
     const nextUrl = URL.createObjectURL(blob)
     const prev = videoCoverUrls.get(item.fileName)
     if (prev) URL.revokeObjectURL(prev)
@@ -275,7 +275,7 @@ function captureVideoCover(event: Event, item: ScreenshotMediaItem) {
   const video = event.target as HTMLVideoElement | null
   if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) return
   void drawVideoCoverToBlob(video).then((blob) => {
-    if (!blob) return
+    if (!isCurrentRoot() || !blob) return
     const nextUrl = URL.createObjectURL(blob)
     const prev = videoCoverUrls.get(item.fileName)
     if (prev) URL.revokeObjectURL(prev)
@@ -751,10 +751,11 @@ function isVideoFailed(fileName: string): boolean {
 }
 
 async function openFileExternally(path: string) {
+  if (!isCurrentRoot()) return
   try {
     await invoke('open_url', { url: path })
   } catch (e) {
-    toastStore.error(String(e))
+    if (isCurrentRoot()) toastStore.error(String(e))
   }
 }
 
@@ -796,7 +797,7 @@ function hasEnhancedPreview(fileName: string): boolean {
 }
 
 async function load() {
-  if (!appStore.xplanePath) {
+  if (!isCurrentRoot()) {
     items.value = []
     activeAircraftGroup.value = null
     aircraftFolderByAcfStem.value = {}
@@ -808,15 +809,16 @@ async function load() {
   try {
     const [media, aircraftData, bgImages] = await Promise.all([
       invoke<ScreenshotMediaItem[]>('list_screenshot_media', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
       }),
       invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
       }).catch(() => null),
       invoke<string[]>('get_background_images', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
       }).catch(() => [] as string[]),
     ])
+    if (!isCurrentRoot()) return
     items.value = media
     backgroundImages.value = new Set(bgImages)
     const map: Record<string, string> = {}
@@ -832,7 +834,7 @@ async function load() {
     pruneVideoCovers()
     ensureGroupVideoCovers()
   } catch (e) {
-    error.value = String(e)
+    if (isCurrentRoot()) error.value = String(e)
   } finally {
     loading.value = false
   }
@@ -864,6 +866,7 @@ async function copyImageBlob(blob: Blob, fallbackText: string) {
   const ctor = (window as unknown as Record<string, typeof ClipboardItem>).ClipboardItem
   if (ctor && navigator.clipboard?.write) {
     const pngBlob = await blobToPng(blob)
+    if (!isCurrentRoot()) return
     await navigator.clipboard.write([new ctor({ 'image/png': pngBlob })])
     return
   }
@@ -872,25 +875,29 @@ async function copyImageBlob(blob: Blob, fallbackText: string) {
 
 async function getRawImageBlob(item: ScreenshotMediaItem): Promise<Blob> {
   const bytes = await invoke<number[]>('read_screenshot_media_bytes', {
-    xplanePath: appStore.xplanePath,
+    xplanePath,
     fileName: item.fileName,
   })
   return bytesToBlob(bytes, extToMime(item.ext))
 }
 
 async function copyMedia(item: ScreenshotMediaItem) {
+  if (!isCurrentRoot()) return
   try {
     if (item.mediaType === 'image') {
       const enhanced = enhancedPreviews.get(item.fileName)
       const blob = enhanced
         ? bytesToBlob(enhanced.fullBytes, enhanced.mime || 'image/png')
         : await getRawImageBlob(item)
+      if (!isCurrentRoot()) return
       await copyImageBlob(blob, item.path)
+      if (!isCurrentRoot()) return
     } else {
       await navigator.clipboard.writeText(item.path)
     }
-    toastStore.success(t('screenshot.copySuccess') as string)
+    if (isCurrentRoot()) toastStore.success(t('screenshot.copySuccess') as string)
   } catch {
+    if (!isCurrentRoot()) return
     toastStore.error(
       (item.mediaType === 'image'
         ? t('screenshot.copyImageFailed')
@@ -900,28 +907,29 @@ async function copyMedia(item: ScreenshotMediaItem) {
 }
 
 async function saveAs(item: ScreenshotMediaItem) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
   const path = await save({ defaultPath: item.name })
-  if (!path || Array.isArray(path)) return
+  if (!isCurrentRoot() || !path || Array.isArray(path)) return
   busyFile.value = item.fileName
   try {
     const enhanced = item.mediaType === 'image' ? enhancedPreviews.get(item.fileName) : null
     if (enhanced) {
       await invoke<ScreenshotOperationResult>('save_edited_screenshot_image', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
         fileName: item.fileName,
         bytes: enhanced.fullBytes,
         targetPath: path,
       })
     } else {
       await invoke<ScreenshotOperationResult>('save_screenshot_media_as', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
         fileName: item.fileName,
         targetPath: path,
       })
     }
-    toastStore.success(t('screenshot.saveAsSuccess') as string)
+    if (isCurrentRoot()) toastStore.success(t('screenshot.saveAsSuccess') as string)
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(`${t('screenshot.saveAsFailed')}: ${String(e)}`)
   } finally {
     busyFile.value = null
@@ -929,26 +937,29 @@ async function saveAs(item: ScreenshotMediaItem) {
 }
 
 async function setAsBackground(item: ScreenshotMediaItem) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
   busyFile.value = item.fileName
   const isCurrentlyBg = backgroundImages.value.has(item.fileName)
   try {
     if (isCurrentlyBg) {
       await invoke<boolean>('unset_screenshot_as_background', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
         fileName: item.fileName,
       })
+      if (!isCurrentRoot()) return
       backgroundImages.value.delete(item.fileName)
       toastStore.success(t('screenshot.unsetBackgroundSuccess') as string)
     } else {
       await invoke<ScreenshotOperationResult>('set_screenshot_as_background', {
-        xplanePath: appStore.xplanePath,
+        xplanePath,
         fileName: item.fileName,
       })
+      if (!isCurrentRoot()) return
       backgroundImages.value.add(item.fileName)
       toastStore.success(t('screenshot.setBackgroundSuccess') as string)
     }
   } catch (e) {
+    if (!isCurrentRoot()) return
     if (isCurrentlyBg) {
       modalStore.showError(`${t('screenshot.unsetBackgroundFailed')}: ${String(e)}`)
     } else {
@@ -960,6 +971,7 @@ async function setAsBackground(item: ScreenshotMediaItem) {
 }
 
 function askDelete(item: ScreenshotMediaItem) {
+  if (!isCurrentRoot()) return
   modalStore.showConfirm({
     title: t('screenshot.deleteConfirmTitle') as string,
     message: t('screenshot.deleteConfirmMessage') as string,
@@ -975,20 +987,22 @@ function askDelete(item: ScreenshotMediaItem) {
 }
 
 async function deleteMedia(item: ScreenshotMediaItem) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
   busyFile.value = item.fileName
   try {
     await invoke('delete_screenshot_media', {
-      xplanePath: appStore.xplanePath,
+      xplanePath,
       fileName: item.fileName,
       preferTrash: true,
     })
+    if (!isCurrentRoot()) return
     clearEnhancedPreview(item.fileName)
     if (selected.value?.fileName === item.fileName) selected.value = null
     if (editorItem.value?.fileName === item.fileName) closeEditor()
     toastStore.success(t('screenshot.deleteSuccess') as string)
     await load()
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(`${t('screenshot.deleteFailed')}: ${String(e)}`)
   } finally {
     busyFile.value = null
@@ -996,7 +1010,7 @@ async function deleteMedia(item: ScreenshotMediaItem) {
 }
 
 async function share(item: ScreenshotMediaItem) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
   try {
     // Copy image to clipboard first so user can paste in Reddit
     if (item.mediaType === 'image') {
@@ -1004,17 +1018,20 @@ async function share(item: ScreenshotMediaItem) {
       const blob = enhanced
         ? bytesToBlob(enhanced.fullBytes, enhanced.mime || 'image/png')
         : await getRawImageBlob(item)
+      if (!isCurrentRoot()) return
       await copyImageBlob(blob, item.path)
+      if (!isCurrentRoot()) return
       toastStore.success(t('screenshot.redditClipboardHint') as string)
     }
     const url = await invoke<string>('build_reddit_share_url', {
-      xplanePath: appStore.xplanePath,
+      xplanePath,
       fileName: item.fileName,
       title: t('screenshot.redditTitle'),
       mode: item.mediaType === 'video' ? 'video' : 'self',
     })
-    await invoke('open_url', { url })
+    if (isCurrentRoot()) await invoke('open_url', { url })
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(String(e))
   }
 }
@@ -1330,7 +1347,7 @@ async function runDragRender() {
     const params = cloneEditParams(edit.value)
     const blob = await renderPreviewInWorker(params, DRAG_PREVIEW_MAX_SIDE, true)
     if (!blob) return
-    if (seq <= displayedPreviewSeq || !editorOpen.value) return
+    if (!isCurrentRoot() || seq <= displayedPreviewSeq || !editorOpen.value) return
     displayedPreviewSeq = seq
     const newUrl = URL.createObjectURL(blob)
     const prev = editorPreviewUrl.value
@@ -1345,7 +1362,7 @@ async function runDragRender() {
 }
 
 async function openEditor(item: ScreenshotMediaItem) {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
   shareMenuOpen.value = false
   editorOpen.value = true
   editorItem.value = item
@@ -1367,6 +1384,7 @@ async function openEditor(item: ScreenshotMediaItem) {
     const blob = enhanced
       ? bytesToBlob(enhanced.fullBytes, enhanced.mime || 'image/png')
       : await getRawImageBlob(item)
+    if (!isCurrentRoot() || toRaw(editorItem.value) !== toRaw(item)) return
     editorSourceBlob.value = blob
     void initPreviewWorker(blob)
     editorInputUrl.value = URL.createObjectURL(blob)
@@ -1377,6 +1395,7 @@ async function openEditor(item: ScreenshotMediaItem) {
       el.onerror = () => reject(new Error('load_failed'))
       el.src = editorInputUrl.value
     })
+    if (!isCurrentRoot() || toRaw(editorItem.value) !== toRaw(item)) return
     editorImage.value = img
     bounds.value = { width: img.naturalWidth, height: img.naturalHeight }
     editorPlaceholderAspect.value =
@@ -1386,9 +1405,11 @@ async function openEditor(item: ScreenshotMediaItem) {
     edit.value = defaultEditParams(img.naturalWidth, img.naturalHeight)
     await renderPreview()
   } catch {
-    editorError.value = t('screenshot.editNotSupported') as string
+    if (isCurrentRoot() && toRaw(editorItem.value) === toRaw(item)) {
+      editorError.value = t('screenshot.editNotSupported') as string
+    }
   } finally {
-    editorImageLoading.value = false
+    if (toRaw(editorItem.value) === toRaw(item)) editorImageLoading.value = false
   }
 }
 
@@ -1414,14 +1435,14 @@ async function renderPreview(maxSide = FINAL_PREVIEW_MAX_SIDE) {
         isFast ? 0.8 : undefined,
       )
     }
-    if (seq <= displayedPreviewSeq || !editorOpen.value) {
+    if (!isCurrentRoot() || seq <= displayedPreviewSeq || !editorOpen.value) {
       // Stale frame — a newer render already displayed; discard silently (GC frees the blob)
       return
     }
     const newUrl = URL.createObjectURL(blob)
     // Preload + decode the new bitmap so the display <img> can swap with minimal paint delay
     await preloadDecodedImage(newUrl)
-    if (seq <= displayedPreviewSeq || !editorOpen.value) {
+    if (!isCurrentRoot() || seq <= displayedPreviewSeq || !editorOpen.value) {
       URL.revokeObjectURL(newUrl)
       return
     }
@@ -1522,33 +1543,37 @@ async function exportEditedBlob(): Promise<Blob> {
 }
 
 async function saveEdited(overwrite: boolean) {
-  if (!appStore.xplanePath || !editorItem.value) return
+  const item = editorItem.value
+  if (!isCurrentRoot() || !item) return
   saveBusy.value = true
   try {
     const blob = await exportEditedBlob()
     const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()))
     let targetPath: string | null = null
     if (!overwrite) {
-      const name = `${editorItem.value.name.replace(/\.[^/.]+$/, '')}_edited.${editorItem.value.ext || 'png'}`
+      const name = `${item.name.replace(/\.[^/.]+$/, '')}_edited.${item.ext || 'png'}`
       const selectedPath = await save({ defaultPath: name })
       if (!selectedPath || Array.isArray(selectedPath)) return
       targetPath = selectedPath
     }
 
+    if (!isCurrentRoot() || toRaw(editorItem.value) !== toRaw(item)) return
     await invoke<ScreenshotOperationResult>('save_edited_screenshot_image', {
-      xplanePath: appStore.xplanePath,
-      fileName: editorItem.value.fileName,
+      xplanePath,
+      fileName: item.fileName,
       bytes,
       targetPath: targetPath ?? null,
     })
-    if (overwrite) clearEnhancedPreview(editorItem.value.fileName)
+    if (!isCurrentRoot() || toRaw(editorItem.value) !== toRaw(item)) return
+    if (overwrite) clearEnhancedPreview(item.fileName)
     toastStore.success(
       overwrite ? (t('settings.saved') as string) : (t('screenshot.saveAsSuccess') as string),
     )
     refreshKey.value = Date.now()
     await load()
-    closeEditor()
+    if (isCurrentRoot() && toRaw(editorItem.value) === toRaw(item)) closeEditor()
   } catch (e) {
+    if (!isCurrentRoot()) return
     modalStore.showError(`${t('screenshot.saveFailed')}: ${String(e)}`)
   } finally {
     saveBusy.value = false
@@ -1558,9 +1583,11 @@ async function saveEdited(overwrite: boolean) {
 async function copyEdited() {
   try {
     const blob = await exportEditedBlob()
+    if (!isCurrentRoot()) return
     await copyImageBlob(blob, editorItem.value?.path || '')
-    toastStore.success(t('screenshot.copySuccess') as string)
+    if (isCurrentRoot()) toastStore.success(t('screenshot.copySuccess') as string)
   } catch {
+    if (!isCurrentRoot()) return
     toastStore.error(t('screenshot.copyImageFailed') as string)
   }
 }
@@ -1710,13 +1737,6 @@ function shareToRedditFromMenu() {
 }
 
 watch(
-  () => appStore.xplanePath,
-  () => {
-    void load()
-  },
-)
-
-watch(
   edit,
   () => {
     if (isInteractiveAdjusting.value) return // CSS filter handles live feedback
@@ -1791,7 +1811,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div
-        v-if="!appStore.xplanePath"
+        v-if="!xplanePath"
         class="flex-1 flex flex-col items-center justify-center text-center"
       >
         <p class="text-gray-500 dark:text-gray-400">{{ $t('screenshot.noPath') }}</p>

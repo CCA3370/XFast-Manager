@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { flushPromises, mount } from '@vue/test-utils'
+import { reactive, watch } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import FlightPlans from './FlightPlans.vue'
 
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
   stop: vi.fn(),
   listen: vi.fn(),
+  app: { xplanePath: '/sim' },
 }))
 vi.mock('@/components/FlightPlanRouteMap.vue', () => ({
   default: { template: '<div data-map-stub />' },
@@ -18,12 +20,30 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
   getCurrentWebviewWindow: () => ({ onDragDropEvent: mocks.listen }),
 }))
-vi.mock('@/stores/app', () => ({ useAppStore: () => ({ xplanePath: '/sim' }) }))
+const app = reactive(mocks.app)
+let generation = 0
+watch(
+  () => app.xplanePath,
+  () => {
+    generation += 1
+  },
+  { flush: 'sync' },
+)
+vi.mock('@/stores/app', () => ({
+  useAppStore: () =>
+    Object.assign(app, {
+      captureXplaneContext: () => {
+        const captured = generation
+        return { path: app.xplanePath, isCurrent: () => captured === generation }
+      },
+    }),
+}))
 vi.mock('@/stores/modal', () => ({ useModalStore: () => ({ showConfirm: mocks.confirm }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 beforeEach(() => {
   vi.resetAllMocks()
+  reactive(mocks.app).xplanePath = '/sim'
   mocks.listen.mockResolvedValue(mocks.stop)
   mocks.invoke.mockResolvedValue([])
 })
@@ -132,6 +152,34 @@ describe('flight plan management', () => {
       xplanePath: '/sim',
       name: 'route.fms',
     })
+    wrapper.unmount()
+  })
+
+  it('ignores a delete confirmation from an installation that is no longer active', async () => {
+    mocks.invoke.mockResolvedValue([{ name: 'route.fms', size: 300, modified: 1 }])
+    const wrapper = mount(FlightPlans)
+    await flushPromises()
+    await wrapper.get('[data-testid="delete-plan"]').trigger('click')
+    const confirmation = mocks.confirm.mock.calls[0][0]
+    reactive(mocks.app).xplanePath = '/other-sim'
+
+    await confirmation.onConfirm()
+
+    expect(mocks.invoke).not.toHaveBeenCalledWith('delete_flight_plan', expect.anything())
+    wrapper.unmount()
+  })
+
+  it('ignores a list response even after switching away and back to the same root', async () => {
+    let resolve!: (plans: Array<{ name: string; size: number; modified: number }>) => void
+    mocks.invoke.mockImplementationOnce(() => new Promise((done) => (resolve = done)))
+    const wrapper = mount(FlightPlans)
+    reactive(mocks.app).xplanePath = '/other-sim'
+    reactive(mocks.app).xplanePath = '/sim'
+    resolve([{ name: 'old.fms', size: 100, modified: 1 }])
+    await flushPromises()
+
+    expect(wrapper.findAll('li')).toHaveLength(0)
+    expect(mocks.invoke).not.toHaveBeenCalledWith('read_flight_plan', expect.anything())
     wrapper.unmount()
   })
 

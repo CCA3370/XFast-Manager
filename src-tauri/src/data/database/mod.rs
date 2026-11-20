@@ -11,7 +11,6 @@ mod queries;
 mod schema;
 
 #[cfg(test)]
-#[cfg(test)]
 pub use connection::open_memory_connection;
 #[cfg(test)]
 pub use connection::open_memory_connection_async;
@@ -26,50 +25,207 @@ pub use schema::CURRENT_SCHEMA_VERSION;
 
 use sea_orm::DatabaseConnection;
 
-/// Thread-safe, replaceable database connection pool.
-///
-/// Wraps `DatabaseConnection` in a `std::sync::RwLock` so that
-/// `reset_and_reinitialize` can atomically swap the pool for a fresh one after
-/// a schema reset, clearing all sqlx prepared-statement caches that would
-/// otherwise return stale column-descriptor errors after DROP + CREATE TABLE.
-pub struct DatabaseState(std::sync::RwLock<DatabaseConnection>);
+/// Connections are owned by the root captured by each request, never by an
+/// application-wide "current root". Existing requests keep their own pool.
+pub struct DatabaseState {
+    pools: tokio::sync::Mutex<std::collections::HashMap<String, DatabaseConnection>>,
+    directory: std::path::PathBuf,
+}
+
+fn root_identity(root: &str) -> Result<String, crate::error::ApiError> {
+    if root.trim().is_empty() {
+        return Err(crate::error::ApiError::validation(
+            "X-Plane path is required",
+        ));
+    }
+    let path = std::fs::canonicalize(root)
+        .map_err(|e| crate::error::ApiError::validation(format!("Invalid X-Plane root: {e}")))?;
+    if !path.is_dir() {
+        return Err(crate::error::ApiError::validation(
+            "X-Plane root must be a directory",
+        ));
+    }
+    let identity = path
+        .to_str()
+        .ok_or_else(|| crate::error::ApiError::validation("X-Plane root must be valid Unicode"))?
+        .to_owned();
+    Ok(identity)
+}
 
 impl DatabaseState {
-    pub fn new(conn: DatabaseConnection) -> Self {
-        Self(std::sync::RwLock::new(conn))
+    /// Legacy scenery.db has no reliable ownership information. Retain it for
+    /// recovery, but never seed an installation from potentially mixed data.
+    pub fn new() -> Self {
+        Self::in_directory(crate::app_dirs::get_app_data_dir())
     }
 
-    /// Return a clone of the current connection (cheap `Arc` clone, sync).
-    pub fn get(&self) -> DatabaseConnection {
-        self.0.read().expect("database lock poisoned").clone()
+    fn in_directory(directory: std::path::PathBuf) -> Self {
+        Self {
+            pools: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+            directory,
+        }
     }
 
-    /// Drop all managed tables, re-open a fresh pool, and run migrations.
-    ///
-    /// After this returns, every subsequent `get()` call returns a connection
-    /// from a pool whose sqlx prepared-statement cache is completely empty,
-    /// eliminating stale column-descriptor errors that persist after an
-    /// in-place schema reset on a live pool.
-    pub async fn reset(&self) -> Result<(), crate::error::ApiError> {
-        // Step 1 — reset schema on the current connection (no lock held).
-        reset_schema(&self.get()).await?;
+    fn path_for_identity(&self, identity: &str) -> std::path::PathBuf {
+        use sha2::{Digest, Sha256};
+        self.directory
+            .join("installations")
+            .join(format!("{:x}", Sha256::digest(identity.as_bytes())))
+            .join("scenery.db")
+    }
 
-        // Step 2 — open a brand-new pool with an empty prepared-statement cache.
-        let new_conn = open_connection_async().await?;
+    pub async fn get_for_root(
+        &self,
+        root: &str,
+    ) -> Result<DatabaseConnection, crate::error::ApiError> {
+        let identity = root_identity(root)?;
+        let mut pools = self.pools.lock().await;
+        if let Some(conn) = pools.get(&identity) {
+            return Ok(conn.clone());
+        }
+        let conn = connection::open_connection_at(&self.path_for_identity(&identity)).await?;
+        apply_migrations_async(&conn).await?;
+        pools.insert(identity, conn.clone());
+        Ok(conn)
+    }
 
-        // Step 3 — atomically swap old pool for the new one under the write lock.
-        let old_conn = {
-            let mut lock = self.0.write().expect("database lock poisoned");
-            std::mem::replace(&mut *lock, new_conn)
+    pub async fn reset_for_root(&self, root: &str) -> Result<(), crate::error::ApiError> {
+        let identity = root_identity(root)?;
+        let mut pools = self.pools.lock().await;
+        let conn = match pools.get(&identity) {
+            Some(conn) => conn.clone(),
+            None => connection::open_connection_at(&self.path_for_identity(&identity)).await?,
         };
-
-        // Step 4 — close the old pool outside the lock.
-        let _ = old_conn.close().await;
-
-        crate::logger::log_info(
-            "Database connection pool replaced with fresh instance",
-            Some("database"),
-        );
+        reset_schema(&conn).await?;
+        let fresh = connection::open_connection_at(&self.path_for_identity(&identity)).await?;
+        apply_migrations_async(&fresh).await?;
+        pools.insert(identity, fresh);
+        // Do not close cloned pools still held by in-flight operations.
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod root_isolation_tests {
+    use super::*;
+    use crate::scenery_index::SceneryIndexManager;
+    use std::fs;
+
+    #[test]
+    fn roots_have_independent_persistent_data_and_delayed_writes() {
+        tauri::async_runtime::block_on(async {
+            let temp = tempfile::tempdir().unwrap();
+            let a = temp.path().join("XP-A");
+            let b = temp.path().join("XP-B");
+            fs::create_dir_all(&a).unwrap();
+            fs::create_dir_all(&b).unwrap();
+            let directory = temp.path().join("data");
+            fs::create_dir_all(&directory).unwrap();
+            let legacy = directory.join("scenery.db");
+            fs::write(&legacy, b"legacy database must remain untouched").unwrap();
+            let state = DatabaseState::in_directory(directory.clone());
+            let a_conn = state.get_for_root(a.to_str().unwrap()).await.unwrap();
+            SceneryQueries::set_metadata(&a_conn, "owner", "A")
+                .await
+                .unwrap();
+            let b_conn = state.get_for_root(b.to_str().unwrap()).await.unwrap();
+            assert_eq!(
+                SceneryQueries::get_metadata(&b_conn, "owner")
+                    .await
+                    .unwrap(),
+                None
+            );
+            // Simulate an A request completing after the UI switched to B.
+            SceneryQueries::set_metadata(&a_conn, "late", "A")
+                .await
+                .unwrap();
+            assert_eq!(
+                SceneryQueries::get_metadata(&b_conn, "late").await.unwrap(),
+                None
+            );
+            SceneryQueries::set_metadata(&b_conn, "owner", "B")
+                .await
+                .unwrap();
+            state.reset_for_root(a.to_str().unwrap()).await.unwrap();
+            assert_eq!(
+                SceneryQueries::get_metadata(&b_conn, "owner")
+                    .await
+                    .unwrap()
+                    .as_deref(),
+                Some("B")
+            );
+            let reopened = DatabaseState::in_directory(directory);
+            let b_reopened = reopened.get_for_root(b.to_str().unwrap()).await.unwrap();
+            assert_eq!(
+                SceneryQueries::get_metadata(&b_reopened, "owner")
+                    .await
+                    .unwrap()
+                    .as_deref(),
+                Some("B")
+            );
+            assert_eq!(
+                fs::read(legacy).unwrap(),
+                b"legacy database must remain untouched"
+            );
+        });
+    }
+
+    #[test]
+    fn first_scan_of_b_does_not_report_a_packages_as_removed() {
+        tauri::async_runtime::block_on(async {
+            let temp = tempfile::tempdir().unwrap();
+            let a = temp.path().join("XP-A");
+            let b = temp.path().join("XP-B");
+            fs::create_dir_all(a.join("Custom Scenery").join("Only-A")).unwrap();
+            fs::write(
+                a.join("Custom Scenery").join("Only-A").join("library.txt"),
+                "A\n800\nLIBRARY\n",
+            )
+            .unwrap();
+            fs::create_dir_all(b.join("Custom Scenery")).unwrap();
+            let state = DatabaseState::in_directory(temp.path().join("data"));
+            let a_conn = state.get_for_root(a.to_str().unwrap()).await.unwrap();
+            let a_manager = SceneryIndexManager::new(&a, a_conn);
+            let index = a_manager.rebuild_index().await.unwrap();
+            assert!(index.packages.contains_key("Only-A"));
+            let b_conn = state.get_for_root(b.to_str().unwrap()).await.unwrap();
+            let b_manager = SceneryIndexManager::new(&b, b_conn);
+            let scan = b_manager.quick_scan_and_update().await.unwrap();
+            assert!(!scan.index_exists);
+            assert!(scan.removed.is_empty());
+            b_manager.rebuild_index().await.unwrap();
+            assert!(b_manager.index_status().await.unwrap().index_exists);
+            let empty_scan = b_manager.quick_scan_and_update().await.unwrap();
+            assert!(empty_scan.index_exists);
+            assert!(empty_scan.removed.is_empty());
+            let new_package = b.join("Custom Scenery").join("Only-B");
+            fs::create_dir_all(&new_package).unwrap();
+            fs::write(new_package.join("library.txt"), "A\n800\nLIBRARY\n").unwrap();
+            let added = b_manager.quick_scan_and_update().await.unwrap();
+            assert_eq!(added.added, vec!["Only-B".to_string()]);
+            assert!(added.removed.is_empty());
+            assert_eq!(a_manager.get_stats().await.unwrap().total_packages, 1);
+            assert!(a_manager.get_package("Only-B").await.unwrap().is_none());
+        });
+    }
+
+    #[test]
+    fn root_identity_rejects_missing_roots_and_normalizes_aliases() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(root_identity("").is_err());
+        assert!(root_identity(temp.path().join("missing").to_str().unwrap()).is_err());
+        assert_eq!(
+            root_identity(temp.path().to_str().unwrap()).unwrap(),
+            root_identity(temp.path().join(".").to_str().unwrap()).unwrap()
+        );
+        #[cfg(unix)]
+        {
+            let alias = temp.path().join("alias");
+            std::os::unix::fs::symlink(temp.path(), &alias).unwrap();
+            assert_eq!(
+                root_identity(temp.path().to_str().unwrap()).unwrap(),
+                root_identity(alias.to_str().unwrap()).unwrap()
+            );
+        }
     }
 }

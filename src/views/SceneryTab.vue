@@ -56,6 +56,9 @@ const modalStore = useModalStore()
 const issueTrackerStore = useIssueTrackerStore()
 const addonUpdateDrawerStore = useAddonUpdateDrawerStore()
 const lockStore = useLockStore()
+const installation = appStore.captureXplaneContext()
+let isUnmounting = false
+const isCurrent = () => !isUnmounting && installation.isCurrent()
 
 // Scenery-specific state (migrated from SceneryManager.vue)
 const drag = ref(false)
@@ -295,26 +298,28 @@ watch(
 
 // Run scenery index scan asynchronously without blocking UI
 async function runSceneryIndexScan() {
-  if (!appStore.xplanePath || isUpdatingIndex.value) return
+  if (!isCurrent() || !installation.path || isUpdatingIndex.value) return
 
   isUpdatingIndex.value = true
   try {
     if (!lockStore.isInitialized) {
       await lockStore.initStore()
     }
+    if (!isCurrent()) return
     const lockedFolderNames = lockStore.getLockedItems('scenery')
 
     const result = await invoke<SceneryIndexScanResult>('quick_scan_scenery_index', {
-      xplanePath: appStore.xplanePath,
+      xplanePath: installation.path,
       lockedFolderNames,
     })
 
-    if (!result.indexExists) return
+    if (!isCurrent() || !result.indexExists) return
 
     const hasChanges = result.added.length + result.removed.length + result.updated.length > 0
     if (hasChanges && !sceneryStore.hasLocalChanges) {
       // Reload scenery data to reflect changes
       await sceneryStore.loadData()
+      if (!isCurrent()) return
       syncLocalEntries()
       // Show changes modal
       indexChangesResult.value = result
@@ -333,21 +338,23 @@ function dismissIndexChangesModal() {
 }
 
 async function handleIndexChangesSyncToIni() {
+  if (!isCurrent()) return
   try {
     const orderedEntries = categoryOrder.flatMap(
       (category) => localGroupedEntries.value[category] || [],
     )
     await sceneryStore.applyChanges(orderedEntries)
+    if (!isCurrent()) return
     toastStore.success(t('sceneryManager.changesApplied'))
     syncLocalEntries()
     dismissIndexChangesModal()
   } catch (e) {
-    modalStore.showError(String(e), t('sceneryManager.applyFailed'))
+    if (isCurrent()) modalStore.showError(String(e), t('sceneryManager.applyFailed'))
   }
 }
 
 async function refreshScenerySyncStateIfIdle() {
-  if (!appStore.xplanePath || sceneryStore.isLoading || sceneryStore.isSaving) return
+  if (!isCurrent() || !installation.path || sceneryStore.isLoading || sceneryStore.isSaving) return
   if (sceneryStore.hasLocalChanges) return
 
   const now = Date.now()
@@ -355,7 +362,7 @@ async function refreshScenerySyncStateIfIdle() {
   lastExternalSyncCheckAt = now
 
   await sceneryStore.loadData()
-  syncLocalEntries()
+  if (isCurrent()) syncLocalEntries()
 }
 
 function handleWindowFocusRefresh() {
@@ -1347,7 +1354,8 @@ function handleOpenFlattenPage(entry: SceneryManagerEntry) {
 }
 
 async function handleToggleFlatten(entry: SceneryManagerEntry) {
-  if (!appStore.xplanePath) {
+  if (!isCurrent()) return
+  if (!installation.path) {
     modalStore.showError(t('airportFlatten.pathRequiredHint'))
     return
   }
@@ -1362,19 +1370,21 @@ async function handleToggleFlatten(entry: SceneryManagerEntry) {
   flattenBusyFolders.value = nextBusy
 
   try {
-    const target = await sceneryGetFlattenTarget(appStore.xplanePath, entry.folderName)
+    const target = await sceneryGetFlattenTarget(installation.path, entry.folderName)
+    if (!isCurrent()) return
     if (!target) {
       handleOpenFlattenPage(entry)
       return
     }
     const updated = await airportFlattenSetState({
-      xplanePath: appStore.xplanePath,
+      xplanePath: installation.path,
       icao: target.icao,
       sourceKind: 'custom',
       folderName: entry.folderName,
       enabled: !entry.flattened,
     })
 
+    if (!isCurrent()) return
     sceneryStore.updateFlattenState(entry.folderName, updated.flattened, true)
     syncLocalEntries()
     toastStore.success(
@@ -1383,7 +1393,8 @@ async function handleToggleFlatten(entry: SceneryManagerEntry) {
       }),
     )
   } catch (error) {
-    modalStore.showError(`${t('airportFlatten.toggleFailed')}: ${getErrorMessage(error)}`)
+    if (isCurrent())
+      modalStore.showError(`${t('airportFlatten.toggleFailed')}: ${getErrorMessage(error)}`)
   } finally {
     const doneBusy = new Set(flattenBusyFolders.value)
     doneBusy.delete(entry.folderName)
@@ -1566,15 +1577,16 @@ async function handleSubmitContributeLink() {
 }
 
 async function handleDeleteEntryConfirm() {
-  if (!selectedModalEntry.value || isDeletingEntry.value) return
+  if (!isCurrent() || !selectedModalEntry.value || isDeletingEntry.value) return
 
   isDeletingEntry.value = true
   try {
     await sceneryStore.deleteEntry(selectedModalEntry.value.folderName)
+    if (!isCurrent()) return
     toastStore.success(t('sceneryManager.deleteSuccess'))
     showDeleteConfirmModal.value = false
   } catch (error) {
-    modalStore.showError(error, t('sceneryManager.deleteFailed'))
+    if (isCurrent()) modalStore.showError(error, t('sceneryManager.deleteFailed'))
   } finally {
     isDeletingEntry.value = false
   }
@@ -1588,7 +1600,7 @@ interface DraggableChangeEvent<T> {
 }
 
 async function handleGroupChange(category: string, evt: DraggableChangeEvent<SceneryManagerEntry>) {
-  if (evt.added) {
+  if (isCurrent() && evt.added) {
     const entry = evt.added.element
     const newCategory = category as SceneryCategory
 
@@ -1607,15 +1619,17 @@ async function handleGroupChange(category: string, evt: DraggableChangeEvent<Sce
 }
 
 async function handleApplyChanges() {
+  if (!isCurrent()) return
   try {
     const orderedEntries = categoryOrder.flatMap(
       (category) => localGroupedEntries.value[category] || [],
     )
     await sceneryStore.applyChanges(orderedEntries)
+    if (!isCurrent()) return
     toastStore.success(t('sceneryManager.changesApplied'))
     syncLocalEntries()
   } catch (e) {
-    modalStore.showError(String(e), t('sceneryManager.applyFailed'))
+    if (isCurrent()) modalStore.showError(String(e), t('sceneryManager.applyFailed'))
   }
 }
 
@@ -1637,19 +1651,22 @@ function handleReset() {
 }
 
 async function performAutoSort() {
-  if (!appStore.autoSortScenery || !sceneryStore.indexExists) return
+  if (!isCurrent() || !appStore.autoSortScenery || !sceneryStore.indexExists) return
   isSortingScenery.value = true
   try {
     if (!lockStore.isInitialized) {
       await lockStore.initStore()
     }
+    if (!isCurrent()) return
     const lockedFolderNames = lockStore.getLockedItems('scenery')
 
     const hasChanges = await invoke<boolean>('sort_scenery_packs', {
-      xplanePath: appStore.xplanePath,
+      xplanePath: installation.path,
       lockedFolderNames,
     })
+    if (!isCurrent()) return
     await sceneryStore.loadData()
+    if (!isCurrent()) return
     syncLocalEntries()
 
     if (sceneryStore.hasChanges) {
@@ -1660,7 +1677,7 @@ async function performAutoSort() {
       toastStore.info(t('sceneryManager.autoSortNoChange'))
     }
   } catch (e) {
-    modalStore.showError(t('sceneryManager.autoSortFailed') + ': ' + String(e))
+    if (isCurrent()) modalStore.showError(t('sceneryManager.autoSortFailed') + ': ' + String(e))
   } finally {
     isSortingScenery.value = false
   }
@@ -1703,9 +1720,11 @@ async function handleResetDatabase() {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: async () => {
+      if (!isCurrent()) return
       isResettingDatabase.value = true
       try {
         const success = await sceneryStore.resetDatabase()
+        if (!isCurrent()) return
         if (success) {
           toastStore.success(t('sceneryManager.resetDatabaseSuccess'))
         } else {
@@ -1982,9 +2001,10 @@ onMounted(async () => {
   window.addEventListener('focus', handleWindowFocusRefresh)
   document.addEventListener('visibilitychange', handleVisibilityRefresh)
   // Load scenery data on mount
-  if (appStore.xplanePath) {
+  if (isCurrent() && installation.path) {
     if (!sceneryStore.hasLocalChanges) {
       await sceneryStore.loadData()
+      if (!isCurrent()) return
       if (sceneryStore.error && !sceneryStore.needsDatabaseReset) {
         modalStore.showError(t('management.scanFailed') + ': ' + sceneryStore.error)
       }
@@ -1995,6 +2015,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  isUnmounting = true
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('focus', handleWindowFocusRefresh)
   document.removeEventListener('visibilitychange', handleVisibilityRefresh)

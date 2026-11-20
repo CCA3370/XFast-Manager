@@ -528,7 +528,11 @@ pub async fn doctor_scan_xfast_health(
     xplane_path: String,
     depth: Option<String>,
 ) -> Result<DoctorXfastHealthReport, String> {
-    Ok(scan_xfast_health(&xplane_path, &db.get(), depth.as_deref() == Some("full")).await)
+    let conn = db
+        .get_for_root(&xplane_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(scan_xfast_health(&xplane_path, &conn, depth.as_deref() == Some("full")).await)
 }
 
 fn export_report(path: &Path, content: &str) -> Result<(), String> {

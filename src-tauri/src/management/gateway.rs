@@ -308,7 +308,8 @@ pub async fn gateway_list_installed(
 ) -> ApiResult<Vec<GatewayInstalledAirport>> {
     let xplane_root = validate_xplane_root(&xplane_path)?;
     let xplane_key = normalize_xplane_key(&xplane_root);
-    list_installed_internal(&db.get(), &xplane_root, &xplane_key).await
+    let conn = db.get_for_root(&xplane_path).await?;
+    list_installed_internal(&conn, &xplane_root, &xplane_key).await
 }
 
 #[tauri::command]
@@ -322,7 +323,8 @@ pub async fn gateway_check_updates(
     let release_info = fetch_release_info(release_version.as_deref()).await;
     let release_scenery =
         std::sync::Arc::new(fetch_release_scenery_set(release_version.as_deref()).await);
-    let installed = list_installed_internal(&db.get(), &xplane_root, &xplane_key).await?;
+    let conn = db.get_for_root(&xplane_path).await?;
+    let installed = list_installed_internal(&conn, &xplane_root, &xplane_key).await?;
     if installed.is_empty() {
         return Ok(installed);
     }
@@ -1303,7 +1305,7 @@ async fn gateway_install_scenery_impl(
     task.id = format!("gateway-{}-{}", airport_icao, scenery_id);
     task.display_name = format!("Gateway {} #{}", airport_icao, scenery_id);
 
-    let install_result = Installer::new(app_handle)
+    let install_result = Installer::new(app_handle, conn.clone())
         .install(
             vec![task.clone()],
             false,
@@ -1402,7 +1404,8 @@ pub async fn gateway_install_scenery(
         ignore_external_conflict,
     });
 
-    gateway_install_scenery_impl(app_handle, db.get(), request).await
+    let conn = db.get_for_root(&request.xplane_path).await?;
+    gateway_install_scenery_impl(app_handle, conn, request).await
 }
 
 #[tauri::command]
@@ -1416,7 +1419,7 @@ pub async fn gateway_force_install_scenery(
 ) -> ApiResult<GatewayInstalledAirport> {
     gateway_install_scenery_impl(
         app_handle,
-        db.get(),
+        db.get_for_root(&xplane_path).await?,
         GatewayInstallRequest {
             xplane_path,
             icao,
@@ -1437,7 +1440,7 @@ pub async fn gateway_uninstall_airport(
     let xplane_root = validate_xplane_root(&xplane_path)?;
     let xplane_key = normalize_xplane_key(&xplane_root);
     let airport_icao = normalize_icao(&airport_icao)?;
-    let conn = db.get();
+    let conn = db.get_for_root(&xplane_path).await?;
 
     let Some(record) = find_install_by_airport(&conn, &xplane_key, &airport_icao).await? else {
         return Err(ApiError::not_found(format!(
@@ -1811,7 +1814,7 @@ pub async fn gateway_check_install_warning(
 ) -> ApiResult<Option<GatewayInstallWarning>> {
     let xplane_root = validate_xplane_root(&xplane_path)?;
     let airport_icao = normalize_icao(&icao)?;
-    let conn = db.get();
+    let conn = db.get_for_root(&xplane_path).await?;
 
     let warning = find_external_airport_conflict_message(&conn, &xplane_root, &airport_icao)
         .await?

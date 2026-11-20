@@ -325,6 +325,7 @@ pub struct CslScanResult {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CslProgressEvent {
+    pub request_id: String,
     pub package_name: String,
     pub current_file: usize,
     pub total_files: usize,
@@ -1797,6 +1798,7 @@ async fn install_package_internal(
             let _ = app_handle.emit(
                 event_name,
                 CslProgressEvent {
+                    request_id: request_ctx.operation_id().to_string(),
                     package_name: package_name.clone(),
                     current_file: i + 1,
                     total_files: download_total,
@@ -1875,6 +1877,7 @@ async fn install_package_internal(
                     let _ = app_handle.emit(
                         &event_name,
                         CslProgressEvent {
+                            request_id: request_ctx.operation_id().to_string(),
                             package_name: package_name.clone(),
                             current_file: done as usize,
                             total_files: download_total,
@@ -1910,6 +1913,7 @@ async fn install_package_internal(
     let _ = app_handle.emit(
         event_name,
         CslProgressEvent {
+            request_id: request_ctx.operation_id().to_string(),
             package_name: package_name.clone(),
             current_file: download_total,
             total_files: download_total,
@@ -4137,6 +4141,7 @@ pub async fn altitude_install_package(
             let _ = app_handle.emit(
                 "altitude-progress",
                 CslProgressEvent {
+                    request_id: request_ctx.operation_id().to_string(),
                     package_name: package_name.clone(),
                     current_file: i + 1,
                     total_files: download_total,
@@ -4212,6 +4217,7 @@ pub async fn altitude_install_package(
                     let _ = app_handle.emit(
                         "altitude-progress",
                         CslProgressEvent {
+                            request_id: request_ctx.operation_id().to_string(),
                             package_name: package_name.clone(),
                             current_file: done as usize,
                             total_files: download_total,
@@ -4243,6 +4249,7 @@ pub async fn altitude_install_package(
     let _ = app_handle.emit(
         "altitude-progress",
         CslProgressEvent {
+            request_id: request_ctx.operation_id().to_string(),
             package_name: package_name.clone(),
             current_file: download_total,
             total_files: download_total,

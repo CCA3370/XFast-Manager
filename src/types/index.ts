@@ -859,6 +859,7 @@ export interface CslScanResult {
 }
 
 export interface CslProgress {
+  request_id: string
   package_name: string
   current_file: number
   total_files: number

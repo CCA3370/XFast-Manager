@@ -4,11 +4,14 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { useI18n } from 'vue-i18n'
 import { useManagementStore } from '@/stores/management'
+import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import type { AddonUpdateDrawerTask, AddonUpdatePlan, AddonUpdateOptions } from '@/types'
 
 interface AddonUpdateProgressEvent {
+  xplanePath: string
+  rootGeneration?: number
   itemType: string
   folderName: string
   stage: string
@@ -47,6 +50,11 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const managementStore = useManagementStore()
+const appStore = useAppStore()
+const generation = appStore.xplaneGeneration
+const installation = appStore.captureXplaneContext()
+let disposed = false
+const isCurrent = () => !disposed && installation.isCurrent()
 const modalStore = useModalStore()
 const toast = useToastStore()
 
@@ -203,12 +211,13 @@ function hasInstallingTasks(): boolean {
 }
 
 async function requestCancelAndClose() {
+  if (!isCurrent()) return
   try {
     await invoke('cancel_installation')
   } catch {
     // Ignore cancellation errors when closing the drawer.
   } finally {
-    emit('update:show', false)
+    if (isCurrent()) emit('update:show', false)
   }
 }
 
@@ -378,6 +387,7 @@ async function refreshTaskPlanAfterPreferenceChange(task: AddonUpdateDrawerTask)
 }
 
 async function setTaskBetaPreference(task: AddonUpdateDrawerTask, value: boolean) {
+  if (!isCurrent()) return
   const token = ++preferenceMutationToken
   preferenceSaving.value = true
   clearPreferenceRefreshTimer()
@@ -445,6 +455,7 @@ function isCancelledError(error: unknown): boolean {
 }
 
 async function loadPlanForTask(task: AddonUpdateDrawerTask, force = false) {
+  if (!isCurrent()) return
   const key = taskKeyOf(task)
   const state = ensureTaskState(key)
   if (state.loadingPlan) return
@@ -486,6 +497,7 @@ function toggleTaskDetails(task: AddonUpdateDrawerTask) {
 }
 
 async function startUpdate(task: AddonUpdateDrawerTask) {
+  if (!isCurrent()) return
   const key = taskKeyOf(task)
   const state = ensureTaskState(key)
   if (state.loadingPlan || state.installing) return
@@ -494,7 +506,7 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
     await loadPlanForTask(task, false)
   }
 
-  if (!state.plan) return
+  if (!isCurrent() || !state.plan) return
   if (state.plan.remoteLocked) {
     toast.warning(t('management.remoteLocked'))
     return
@@ -527,6 +539,7 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
         preserveConfigFiles: state.ziboPreserveConfigFiles,
       }),
     })
+    if (!isCurrent()) return
     state.progress = 100
     state.installing = false
     state.status = 'completed'
@@ -548,11 +561,12 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
     }
     state.status = 'failed'
     state.planError = String(e)
-    toast.error(t('management.updateFailed') + ': ' + String(e))
+    if (isCurrent()) toast.error(t('management.updateFailed') + ': ' + String(e))
   }
 }
 
 async function cancelTask(task: AddonUpdateDrawerTask) {
+  if (!isCurrent()) return
   const key = taskKeyOf(task)
   const state = ensureTaskState(key)
   try {
@@ -576,6 +590,7 @@ function cancelFreshInstall() {
 }
 
 async function confirmFreshInstall() {
+  if (!isCurrent()) return
   const task = freshInstallDialogTask.value
   if (!task) return
   freshInstallDialogTask.value = null
@@ -600,6 +615,7 @@ async function confirmFreshInstall() {
         preserveConfigFiles: freshInstallPreserveConfigFiles.value,
       }),
     })
+    if (!isCurrent()) return
     state.progress = 100
     state.installing = false
     state.status = 'completed'
@@ -620,7 +636,7 @@ async function confirmFreshInstall() {
     }
     state.status = 'failed'
     state.planError = String(e)
-    toast.error(t('management.updateFailed') + ': ' + String(e))
+    if (isCurrent()) toast.error(t('management.updateFailed') + ': ' + String(e))
   }
 }
 
@@ -685,14 +701,21 @@ onMounted(async () => {
   unlistenAddonUpdateProgress = await listen<AddonUpdateProgressEvent>(
     'addon-update-progress',
     (event) => {
-      if (!props.show) return
-      if (!event.payload) return
-      applyAddonProgressEvent(event.payload)
+      const progress = event.payload
+      if (!isCurrent() || !props.show || !progress || progress.xplanePath !== installation.path)
+        return
+      if (progress.rootGeneration !== generation) return
+      applyAddonProgressEvent(progress)
     },
   )
+  if (!isCurrent()) {
+    unlistenAddonUpdateProgress?.()
+    unlistenAddonUpdateProgress = null
+  }
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   stopResize()
   clearPreferenceRefreshTimer()
   if (unlistenAddonUpdateProgress) {

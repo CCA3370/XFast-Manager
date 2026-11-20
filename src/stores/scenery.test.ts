@@ -170,3 +170,100 @@ describe('Scenery store category changes', () => {
     ).toBe(false)
   })
 })
+
+describe('Scenery store installation isolation', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  function dataFor(folderName: string): SceneryManagerData {
+    return { ...createData(), entries: [{ ...createEntry(), folderName }] }
+  }
+
+  it('drops an old load after switching A → B → A, even though the path matches', async () => {
+    const app = useAppStore()
+    app.xplanePath = '/xp/A'
+    const store = useSceneryStore()
+    let finishOld!: (data: SceneryManagerData) => void
+    let oldRequest!: () => void
+    const oldInvoked = new Promise<void>((resolve) => {
+      oldRequest = resolve
+    })
+    let aLoads = 0
+    tauri.invoke.mockImplementation(async (command, args) => {
+      if (command === 'get_scenery_index_status') return { indexExists: true }
+      if (command !== 'get_scenery_manager_data') return undefined
+      if (args?.xplanePath === '/xp/B') return dataFor('B')
+      if (++aLoads > 1) return dataFor('A fresh')
+      return new Promise((resolve) => {
+        finishOld = resolve
+        oldRequest()
+      })
+    })
+    const oldLoad = store.loadData()
+    await oldInvoked
+    app.xplanePath = '/xp/B'
+    expect(store.indexExists).toBe(false)
+    expect(store.entries).toEqual([])
+    await store.loadData()
+    expect(store.entries.map(({ folderName }) => folderName)).toEqual(['B'])
+    app.xplanePath = '/xp/A'
+    await store.loadData()
+    finishOld(dataFor('A stale'))
+    await oldLoad
+    expect(store.entries.map(({ folderName }) => folderName)).toEqual(['A fresh'])
+    expect(store.hasLocalChanges).toBe(false)
+  })
+
+  it('clears staged edits and ignores completion of a save to the prior root', async () => {
+    const app = useAppStore()
+    app.xplanePath = '/xp/A'
+    const store = useSceneryStore()
+    let finishSave!: () => void
+    tauri.invoke.mockImplementation(async (command, args) => {
+      if (command === 'get_scenery_index_status') return { indexExists: true }
+      if (command === 'get_scenery_manager_data') {
+        return { ...dataFor('same-folder'), needsSync: args?.xplanePath === '/xp/B' }
+      }
+      if (command === 'apply_scenery_changes') {
+        return new Promise<void>((resolve) => {
+          finishSave = resolve
+        })
+      }
+    })
+    await store.loadData()
+    store.toggleEnabled('same-folder')
+    expect(store.hasLocalChanges).toBe(true)
+    const saving = store.applyChanges()
+    app.xplanePath = '/xp/B'
+    expect(store.hasLocalChanges).toBe(false)
+    await store.loadData()
+    finishSave()
+    await saving
+    expect(store.data?.needsSync).toBe(true)
+    expect(store.entries[0]?.enabled).toBe(false)
+    expect(
+      tauri.invoke.mock.calls.filter(([command]) => command === 'apply_scenery_changes'),
+    ).toEqual([['apply_scenery_changes', expect.objectContaining({ xplanePath: '/xp/A' })]])
+  })
+
+  it('does not send a scenery data request if its index status returned after a root switch', async () => {
+    const app = useAppStore()
+    app.xplanePath = '/xp/A'
+    const store = useSceneryStore()
+    let finishStatus!: (data: { indexExists: boolean }) => void
+    tauri.invoke.mockImplementation(async (command) => {
+      if (command === 'get_scenery_index_status')
+        return new Promise((resolve) => {
+          finishStatus = resolve
+        })
+    })
+    const load = store.loadData()
+    app.xplanePath = '/xp/B'
+    finishStatus({ indexExists: true })
+    await load
+    expect(store.indexExists).toBe(false)
+    expect(tauri.invoke).not.toHaveBeenCalledWith('get_scenery_manager_data', expect.anything())
+  })
+})
