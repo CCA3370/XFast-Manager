@@ -857,6 +857,8 @@ export default {
     ziboMajorCleanInstallHint:
       'سيقوم هذا التحديث الرئيسي لـ Zibo أولًا بتثبيت الحزمة الكاملة المناسبة، ثم يطبق تلقائيًا أحدث تصحيح لهذا الإصدار. اختر أولًا ما تريد الاحتفاظ به.',
     useBeta: 'استخدام القناة التجريبية',
+    skunkChannel: 'قناة SkunkCrafts',
+    skunkChannelChanged: 'تغيّرت قناة SkunkCrafts. راجع الخطة الجديدة قبل التحديث.',
     includeLiveries: 'تضمين الطلاءات',
     applyBlacklist: 'تطبيق عمليات حذف القائمة السوداء',
     rollbackOnFailure: 'التراجع عند الفشل',

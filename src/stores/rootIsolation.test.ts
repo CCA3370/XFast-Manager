@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -98,16 +98,106 @@ describe('installation-bound store operations', () => {
   })
 
   it('isolates per-item beta preferences without changing global update options', async () => {
+    mocks.invoke.mockResolvedValue({})
     const store = useManagementStore()
     await store.setAddonUpdateItemBetaPreference('aircraft', 'same', true)
-    expect(store.isAddonUpdateBetaEnabled('aircraft', 'same')).toBe(true)
+    await store.buildAddonUpdatePlan('aircraft', 'same')
+    expect(mocks.invoke).toHaveBeenLastCalledWith(
+      'build_addon_update_plan',
+      expect.objectContaining({
+        options: expect.objectContaining({ useBeta: true }),
+      }),
+    )
     app.xplanePath = '/B'
-    await store.loadAddonUpdateOptions()
-    expect(store.isAddonUpdateBetaEnabled('aircraft', 'same')).toBe(false)
+    await store.buildAddonUpdatePlan('aircraft', 'same')
+    expect(mocks.invoke.mock.lastCall?.[1].options.useBeta).toBeUndefined()
+    await store.setAddonUpdateItemBetaPreference('aircraft', 'same', false)
+    await store.buildAddonUpdatePlan('aircraft', 'same')
+    expect(mocks.invoke).toHaveBeenLastCalledWith(
+      'build_addon_update_plan',
+      expect.objectContaining({
+        options: expect.objectContaining({ useBeta: false }),
+      }),
+    )
     const scopedKeys = mocks.getItem.mock.calls
       .map(([key]) => key)
       .filter((key) => typeof key === 'string' && key.includes('betaItems'))
     expect(new Set(scopedKeys).size).toBe(2)
+  })
+
+  it('rechecks SkunkCrafts replicas that share a Main URL and follow different channels', async () => {
+    const store = useManagementStore()
+    const items = ref([
+      {
+        folderName: 'Beta copy',
+        updateUrl: 'https://example.test/main',
+        version: '2',
+        hasUpdate: false,
+      },
+      {
+        folderName: 'Stable copy',
+        updateUrl: 'https://example.test/main',
+        version: '1',
+        hasUpdate: false,
+      },
+    ])
+    const check = () =>
+      store.checkItemUpdates({
+        itemsRef: items,
+        checkCommand: 'check_aircraft_updates',
+        checkParamName: 'aircraft',
+        itemType: 'aircraft',
+        logName: 'aircraft',
+      })
+    mocks.invoke
+      .mockResolvedValueOnce(
+        items.value.map((item) => ({
+          ...item,
+          latestVersion: item.version,
+        })),
+      )
+      .mockResolvedValueOnce(
+        items.value.map((item) => ({
+          ...item,
+          latestVersion: item.folderName === 'Beta copy' ? '3' : '1',
+          hasUpdate: item.folderName === 'Beta copy',
+        })),
+      )
+
+    await check()
+    await check()
+
+    expect(mocks.invoke).toHaveBeenCalledTimes(2)
+    expect(items.value.map((item) => item.hasUpdate)).toEqual([true, false])
+  })
+
+  it('discards a superseded SkunkCrafts check when the new channel is unavailable', async () => {
+    const store = useManagementStore()
+    const item = {
+      folderName: 'Aircraft',
+      updateUrl: 'https://example.test/main',
+      version: '2',
+      hasUpdate: false,
+    }
+    const items = ref([item])
+    const check = () =>
+      store.checkItemUpdates({
+        itemsRef: items,
+        checkCommand: 'check_aircraft_updates',
+        checkParamName: 'aircraft',
+        itemType: 'aircraft',
+        logName: 'aircraft',
+      })
+    const pending = deferred<unknown>()
+    mocks.invoke.mockReturnValueOnce(pending.promise).mockResolvedValueOnce([item])
+
+    const oldCheck = check()
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1))
+    expect(await check()).toEqual({ checked: true, updateCount: 0, failed: true })
+    pending.resolve([{ ...item, latestVersion: '1', hasUpdate: true }])
+    await oldCheck
+
+    expect(items.value[0].hasUpdate).toBe(false)
   })
 
   it('does not populate the new root with an old aircraft scan', async () => {

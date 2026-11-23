@@ -888,6 +888,8 @@ export default {
     ziboMajorCleanInstallHint:
       'Это крупное обновление Zibo сначала установит соответствующий полный пакет, а затем автоматически применит последний патч для этой версии. Сначала выберите, что нужно сохранить.',
     useBeta: 'Использовать бета-канал',
+    skunkChannel: 'Канал SkunkCrafts',
+    skunkChannelChanged: 'Канал SkunkCrafts изменился. Просмотрите новый план перед обновлением.',
     includeLiveries: 'Включить ливреи',
     applyBlacklist: 'Применить удаления по чёрному списку',
     rollbackOnFailure: 'Откатывать при ошибке',

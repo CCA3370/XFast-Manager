@@ -36,6 +36,10 @@ a root without reliable ownership information. Rebuild the scenery index once
 for each installation. The initial rebuild reads the selected installation's
 existing INI without writing it. Export any presets to keep before upgrading
 and import them while their intended installation is selected. Old activity
-history is not shown in the new installation histories. Re-enter any old
-unscoped application-only locks, add-on beta settings, CSL paths or launch
-arguments that are still needed. Installed add-on files are not migrated.
+history is not shown in the new installation histories. On first launch, XFast
+carries enabled add-on beta preferences forward to the previously selected
+installation once. Any preferences already saved for that installation take
+precedence. Check that another installation has its own preferences even
+after restarting with it selected. Re-enter any old unscoped application-only
+locks, CSL paths or launch arguments that are still needed. Installed add-on
+files are not migrated.

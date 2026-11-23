@@ -893,6 +893,9 @@ export default {
     ziboMajorCleanInstallHint:
       'Esta actualización mayor de Zibo instalará primero el paquete completo correspondiente y luego aplicará automáticamente el parche más reciente de esa versión. Elige primero qué deseas conservar.',
     useBeta: 'Usar canal Beta',
+    skunkChannel: 'Canal de SkunkCrafts',
+    skunkChannelChanged:
+      'El canal de SkunkCrafts ha cambiado. Revisa el nuevo plan antes de actualizar.',
     includeLiveries: 'Incluir libreas',
     applyBlacklist: 'Aplicar eliminaciones de lista negra',
     rollbackOnFailure: 'Revertir en caso de falla',

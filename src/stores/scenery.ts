@@ -18,19 +18,8 @@ import { i18n } from '@/i18n'
 import type { SceneryCustomGroup, SceneryCustomGroupConfig } from '@/utils/scenerySmartGroups'
 
 const SCENERY_CUSTOM_GROUP_CONFIG_VERSION = 1
-const UPDATE_STATE_BY_PATH_LIMIT = 500
 
 type SceneryCustomGroupConfigsByPath = Record<string, SceneryCustomGroupConfig>
-type SceneryUpdateStateByPath = Record<
-  string,
-  Record<
-    string,
-    {
-      latestVersion?: string
-      hasUpdate: boolean
-    }
-  >
->
 
 function createEmptyCustomGroupConfig(): SceneryCustomGroupConfig {
   return {
@@ -125,7 +114,6 @@ export const useSceneryStore = defineStore('scenery', () => {
   const indexExists = ref(false)
   const needsDatabaseReset = ref(false)
   const customGroupConfigsByPath = ref<SceneryCustomGroupConfigsByPath>({})
-  const updateStateByPath = ref<SceneryUpdateStateByPath>({})
   const updateStateRevision = ref(0)
 
   // Track original state for change detection
@@ -205,43 +193,11 @@ export const useSceneryStore = defineStore('scenery', () => {
 
   const customGroups = computed(() => currentCustomGroupConfig.value.groups)
 
-  function currentPathKey(): string | null {
-    if (!appStore.xplanePath) return null
-    return getCustomGroupConfigPathKey(appStore.xplanePath)
-  }
-
-  function rememberSceneryUpdateState(entriesToRemember: SceneryManagerEntry[]) {
-    const pathKey = currentPathKey()
-    if (!pathKey) return
-
-    const current = { ...(updateStateByPath.value[pathKey] ?? {}) }
-    for (const entry of entriesToRemember) {
-      if (!entry.updateUrl && !entry.latestVersion && !entry.hasUpdate) continue
-      current[entry.folderName] = {
-        latestVersion: entry.latestVersion,
-        hasUpdate: entry.hasUpdate,
-      }
-    }
-
-    const orderedEntries = Object.entries(current)
-    const limitedEntries =
-      orderedEntries.length > UPDATE_STATE_BY_PATH_LIMIT
-        ? orderedEntries.slice(orderedEntries.length - UPDATE_STATE_BY_PATH_LIMIT)
-        : orderedEntries
-
-    updateStateByPath.value = {
-      ...updateStateByPath.value,
-      [pathKey]: Object.fromEntries(limitedEntries),
-    }
-    syncOriginalUpdateState(entriesToRemember)
-    updateStateRevision.value += 1
-  }
-
-  function syncOriginalUpdateState(entriesToRemember: SceneryManagerEntry[]) {
+  function syncOriginalUpdateState(checkedEntries: SceneryManagerEntry[]) {
     if (!originalEntries.value.length) return
 
     const updateStateByFolder = new Map(
-      entriesToRemember.map((entry) => [
+      checkedEntries.map((entry) => [
         entry.folderName,
         {
           latestVersion: entry.latestVersion,
@@ -257,26 +213,6 @@ export const useSceneryStore = defineStore('scenery', () => {
         ...entry,
         latestVersion: updateState.latestVersion,
         hasUpdate: updateState.hasUpdate,
-      }
-    })
-  }
-
-  function applyRememberedSceneryUpdateState(
-    entriesToHydrate: SceneryManagerEntry[],
-  ): SceneryManagerEntry[] {
-    const pathKey = currentPathKey()
-    if (!pathKey) return entriesToHydrate
-
-    const remembered = updateStateByPath.value[pathKey]
-    if (!remembered) return entriesToHydrate
-
-    return entriesToHydrate.map((entry) => {
-      const state = remembered[entry.folderName]
-      if (!state) return entry
-      return {
-        ...entry,
-        latestVersion: state.latestVersion,
-        hasUpdate: state.hasUpdate,
       }
     })
   }
@@ -363,10 +299,7 @@ export const useSceneryStore = defineStore('scenery', () => {
         xplanePath: context.path,
       })
       if (!isCurrent()) return
-      data.value = {
-        ...result,
-        entries: applyRememberedSceneryUpdateState(result.entries),
-      }
+      data.value = result
       // Store original state for change detection
       originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
       manualOrderChanged.value = false
@@ -415,9 +348,6 @@ export const useSceneryStore = defineStore('scenery', () => {
   }
 
   // Check remote SkunkCrafts versions for the currently-loaded scenery entries.
-  // Mirrors checkAircraftUpdates / checkPluginsUpdates in the management store —
-  // shares the same in-memory update cache so refresh-cycles are deduped across
-  // tabs.
   async function checkSceneryUpdates(
     forceRefresh: boolean = false,
     showUpToDateToast: boolean = false,
@@ -442,10 +372,7 @@ export const useSceneryStore = defineStore('scenery', () => {
             xplanePath: context.path,
           })
           if (!context.isCurrent()) return
-          data.value = {
-            ...result,
-            entries: applyRememberedSceneryUpdateState(result.entries),
-          }
+          data.value = result
           originalEntries.value = JSON.parse(JSON.stringify(data.value.entries))
           manualOrderChanged.value = false
         } catch (e) {
@@ -478,7 +405,8 @@ export const useSceneryStore = defineStore('scenery', () => {
       } else if (showUpToDateToast && result.checked && result.updateCount === 0) {
         toastStore.info(t('management.allUpToDate'))
       }
-      rememberSceneryUpdateState(data.value?.entries ?? [])
+      syncOriginalUpdateState(data.value?.entries ?? [])
+      updateStateRevision.value += 1
     } finally {
       if (context.isCurrent()) isCheckingUpdates.value = false
     }

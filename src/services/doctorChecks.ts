@@ -3,7 +3,6 @@ import { getErrorMessage } from '@/types'
 import type {
   AircraftInfo,
   AirportFlattenOverride,
-  AddonUpdatableItemType,
   CslScanResult,
   DoctorEnvironmentReport,
   DoctorNavdataLayer,
@@ -25,11 +24,10 @@ import type {
 import { getItem, STORAGE_KEYS } from '@/services/storage'
 import { rootStorageKey } from '@/utils/xplaneStorage'
 import {
-  hasAddonUpdateBetaPreference,
+  getAddonUpdateChannelOverrides,
   getUpdateProvider,
   usesRemoteUpdateCheck,
   normalizeAddonUpdateItemBetaPreferences,
-  type AddonUpdateItemBetaPreferences,
 } from '@/utils/addonUpdatePreferences'
 
 const LOW_DISK_WARNING_BYTES = 10 * 1024 * 1024 * 1024
@@ -136,16 +134,6 @@ function formatBytes(bytes: number): string {
 
 function detectBeta(raw: string | null): boolean {
   return Boolean(raw && /(-b\d|beta|-d\d|\bdev\b|alpha|-rc)/i.test(raw))
-}
-
-function betaFoldersFor(
-  preferences: AddonUpdateItemBetaPreferences,
-  itemType: AddonUpdatableItemType,
-  items: Array<{ folderName: string }>,
-): string[] {
-  return items
-    .filter((item) => hasAddonUpdateBetaPreference(preferences, itemType, item.folderName))
-    .map((item) => item.folderName)
 }
 
 function logSection(category: string): DoctorSection {
@@ -1277,10 +1265,12 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
     modes: ['full'],
     timeoutMs: 60_000,
     async run() {
-      const betaPreferences = normalizeAddonUpdateItemBetaPreferences(
-        await getItem<unknown>(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES),
-      )
       const xplanePath = context.xplanePath
+      const betaPreferences = normalizeAddonUpdateItemBetaPreferences(
+        await getItem<unknown>(
+          rootStorageKey(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES, xplanePath),
+        ),
+      )
       const sources = [
         {
           type: 'aircraft',
@@ -1327,7 +1317,7 @@ function createAddonUpdateCheck(context: DoctorCheckContext): DoctorCheckDefinit
             responses = await invoke<Addon[]>(command, {
               xplanePath,
               [argument]: candidates,
-              betaFolders: betaFoldersFor(betaPreferences, type, candidates),
+              ...getAddonUpdateChannelOverrides(betaPreferences, type, candidates),
               ...(type !== 'aircraft' ? { checkMigrations: true } : {}),
             })
           } catch (error) {

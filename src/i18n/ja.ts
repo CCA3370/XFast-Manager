@@ -861,6 +861,9 @@ export default {
     ziboMajorCleanInstallHint:
       'この Zibo のメジャーアップデートでは、まず対応するフルパッケージをインストールし、その後この版向けの最新パッチを自動適用します。先に保持する内容を選択してください。',
     useBeta: 'ベータチャネルを使用する',
+    skunkChannel: 'SkunkCrafts チャンネル',
+    skunkChannelChanged:
+      'SkunkCrafts チャンネルが変更されました。更新前に新しいプランを確認してください。',
     includeLiveries: 'カラーリングを含める',
     applyBlacklist: 'ブラックリスト削除の適用',
     rollbackOnFailure: '失敗時のロールバック',

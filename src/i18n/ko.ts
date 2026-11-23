@@ -865,6 +865,9 @@ export default {
     ziboMajorCleanInstallHint:
       '이번 Zibo 주요 업데이트는 먼저 해당 전체 패키지를 설치한 뒤, 그 버전에 맞는 최신 패치를 자동으로 적용합니다. 먼저 유지할 항목을 선택하세요.',
     useBeta: 'Beta 채널 사용',
+    skunkChannel: 'SkunkCrafts 채널',
+    skunkChannelChanged:
+      'SkunkCrafts 채널이 변경되었습니다. 업데이트하기 전에 새 계획을 확인하세요.',
     includeLiveries: '도색 포함',
     applyBlacklist: '차단 목록 삭제 적용',
     rollbackOnFailure: '실패 시 되돌리기',

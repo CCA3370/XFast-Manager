@@ -48,7 +48,7 @@ export async function setItem<T>(key: string, value: T): Promise<void> {
 }
 
 /** Flush settings that must survive an immediate restart, restoring cached values on error. */
-export async function saveSettings(values: Record<string, string | boolean>): Promise<void> {
+export async function saveSettings(values: Record<string, unknown>): Promise<void> {
   if (!store) await initStorage()
   const settings = store!
   const previous = new Map<string, unknown>()
@@ -150,6 +150,7 @@ export const STORAGE_KEYS = {
   CRASH_ANALYSIS_IGNORE_DATE_CHECK: 'crashAnalysisIgnoreDateCheck',
   ADDON_UPDATE_USE_BETA: 'addonUpdateUseBeta',
   ADDON_UPDATE_ITEM_BETA_PREFERENCES: 'addonUpdateItemBetaPreferences',
+  ADDON_UPDATE_ITEM_BETA_PREFERENCES_MIGRATED: 'addonUpdateItemBetaPreferencesMigrated',
   ADDON_UPDATE_INCLUDE_LIVERIES: 'addonUpdateIncludeLiveries',
   ADDON_UPDATE_APPLY_BLACKLIST: 'addonUpdateApplyBlacklist',
   ADDON_UPDATE_ROLLBACK_ON_FAILURE: 'addonUpdateRollbackOnFailure',

@@ -895,6 +895,9 @@ export default {
     ziboMajorCleanInstallHint:
       'Dieses Zibo-Hauptupdate installiert zuerst das passende Vollpaket und wendet danach automatisch den neuesten Patch für diese Version an. Wähle zuerst aus, was erhalten bleiben soll.',
     useBeta: 'Nutzen Sie den Beta-Kanal',
+    skunkChannel: 'SkunkCrafts-Kanal',
+    skunkChannelChanged:
+      'Der SkunkCrafts-Kanal hat sich geändert. Prüfen Sie den neuen Plan vor der Aktualisierung.',
     includeLiveries: 'Lackierungen einbeziehen',
     applyBlacklist: 'Blacklist-Löschungen anwenden',
     rollbackOnFailure: 'Rollback bei Fehler',

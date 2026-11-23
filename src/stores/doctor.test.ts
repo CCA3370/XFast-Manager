@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DoctorEnvironmentReport, DoctorXfastHealthReport } from '@/types'
 import type { DoctorRun } from '@/types/doctor'
+import { rootStorageKey } from '@/utils/xplaneStorage'
 
 const tauri = vi.hoisted(() => ({
   invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>(),
@@ -1049,10 +1050,10 @@ describe('Health diagnostic store', () => {
   it('uses saved update channels and actionable remediation routes in a full diagnosis', async () => {
     storage.getItem.mockImplementation(async (key: string) => {
       if (key === 'includePreRelease') return true
-      if (key === 'addonUpdateItemBetaPreferences') {
+      if (key === rootStorageKey('addonUpdateItemBetaPreferences', '/xplane')) {
         return {
           'aircraft:Beta Aircraft': true,
-          'plugin:Beta Plugin': true,
+          'plugin:Beta Plugin': false,
           'scenery:Beta Scenery': true,
         }
       }
@@ -1136,7 +1137,7 @@ describe('Health diagnostic store', () => {
     )
     expect(tauri.invoke).toHaveBeenCalledWith(
       'check_plugins_updates',
-      expect.objectContaining({ betaFolders: ['Beta Plugin'] }),
+      expect.objectContaining({ betaFolders: [], stableFolders: ['Beta Plugin'] }),
     )
     expect(tauri.invoke).toHaveBeenCalledWith(
       'check_scenery_updates',

@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { AddonType, type InstallTask, type InstallResult } from '@/types'
 import { invokeVoidCommand, tryInvokeCommand } from '@/services/api'
 import { useLockStore } from './lock'
+import { normalizeAddonUpdateItemBetaPreferences } from '@/utils/addonUpdatePreferences'
 import { rootStorageKey } from '@/utils/xplaneStorage'
 import { getItem, saveSettings, setItem, STORAGE_KEYS } from '@/services/storage'
 
@@ -131,6 +132,7 @@ export const useAppStore = defineStore('app', () => {
 
   // Initialization flag
   const isInitialized = ref(false)
+  let addonBetaPreferencesMigration: Promise<void> | undefined
 
   /** Get default task state */
   function getDefaultTaskState(enabled = true): TaskState {
@@ -225,12 +227,14 @@ export const useAppStore = defineStore('app', () => {
   /** Initialize store by loading saved settings from Tauri Store */
   async function initStore(): Promise<void> {
     if (isInitialized.value) return
+    const generation = xplaneGeneration.value
 
     isWindows.value = (await tryInvokeCommand<string>('get_platform')) === 'windows'
 
     // Load xplanePath
     const savedPath = await getItem<string>(STORAGE_KEYS.XPLANE_PATH)
-    if (savedPath) xplanePath.value = savedPath
+    await ensureAddonBetaPreferencesMigrated(savedPath)
+    if (savedPath && generation === xplaneGeneration.value) xplanePath.value = savedPath
 
     // Load install preferences
     const savedPrefs = await getItem<Record<AddonType, boolean>>(STORAGE_KEYS.INSTALL_PREFERENCES)
@@ -326,9 +330,41 @@ export const useAppStore = defineStore('app', () => {
     ])
   }
 
+  function ensureAddonBetaPreferencesMigrated(savedPath: string | null): Promise<void> {
+    addonBetaPreferencesMigration ??= migrateAddonBetaPreferences(savedPath).catch((error) => {
+      addonBetaPreferencesMigration = undefined
+      throw error
+    })
+    return addonBetaPreferencesMigration
+  }
+
+  async function migrateAddonBetaPreferences(savedPath: string | null): Promise<void> {
+    const sourceKey = STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES
+    const marker = STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES_MIGRATED
+    if (await getItem<boolean>(marker)) return
+
+    const saved = normalizeAddonUpdateItemBetaPreferences(await getItem(sourceKey))
+    const legacy = Object.fromEntries(
+      Object.entries(saved).filter(([, enabled]) => enabled === true),
+    )
+    if (Object.keys(legacy).length === 0) return
+
+    const changes: Record<string, unknown> = {}
+    if (savedPath) {
+      const scopedKey = rootStorageKey(sourceKey, savedPath)
+      const scoped = normalizeAddonUpdateItemBetaPreferences(await getItem(scopedKey))
+      changes[scopedKey] = { ...legacy, ...scoped }
+    }
+    changes[marker] = true
+    await saveSettings(changes)
+  }
+
   async function setXplanePath(path: string, completeOnboarding = false) {
     if (path !== xplanePath.value && isInstalling.value) {
       throw new Error('Cannot change the X-Plane directory during installation')
+    }
+    if (!isInitialized.value) {
+      await ensureAddonBetaPreferencesMigrated(await getItem<string>(STORAGE_KEYS.XPLANE_PATH))
     }
     await saveSettings({
       [STORAGE_KEYS.XPLANE_PATH]: path,

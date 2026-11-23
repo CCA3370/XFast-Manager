@@ -1,6 +1,6 @@
 import type { AddonUpdatableItemType } from '@/types'
 
-export type AddonUpdateItemBetaPreferences = Record<string, boolean>
+export type AddonUpdateItemBetaPreferences = Partial<Record<string, boolean>>
 
 export function addonUpdateItemKey(itemType: AddonUpdatableItemType, folderName: string): string {
   return `${itemType}:${folderName}`
@@ -12,18 +12,31 @@ export function normalizeAddonUpdateItemBetaPreferences(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
 
   return Object.fromEntries(
-    Object.entries(value).filter(
-      ([key, enabled]) => typeof key === 'string' && typeof enabled === 'boolean' && enabled,
-    ),
+    Object.entries(value).filter(([, enabled]) => typeof enabled === 'boolean'),
   )
 }
 
-export function hasAddonUpdateBetaPreference(
+export function getAddonUpdateBetaPreference(
   preferences: AddonUpdateItemBetaPreferences,
   itemType: AddonUpdatableItemType,
   folderName: string,
-): boolean {
-  return preferences[addonUpdateItemKey(itemType, folderName)] === true
+): boolean | undefined {
+  return preferences[addonUpdateItemKey(itemType, folderName)]
+}
+
+export function getAddonUpdateChannelOverrides(
+  preferences: AddonUpdateItemBetaPreferences,
+  itemType: AddonUpdatableItemType,
+  items: readonly { folderName: string }[],
+): { betaFolders: string[]; stableFolders: string[] } {
+  const betaFolders: string[] = []
+  const stableFolders: string[] = []
+  for (const { folderName } of items) {
+    const preference = getAddonUpdateBetaPreference(preferences, itemType, folderName)
+    if (preference === true) betaFolders.push(folderName)
+    if (preference === false) stableFolders.push(folderName)
+  }
+  return { betaFolders, stableFolders }
 }
 
 function isXUpdaterTaggedUrl(url: string): boolean {

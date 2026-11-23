@@ -874,6 +874,9 @@ export default {
     ziboMajorCleanInstallHint:
       'यह Zibo मुख्य अपडेट पहले संबंधित पूर्ण पैकेज स्थापित करेगा, फिर उसी संस्करण का नवीनतम पैच अपने-आप लागू करेगा। पहले चुनें कि क्या सुरक्षित रखना है।',
     useBeta: 'बीटा चैनल का उपयोग करें',
+    skunkChannel: 'SkunkCrafts चैनल',
+    skunkChannelChanged:
+      'SkunkCrafts चैनल बदल गया है। अपडेट करने से पहले नई योजना की समीक्षा करें।',
     includeLiveries: 'लिवरी शामिल करें',
     applyBlacklist: 'काली सूची हटाव लागू करें',
     rollbackOnFailure: 'विफलता पर पूर्ववत करें',

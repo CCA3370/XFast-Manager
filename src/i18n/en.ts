@@ -873,6 +873,8 @@ export default {
     ziboMajorCleanInstallHint:
       'This Zibo major update will install the latest full package, then automatically apply the newest patch for that version. Choose what to preserve first.',
     useBeta: 'Use Beta Channel',
+    skunkChannel: 'SkunkCrafts Channel',
+    skunkChannelChanged: 'The SkunkCrafts channel changed. Review the new plan before updating.',
     includeLiveries: 'Include Liveries',
     applyBlacklist: 'Apply Blacklist Deletes',
     rollbackOnFailure: 'Rollback On Failure',

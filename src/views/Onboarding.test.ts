@@ -9,6 +9,7 @@ import en from '@/i18n/en'
 import XplaneDirectoryForm from '@/components/XplaneDirectoryForm.vue'
 import { STORAGE_KEYS } from '@/services/storage'
 import { useAppStore } from '@/stores/app'
+import { rootStorageKey } from '@/utils/xplaneStorage'
 import Onboarding from './Onboarding.vue'
 
 const { values, get, set, remove, save, invoke, open } = vi.hoisted(() => ({
@@ -76,6 +77,71 @@ describe('X-Plane directory', () => {
     await existing.initStore()
     expect(existing.atomicInstallEnabled).toBe(false)
     expect(existing.autoSortScenery).toBe(true)
+  })
+
+  it('carries old beta overrides to the saved installation before loading its settings', async () => {
+    const sourceKey = STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES
+    const originalKey = rootStorageKey(sourceKey, originalPath)
+    const newKey = rootStorageKey(sourceKey, newPath)
+    const legacy = {
+      'aircraft:Old beta': true,
+      'plugin:Current choice': true,
+      'plugin:Ignored': false,
+    }
+    values.set(sourceKey, legacy)
+    values.set(originalKey, { 'plugin:Current choice': false })
+
+    const store = useAppStore(createPinia())
+    const pendingSave = pendingResult<void>()
+    save.mockReturnValueOnce(pendingSave.promise)
+    const startup = store.initStore()
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(store.xplanePath).toBe('')
+    pendingSave.resolve()
+    await startup
+
+    expect(store.xplanePath).toBe(originalPath)
+    expect(values.get(originalKey)).toEqual({
+      'aircraft:Old beta': true,
+      'plugin:Current choice': false,
+    })
+    expect(values.get(sourceKey)).toEqual(legacy)
+
+    await store.setXplanePath(newPath)
+    await useAppStore(createPinia()).initStore()
+    expect(values.has(newKey)).toBe(false)
+  })
+
+  it('retries a failed beta migration before saving a different installation', async () => {
+    const sourceKey = STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES
+    const marker = STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES_MIGRATED
+    const originalKey = rootStorageKey(sourceKey, originalPath)
+    const legacy = { 'plugin:Beta': true }
+    values.set(sourceKey, legacy)
+    save.mockRejectedValueOnce(new Error('disk is read-only'))
+
+    const store = useAppStore(createPinia())
+    await expect(store.initStore()).rejects.toThrow('disk is read-only')
+    expect(values.has(originalKey)).toBe(false)
+    expect(values.has(marker)).toBe(false)
+
+    await store.setXplanePath(newPath)
+    expect(values.get(originalKey)).toEqual(legacy)
+    expect(values.get(marker)).toBe(true)
+    expect(values.has(rootStorageKey(sourceKey, newPath))).toBe(false)
+  })
+
+  it('keeps unassigned beta overrides from carrying over to a newly selected root', async () => {
+    const sourceKey = STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES
+    values.delete(STORAGE_KEYS.XPLANE_PATH)
+    values.set(sourceKey, { 'plugin:Beta': true })
+
+    const store = useAppStore(createPinia())
+    await store.initStore()
+    await store.setXplanePath(newPath)
+    await useAppStore(createPinia()).initStore()
+
+    expect(values.has(rootStorageKey(sourceKey, newPath))).toBe(false)
   })
 
   it('ignores earlier validation results even when they arrive after a newer submission', async () => {

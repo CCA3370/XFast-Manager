@@ -816,6 +816,8 @@ export default {
     ziboMajorCleanInstallHint:
       '此 Zibo 大版本更新将先安装对应全量包，再自动覆盖该版本的最新补丁。请先选择要保留的内容。',
     useBeta: '使用测试版通道',
+    skunkChannel: 'SkunkCrafts 通道',
+    skunkChannelChanged: 'SkunkCrafts 通道已更改。请确认新的更新计划后再更新。',
     includeLiveries: '包含涂装',
     applyBlacklist: '执行黑名单删除',
     rollbackOnFailure: '失败自动回滚',

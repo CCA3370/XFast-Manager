@@ -674,7 +674,7 @@ export interface AddonUpdateDrawerTask {
 }
 
 export interface AddonUpdateOptions {
-  useBeta: boolean
+  useBeta?: boolean
   includeLiveries: boolean
   applyBlacklist: boolean
   rollbackOnFailure: boolean
@@ -686,6 +686,7 @@ export interface AddonUpdateOptions {
   chunkedDownloadEnabled?: boolean
   threadsPerTask?: number
   totalThreads?: number
+  expectedSkunkModule?: string
 }
 
 export interface AddonUpdatePreview {
@@ -722,6 +723,8 @@ export interface AddonUpdatePlan {
   skipFiles: string[]
   warnings: string[]
   hasBetaConfig: boolean
+  activeChannel?: string
+  legacyBetaEnabled?: boolean
 }
 
 export interface AddonUpdateResult {

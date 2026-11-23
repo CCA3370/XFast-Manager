@@ -1,21 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import {
   addonUpdateItemKey,
-  hasAddonUpdateBetaPreference,
+  getAddonUpdateBetaPreference,
+  getAddonUpdateChannelOverrides,
   normalizeAddonUpdateItemBetaPreferences,
 } from './addonUpdatePreferences'
 
 describe('addon update beta preferences', () => {
-  it('keeps only explicitly enabled item preferences', () => {
+  it('keeps both explicit channel overrides and leaves unconfigured items unset', () => {
     const preferences = normalizeAddonUpdateItemBetaPreferences({
       'aircraft:Beta Aircraft': true,
       'plugin:Stable Plugin': false,
       invalid: 'yes',
     })
 
-    expect(preferences).toEqual({ 'aircraft:Beta Aircraft': true })
-    expect(hasAddonUpdateBetaPreference(preferences, 'aircraft', 'Beta Aircraft')).toBe(true)
-    expect(hasAddonUpdateBetaPreference(preferences, 'plugin', 'Stable Plugin')).toBe(false)
+    expect(preferences).toEqual({ 'aircraft:Beta Aircraft': true, 'plugin:Stable Plugin': false })
+    expect(getAddonUpdateBetaPreference(preferences, 'aircraft', 'Beta Aircraft')).toBe(true)
+    expect(getAddonUpdateBetaPreference(preferences, 'plugin', 'Stable Plugin')).toBe(false)
+    expect(getAddonUpdateBetaPreference(preferences, 'aircraft', 'Other')).toBeUndefined()
+    expect(
+      getAddonUpdateChannelOverrides(preferences, 'plugin', [
+        { folderName: 'Stable Plugin' },
+        { folderName: 'Beta Aircraft' },
+        { folderName: 'Other' },
+      ]),
+    ).toEqual({ betaFolders: [], stableFolders: ['Stable Plugin'] })
   })
 
   it('uses the same item key contract for every update consumer', () => {

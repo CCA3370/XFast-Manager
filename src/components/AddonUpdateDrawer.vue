@@ -475,6 +475,7 @@ async function loadPlanForTask(task: AddonUpdateDrawerTask, force = false) {
       state.status = 'idle'
     }
   } catch (e) {
+    state.plan = null
     state.planError = String(e)
     state.status = 'failed'
   } finally {
@@ -494,6 +495,23 @@ function toggleTaskDetails(task: AddonUpdateDrawerTask) {
   if (!state.plan && !state.loadingPlan && !state.planError) {
     void loadPlanForTask(task, false)
   }
+}
+
+async function handleInstallError(task: AddonUpdateDrawerTask, state: TaskUiState, error: unknown) {
+  state.installing = false
+  state.speedBytes = 0
+  if (isCancelledError(error)) {
+    state.status = 'cancelled'
+    return
+  }
+  state.status = 'failed'
+  const message = String(error)
+  const channelChanged =
+    message === 'SkunkCrafts update channel changed. Review the new plan before updating.'
+  state.planError = channelChanged ? t('management.skunkChannelChanged') : message
+  if (!isCurrent()) return
+  toast.error(t('management.updateFailed') + ': ' + state.planError)
+  if (channelChanged) await loadPlanForTask(task, true)
 }
 
 async function startUpdate(task: AddonUpdateDrawerTask) {
@@ -533,6 +551,7 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
 
   try {
     const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName, {
+      expectedSkunkModule: state.plan.provider === 'manifest' ? state.plan.remoteModule : undefined,
       ...(isZiboMajorCleanPlan(state.plan) && {
         freshInstall: true,
         preserveLiveries: state.ziboPreserveLiveries,
@@ -553,15 +572,7 @@ async function startUpdate(task: AddonUpdateDrawerTask) {
     emit('updated')
     await loadPlanForTask(task, true)
   } catch (e) {
-    state.installing = false
-    state.speedBytes = 0
-    if (isCancelledError(e)) {
-      state.status = 'cancelled'
-      return
-    }
-    state.status = 'failed'
-    state.planError = String(e)
-    if (isCurrent()) toast.error(t('management.updateFailed') + ': ' + String(e))
+    await handleInstallError(task, state, e)
   }
 }
 
@@ -610,6 +621,8 @@ async function confirmFreshInstall() {
     const isAircraft = task.itemType === 'aircraft'
     const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName, {
       freshInstall: true,
+      expectedSkunkModule:
+        state.plan?.provider === 'manifest' ? state.plan.remoteModule : undefined,
       ...(isAircraft && {
         preserveLiveries: freshInstallPreserveLiveries.value,
         preserveConfigFiles: freshInstallPreserveConfigFiles.value,
@@ -629,14 +642,7 @@ async function confirmFreshInstall() {
     emit('updated')
     await loadPlanForTask(task, true)
   } catch (e) {
-    state.installing = false
-    if (String(e).toLowerCase().includes('cancelled')) {
-      state.status = 'cancelled'
-      return
-    }
-    state.status = 'failed'
-    state.planError = String(e)
-    if (isCurrent()) toast.error(t('management.updateFailed') + ': ' + String(e))
+    await handleInstallError(task, state, e)
   }
 }
 
@@ -1014,6 +1020,19 @@ watch(
                             </p>
                           </div>
                           <div
+                            v-if="stateFor(task).plan?.activeChannel"
+                            class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2"
+                          >
+                            <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+                              {{ t('management.skunkChannel') }}
+                            </p>
+                            <p
+                              class="mt-1.5 break-words text-sm leading-5 font-semibold text-slate-800 dark:text-slate-100"
+                            >
+                              {{ stateFor(task).plan?.activeChannel }}
+                            </p>
+                          </div>
+                          <div
                             v-if="
                               stateFor(task).plan?.provider !== 'zibo' &&
                               (task.itemType === 'aircraft' || stateFor(task).plan?.hasBetaConfig)
@@ -1036,12 +1055,7 @@ watch(
                                 <input
                                   type="checkbox"
                                   class="peer sr-only"
-                                  :checked="
-                                    managementStore.isAddonUpdateBetaEnabled(
-                                      task.itemType,
-                                      task.folderName,
-                                    )
-                                  "
+                                  :checked="stateFor(task).plan?.legacyBetaEnabled"
                                   :disabled="taskUpdateOptionsDisabled(task)"
                                   @change="
                                     setTaskBetaPreference(
