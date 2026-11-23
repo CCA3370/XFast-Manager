@@ -22,10 +22,11 @@ use crate::zibo_updater;
 use anyhow::{anyhow, Context, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use walkdir::WalkDir;
 
 const AIRCRAFT_ACF_STATE_FILE_NAME: &str = ".xfastmanager-acf-state.json";
@@ -728,6 +729,8 @@ fn scan_single_aircraft_folder(
         )
     } else {
         // Read version info (priority: skunkcrafts_updater.cfg > version files)
+        let updater_cfg_path =
+            updater_cfg_path.or_else(|| skunk_updater::local_config_path(folder));
         let (mut version, mut update_url, cfg_disabled) =
             read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
         if update_url.is_none() && has_xupdater_hints {
@@ -936,6 +939,7 @@ pub fn read_version_info_with_url(folder: &Path) -> (Option<String>, Option<Stri
         }
     }
 
+    let updater_cfg_path = updater_cfg_path.or_else(|| skunk_updater::local_config_path(folder));
     let (mut version, mut update_url, cfg_disabled) =
         read_version_from_paths(updater_cfg_path.as_deref(), &version_file_paths);
 
@@ -1751,225 +1755,171 @@ pub fn open_livery_folder(
     Ok(())
 }
 
-/// Check for aircraft updates by fetching remote skunkcrafts_updater.cfg files
-/// This function modifies the aircraft list in place, setting latest_version and has_update
+/// Checks the currently selected depot for each aircraft.
 pub async fn check_aircraft_updates(
     xplane_path: &Path,
     aircraft: &mut [AircraftInfo],
-    beta_folders: &HashSet<String>,
+    legacy_beta: &HashMap<String, bool>,
 ) {
-    use futures::future::join_all;
-
-    // Collect aircraft with update URLs
-    let update_tasks: Vec<_> = aircraft
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, a)| {
-            a.update_url.as_ref().and_then(|url| {
-                if a.update_provider.as_deref() == Some(zibo_updater::ZIBO_PROVIDER)
-                    || is_x_updater_url(url)
-                {
-                    None
-                } else {
-                    let use_beta = beta_folders.contains(&a.folder_name);
-                    resolve_update_check_url(xplane_path, "aircraft", &a.folder_name, url, use_beta)
-                        .map(|resolved_url| (idx, resolved_url))
-                }
-            })
-        })
-        .collect();
-    let zibo_indices: Vec<usize> = aircraft
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, aircraft)| {
-            (aircraft.update_provider.as_deref() == Some(zibo_updater::ZIBO_PROVIDER))
-                .then_some(idx)
-        })
-        .collect();
-
-    if !update_tasks.is_empty() {
-        // Fetch all remote configs in parallel
-        let fetch_futures: Vec<_> = update_tasks
-            .iter()
-            .map(|(_, url)| fetch_remote_version(url.clone()))
-            .collect();
-
-        let results = join_all(fetch_futures).await;
-
-        // Update aircraft with results
-        for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-            if let Some(remote_version) = result {
-                let local_version = aircraft[idx].version.as_deref().unwrap_or("");
-                aircraft[idx].latest_version = Some(remote_version.clone());
-                aircraft[idx].has_update = remote_version != local_version;
-            }
-        }
+    if let Ok(client) = skunk_updater::update_client(Duration::from_secs(10)) {
+        let client = &client;
+        futures::future::join_all(
+            aircraft
+                .iter_mut()
+                .filter(|item| {
+                    item.update_provider.as_deref() != Some(zibo_updater::ZIBO_PROVIDER)
+                        && item
+                            .update_url
+                            .as_deref()
+                            .is_some_and(|url| !is_x_updater_url(url))
+                })
+                .map(|item| async move {
+                    let checked = check_skunk_version(
+                        client,
+                        xplane_path,
+                        "aircraft",
+                        &item.folder_name,
+                        legacy_beta.get(&item.folder_name).copied(),
+                    )
+                    .await;
+                    let (version, has_update, _) =
+                        checked_version_status(client, checked, item.version.as_deref(), None)
+                            .await;
+                    item.latest_version = version;
+                    item.has_update = has_update;
+                }),
+        )
+        .await;
     }
 
-    if !zibo_indices.is_empty() {
+    if aircraft
+        .iter()
+        .any(|item| item.update_provider.as_deref() == Some(zibo_updater::ZIBO_PROVIDER))
+    {
         if let Ok(remote_release) = zibo_updater::fetch_latest_release(None).await {
             let remote_version = remote_release.version_string();
-            for idx in zibo_indices {
-                aircraft[idx].latest_version = Some(remote_version.clone());
-                aircraft[idx].has_update = zibo_updater::should_offer_update(
-                    aircraft[idx].version.as_deref(),
-                    &remote_version,
-                );
+            for item in aircraft
+                .iter_mut()
+                .filter(|item| item.update_provider.as_deref() == Some(zibo_updater::ZIBO_PROVIDER))
+            {
+                item.latest_version = Some(remote_version.clone());
+                item.has_update =
+                    zibo_updater::should_offer_update(item.version.as_deref(), &remote_version);
             }
         }
     }
 }
 
-/// Check for plugin updates by fetching remote skunkcrafts_updater.cfg files
-/// This function modifies the plugins list in place, setting latest_version and has_update
+/// Checks the currently selected depot for each plugin.
 pub async fn check_plugins_updates(
     xplane_path: &Path,
     plugins: &mut [PluginInfo],
-    beta_folders: &HashSet<String>,
+    legacy_beta: &HashMap<String, bool>,
     check_migrations: bool,
 ) {
-    use futures::future::join_all;
-
-    // Collect plugins with update URLs
-    let update_tasks: Vec<_> = plugins
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, p)| {
-            p.update_url.as_ref().and_then(|url| {
-                if is_x_updater_url(url) {
-                    None
-                } else {
-                    let use_beta = beta_folders.contains(&p.folder_name);
-                    resolve_update_check_url(xplane_path, "plugin", &p.folder_name, url, use_beta)
-                        .map(|resolved_url| (idx, resolved_url))
-                }
-            })
-        })
-        .collect();
-
-    if update_tasks.is_empty() {
+    let Ok(client) = skunk_updater::update_client(Duration::from_secs(10)) else {
         return;
-    }
-
-    // Fetch all remote configs in parallel
-    let fetch_futures: Vec<_> = update_tasks
-        .iter()
-        .map(|(idx, url)| {
-            fetch_addon_version(url, plugins[*idx].version.as_deref(), check_migrations)
-        })
-        .collect();
-
-    let results = join_all(fetch_futures).await;
-
-    // Update plugins with results
-    for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-        if let Some((version, has_update, manual_url)) = result {
-            plugins[idx].latest_version = Some(version);
-            plugins[idx].has_update = has_update;
-            plugins[idx].manual_update_url = manual_url;
-        }
-    }
+    };
+    let client = &client;
+    futures::future::join_all(
+        plugins
+            .iter_mut()
+            .filter(|item| {
+                item.update_url
+                    .as_deref()
+                    .is_some_and(|url| !is_x_updater_url(url))
+            })
+            .map(|item| async move {
+                let checked = check_skunk_version(
+                    client,
+                    xplane_path,
+                    "plugin",
+                    &item.folder_name,
+                    legacy_beta.get(&item.folder_name).copied(),
+                )
+                .await;
+                let migration = item
+                    .update_url
+                    .as_deref()
+                    .filter(|_| check_migrations)
+                    .and_then(migrated_opensam_module);
+                let (version, has_update, manual_url) =
+                    checked_version_status(client, checked, item.version.as_deref(), migration)
+                        .await;
+                item.latest_version = version;
+                item.has_update = has_update;
+                item.manual_update_url = manual_url;
+            }),
+    )
+    .await;
 }
 
-/// Check for scenery updates by fetching remote skunkcrafts_updater.cfg files.
-/// Modifies the entries slice in place, setting latest_version and has_update.
+/// Checks the currently selected depot for each scenery package.
 pub async fn check_scenery_updates(
     xplane_path: &Path,
     scenery: &mut [SceneryManagerEntry],
-    beta_folders: &HashSet<String>,
+    legacy_beta: &HashMap<String, bool>,
     check_migrations: bool,
 ) {
-    use futures::future::join_all;
-
-    let update_tasks: Vec<_> = scenery
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, entry)| {
-            entry.update_url.as_ref().and_then(|url| {
-                if is_x_updater_url(url) {
-                    None
-                } else {
-                    let use_beta = beta_folders.contains(&entry.folder_name);
-                    resolve_update_check_url(
-                        xplane_path,
-                        "scenery",
-                        &entry.folder_name,
-                        url,
-                        use_beta,
-                    )
-                    .map(|resolved_url| (idx, resolved_url))
-                }
-            })
-        })
-        .collect();
-
-    if update_tasks.is_empty() {
+    let Ok(client) = skunk_updater::update_client(Duration::from_secs(10)) else {
         return;
-    }
-
-    let fetch_futures: Vec<_> = update_tasks
-        .iter()
-        .map(|(idx, url)| {
-            fetch_addon_version(url, scenery[*idx].version.as_deref(), check_migrations)
-        })
-        .collect();
-
-    let results = join_all(fetch_futures).await;
-
-    for ((idx, _), result) in update_tasks.into_iter().zip(results) {
-        if let Some((version, has_update, manual_url)) = result {
-            scenery[idx].latest_version = Some(version);
-            scenery[idx].has_update = has_update;
-            scenery[idx].manual_update_url = manual_url;
-        }
-    }
+    };
+    let client = &client;
+    futures::future::join_all(
+        scenery
+            .iter_mut()
+            .filter(|item| {
+                item.update_url
+                    .as_deref()
+                    .is_some_and(|url| !is_x_updater_url(url))
+            })
+            .map(|item| async move {
+                let checked = check_skunk_version(
+                    client,
+                    xplane_path,
+                    "scenery",
+                    &item.folder_name,
+                    legacy_beta.get(&item.folder_name).copied(),
+                )
+                .await;
+                let migration = item
+                    .update_url
+                    .as_deref()
+                    .filter(|_| check_migrations)
+                    .and_then(migrated_opensam_module);
+                let (version, has_update, manual_url) =
+                    checked_version_status(client, checked, item.version.as_deref(), migration)
+                        .await;
+                item.latest_version = version;
+                item.has_update = has_update;
+                item.manual_update_url = manual_url;
+            }),
+    )
+    .await;
 }
 
-fn resolve_update_check_url(
+async fn check_skunk_version(
+    client: &reqwest::Client,
     xplane_path: &Path,
     item_type: &str,
     folder_name: &str,
-    fallback_url: &str,
-    use_beta: bool,
-) -> Option<String> {
-    let fallback = fallback_url.trim();
-    if fallback.is_empty() {
-        return None;
-    }
-
-    if !use_beta {
-        return Some(fallback.to_string());
-    }
-
-    let target_path = match resolve_management_path(xplane_path, item_type, folder_name) {
-        Ok(path) => path,
-        Err(error) => {
-            logger::log_debug(
-                &format!(
-                    "Failed to resolve addon path for beta update check {}:{}: {}",
-                    item_type, folder_name, error
-                ),
-                Some("management"),
-                None,
-            );
-            return Some(fallback.to_string());
-        }
+    use_beta: Option<bool>,
+) -> Result<Option<skunk_updater::CheckedVersion>> {
+    let result = match resolve_management_path(xplane_path, item_type, folder_name) {
+        Ok(target_path) => skunk_updater::check_local_version(client, &target_path, use_beta).await,
+        Err(error) => Err(error),
     };
-    match skunk_updater::resolve_local_module_url(&target_path, true) {
-        Ok(Some(module_url)) => Some(module_url),
-        Ok(None) => Some(fallback.to_string()),
-        Err(error) => {
-            logger::log_debug(
-                &format!(
-                    "Failed to resolve beta update URL for {}:{}: {}",
-                    item_type, folder_name, error
-                ),
-                Some("management"),
-                None,
-            );
-            Some(fallback.to_string())
-        }
+    if let Err(error) = &result {
+        logger::log_debug(
+            &format!(
+                "Unable to check SkunkCrafts depot for {}:{}: {}",
+                item_type, folder_name, error
+            ),
+            Some("management"),
+            None,
+        );
     }
+    result
 }
 
 fn migrated_opensam_module(url: &str) -> Option<&'static str> {
@@ -1984,71 +1934,41 @@ fn migrated_opensam_module(url: &str) -> Option<&'static str> {
     }
 }
 
-async fn fetch_addon_version(
-    url: &str,
+async fn checked_version_status(
+    client: &reqwest::Client,
+    checked: Result<Option<skunk_updater::CheckedVersion>>,
     installed: Option<&str>,
-    check_migrations: bool,
-) -> Option<(String, bool, Option<String>)> {
-    if let Some(version) = fetch_remote_version(url.to_owned()).await {
-        let has_update = Some(version.as_str()) != installed;
-        return Some((version, has_update, None));
+    migration: Option<&str>,
+) -> (Option<String>, bool, Option<String>) {
+    match checked {
+        Ok(Some(check)) => {
+            let installed = check.installed.as_deref().or(installed);
+            let has_update = !check.locked && Some(check.remote.as_str()) != installed;
+            (Some(check.remote), has_update, None)
+        }
+        // Only a confirmed missing Main depot can trigger the existing manual migration.
+        Ok(None) => check_opensam_migration(client, migration, installed)
+            .await
+            .unwrap_or_default(),
+        Err(_) => (None, false, None),
     }
-    if !check_migrations {
-        return None;
-    }
-
-    let module = migrated_opensam_module(url)?;
-    let installed = semver::Version::parse(installed?.trim().trim_start_matches('v')).ok()?;
-    let version = fetch_remote_version(module.to_owned()).await?;
-    let latest = semver::Version::parse(version.trim_start_matches('v')).ok()?;
-    let has_update = latest > installed;
-    // The upstream release recommends a fresh installation when migrating from v4.
-    let manual_url = has_update.then(|| "https://github.com/hotbso/openSAM/releases/latest".into());
-    Some((version, has_update, manual_url))
 }
 
-/// Fetch remote version from skunkcrafts_updater.cfg
-async fn fetch_remote_version(base_url: String) -> Option<String> {
-    let url = format!("{}/skunkcrafts_updater.cfg", base_url.trim_end_matches('/'));
-
-    // Build client with system proxy support (reads from Windows system settings)
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .ok()?;
-
-    let response = client.get(&url).send().await.ok()?;
-
-    if !response.status().is_success() {
-        logger::log_debug(
-            &format!(
-                "Failed to fetch remote config: {} - {}",
-                url,
-                response.status()
-            ),
-            Some("management"),
-            None,
-        );
-        return None;
-    }
-
-    let content = response.text().await.ok()?;
-
-    // Parse version from config
-    for line in content.lines() {
-        let line = line.trim();
-        if line.to_lowercase().starts_with("version|") {
-            let parts: Vec<&str> = line.splitn(2, '|').collect();
-            if parts.len() == 2 {
-                let version = parts[1].trim();
-                if !version.is_empty() {
-                    return Some(version.to_string());
-                }
-            }
-        }
-    }
-
-    None
+async fn check_opensam_migration(
+    client: &reqwest::Client,
+    migration: Option<&str>,
+    installed: Option<&str>,
+) -> Option<(Option<String>, bool, Option<String>)> {
+    let module = migration?;
+    let installed = semver::Version::parse(installed?.trim().trim_start_matches('v')).ok()?;
+    let (version, locked) = skunk_updater::check_depot_version(client, module)
+        .await
+        .ok()??;
+    let latest = semver::Version::parse(version.trim_start_matches('v')).ok()?;
+    let has_update = !locked && latest > installed;
+    // The upstream release recommends a fresh installation when migrating from v4.
+    let manual_url = has_update.then(|| "https://github.com/hotbso/openSAM/releases/latest".into());
+    Some((Some(version), has_update, manual_url))
 }
 
 fn is_x_updater_url(url: &str) -> bool {
@@ -2066,10 +1986,8 @@ pub fn set_cfg_disabled(
 ) -> Result<()> {
     let folder_path = resolve_management_path(xplane_path, item_type, folder_name)?;
 
-    let cfg_path = folder_path.join("skunkcrafts_updater.cfg");
-
     // If cfg file doesn't exist, skip write per user preference
-    if !cfg_path.exists() {
+    let Some(cfg_path) = skunk_updater::local_config_path(&folder_path) else {
         logger::log_debug(
             &format!(
                 "No skunkcrafts_updater.cfg found for {}, skipping disabled write",
@@ -2079,7 +1997,7 @@ pub fn set_cfg_disabled(
             None,
         );
         return Ok(());
-    }
+    };
 
     // Read the existing file
     let content = fs::read_to_string(&cfg_path)?;
@@ -2723,12 +2641,113 @@ pub fn delete_lua_script(xplane_path: &Path, file_name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        delete_management_item, migrated_opensam_module, remove_dir_all_with_permission_fix,
-        resolve_management_path, scan_aircraft, scan_navdata, toggle_aircraft_acf_file,
-        toggle_aircraft_folder, toggle_management_item,
+        check_aircraft_updates, delete_management_item, migrated_opensam_module,
+        remove_dir_all_with_permission_fix, resolve_management_path, scan_aircraft, scan_navdata,
+        scan_plugins, toggle_aircraft_acf_file, toggle_aircraft_folder, toggle_management_item,
     };
+    use std::collections::HashMap;
     use std::fs;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::time::Duration;
     use tempfile::tempdir;
+
+    #[test]
+    fn detects_early_v4_cfg_in_aircraft_and_plugins() {
+        let root = tempdir().unwrap();
+        let aircraft = root.path().join("Aircraft/DemoPlane");
+        let plugin = root.path().join("Resources/plugins/DemoPlugin");
+        for folder in [&aircraft, &plugin] {
+            fs::create_dir_all(folder.join("skunkcrafts")).unwrap();
+            fs::write(
+                folder.join("skunkcrafts/updater.cfg"),
+                "module|https://example.test/depot\nversion|2.0b3\n",
+            )
+            .unwrap();
+        }
+        fs::write(aircraft.join("DemoPlane.acf"), "").unwrap();
+        fs::write(plugin.join("DemoPlugin.xpl"), "").unwrap();
+
+        let aircraft = scan_aircraft(root.path()).unwrap().entries.remove(0);
+        let plugin = scan_plugins(root.path()).unwrap().entries.remove(0);
+        assert_eq!(aircraft.version.as_deref(), Some("2.0b3"));
+        assert_eq!(plugin.version.as_deref(), Some("2.0b3"));
+        assert_eq!(aircraft.update_provider.as_deref(), Some("skunkcrafts"));
+        assert_eq!(plugin.update_provider.as_deref(), Some("skunkcrafts"));
+    }
+
+    #[tokio::test]
+    async fn aircraft_check_follows_migrated_v4_channel_and_clears_stale_status_if_missing() {
+        let root = tempdir().unwrap();
+        let folder = root.path().join("Aircraft/DemoPlane");
+        let selected_channel = folder.join("skunkcrafts/channels/Release candidate.cfg");
+        fs::create_dir_all(selected_channel.parent().unwrap()).unwrap();
+        fs::write(folder.join("DemoPlane.acf"), "").unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = format!("http://{}", listener.local_addr().unwrap());
+        fs::write(
+            folder.join("skunkcrafts_updater.cfg"),
+            format!("module|{server}/main/\nversion|2.0b3\n"),
+        )
+        .unwrap();
+        fs::write(
+            folder.join("skunkcrafts/channel.cfg"),
+            "channel|Release candidate\n",
+        )
+        .unwrap();
+        fs::write(
+            &selected_channel,
+            format!("channel|Release candidate\nmodule|{server}/candidate/\nzone|custom\n"),
+        )
+        .unwrap();
+
+        let request = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut reader = BufReader::new(&stream);
+            let mut request = String::new();
+            reader.read_line(&mut request).unwrap();
+            for line in reader.lines() {
+                if line.unwrap().is_empty() {
+                    break;
+                }
+            }
+            let version = if request.contains("/candidate/") {
+                "2.0b3"
+            } else {
+                "1.0r2"
+            };
+            let body = format!("version|{version}\n");
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+            request
+        });
+
+        let mut aircraft = scan_aircraft(root.path()).unwrap().entries;
+        aircraft[0].version = Some("2.0b2".into());
+        aircraft[0].latest_version = Some("1.0r2".into());
+        aircraft[0].has_update = true;
+        let legacy_beta = HashMap::from([("DemoPlane".to_string(), false)]);
+        check_aircraft_updates(root.path(), &mut aircraft, &legacy_beta).await;
+        assert_eq!(aircraft[0].latest_version.as_deref(), Some("2.0b3"));
+        assert!(!aircraft[0].has_update);
+        assert!(request.join().unwrap().contains("/candidate/"));
+
+        fs::remove_file(selected_channel).unwrap();
+        aircraft[0].latest_version = Some("1.0r2".into());
+        aircraft[0].has_update = true;
+        check_aircraft_updates(root.path(), &mut aircraft, &legacy_beta).await;
+        assert_eq!(aircraft[0].latest_version, None);
+        assert!(!aircraft[0].has_update);
+    }
 
     #[test]
     fn resolves_only_known_legacy_opensam_modules() {

@@ -6,7 +6,7 @@ use glob::Pattern;
 use rayon::prelude::*;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -19,15 +19,23 @@ use walkdir::WalkDir;
 
 use crate::task_control::TaskControl;
 
+#[path = "skunk_updater/channels.rs"]
+mod channels;
+
+pub(crate) use channels::local_config_path;
+use channels::{is_protected_path, public_channels, read_local_config, same_depot, LocalConfig};
+
 const LOCAL_CFG_FILE: &str = "skunkcrafts_updater.cfg";
-const LOCAL_BETA_CFG_FILE: &str = "skunkcrafts_updater_beta.cfg";
-const LOCAL_BETA_CFG_LEGACY_FILE: &str = "skunkcraft_updater_beta.cfg";
+const LOCAL_IGNORE_FILE: &str = "skunkcrafts_updater_ignore.txt";
 const REMOTE_CFG_FILE: &str = "skunkcrafts_updater.cfg";
+const REMOTE_MANIFEST_FILE: &str = "skunkcrafts_updater_manifest.txt";
 const REMOTE_WHITELIST_FILE: &str = "skunkcrafts_updater_whitelist.txt";
 const REMOTE_IGNORELIST_FILE: &str = "skunkcrafts_updater_ignorelist.txt";
 const REMOTE_ONCELIST_FILE: &str = "skunkcrafts_updater_oncelist.txt";
 const REMOTE_SIZESLIST_FILE: &str = "skunkcrafts_updater_sizeslist.txt";
 const REMOTE_BLACKLIST_FILE: &str = "skunkcrafts_updater_blacklist.txt";
+const CHANNEL_CHANGED: &str =
+    "SkunkCrafts update channel changed. Review the new plan before updating.";
 const LOCAL_CRC_CACHE_TTL: Duration = Duration::from_secs(300);
 const LOCAL_CRC_CACHE_MAX_SIZE: usize = 20_000;
 const CHUNKED_DOWNLOAD_MIN_SIZE: u64 = 512 * 1024;
@@ -51,7 +59,10 @@ static LOCAL_CRC_CACHE: LazyLock<DashMap<String, LocalCrcCacheEntry>> = LazyLock
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkunkUpdateOptions {
-    pub use_beta: bool,
+    #[serde(default)]
+    pub use_beta: Option<bool>,
+    #[serde(default)]
+    pub expected_skunk_module: Option<String>,
     pub include_liveries: bool,
     pub apply_blacklist: bool,
     pub rollback_on_failure: bool,
@@ -99,6 +110,10 @@ pub struct SkunkUpdatePlan {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub has_beta_config: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_channel: Option<String>,
+    #[serde(default)]
+    pub legacy_beta_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,23 +174,15 @@ fn is_cancelled_error(err: &anyhow::Error) -> bool {
 }
 
 #[derive(Debug, Clone)]
-struct LocalConfig {
-    cfg_path: PathBuf,
-    zone: Option<String>,
-    module: String,
-    version: Option<String>,
-    liveries: bool,
-    beta_zone: Option<String>,
-    beta_module: Option<String>,
-}
-
-#[derive(Debug, Clone)]
 struct RemoteConfig {
     version: String,
     locked: bool,
     zone: Option<String>,
     module: Option<String>,
     name: Option<String>,
+    main_name: Option<String>,
+    public_channels: BTreeMap<String, String>,
+    protocol: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -194,12 +201,20 @@ struct RemoteManifest {
     warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+struct RemoteDepot {
+    url: String,
+    channel: Option<String>,
+    config: RemoteConfig,
+}
+
+#[derive(Debug)]
 struct PreparedUpdate {
     local: LocalConfig,
     remote: RemoteConfig,
     manifest: RemoteManifest,
     module_url: String,
+    active_channel: Option<String>,
     target_path: PathBuf,
 }
 
@@ -325,7 +340,7 @@ pub async fn build_update_plan(
 ) -> Result<SkunkUpdatePlan> {
     options.parallel_downloads = None;
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
-    let prepared = prepare_update_context(&target_path, options.use_beta).await?;
+    let prepared = prepare_update_context(&target_path, options.use_beta, None).await?;
     build_plan_internal(&prepared, item_type, folder_name, &options)
 }
 
@@ -338,7 +353,12 @@ pub async fn execute_update(
     progress_callback: Option<SkunkUpdateProgressCallback>,
 ) -> Result<SkunkUpdateResult> {
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
-    let prepared = prepare_update_context(&target_path, options.use_beta).await?;
+    let prepared = prepare_update_context(
+        &target_path,
+        options.use_beta,
+        options.expected_skunk_module.as_deref(),
+    )
+    .await?;
     let plan = build_plan_internal(&prepared, item_type, folder_name, &options)?;
     let install_started = Instant::now();
 
@@ -366,6 +386,7 @@ pub async fn execute_update(
     }
 
     if plan.add_files.is_empty() && plan.replace_files.is_empty() && plan.delete_files.is_empty() {
+        ensure_local_config_current(&prepared, options.use_beta)?;
         if plan.remote_version.is_some() {
             update_local_cfg_fields(&prepared.local.cfg_path, &prepared.remote)?;
         }
@@ -548,6 +569,7 @@ pub async fn execute_update(
         }
     };
 
+    ensure_local_config_current(&prepared, options.use_beta)?;
     let mut rollback = RollbackState::new(options.rollback_on_failure)?;
     let total_apply_units =
         (plan.replace_files.len() + plan.add_files.len() + plan.delete_files.len()) as u64;
@@ -778,29 +800,22 @@ fn build_plan_internal(
             continue;
         }
 
-        if prepared.manifest.ignorelist.contains(rel_path) {
+        if is_protected_path(rel_path) || prepared.manifest.ignorelist.contains(rel_path) {
             skip_files.push(rel_path.clone());
             continue;
         }
 
-        if force_all {
-            let local_path = resolve_entry_path(&prepared.target_path, rel_path)?;
-            if local_path.exists() {
-                replace_files.push(rel_path.clone());
-            } else {
-                add_files.push(rel_path.clone());
-            }
-            continue;
-        }
-
         let local_path = resolve_entry_path(&prepared.target_path, rel_path)?;
-        let should_copy_once = entry.crc32 == -1 || prepared.manifest.oncelist.contains(rel_path);
-        if should_copy_once {
+        if entry.crc32 == -1 || prepared.manifest.oncelist.contains(rel_path) {
             if local_path.exists() {
                 skip_files.push(rel_path.clone());
             } else {
                 add_files.push(rel_path.clone());
             }
+            continue;
+        }
+        if force_all && local_path.is_file() {
+            replace_files.push(rel_path.clone());
             continue;
         }
 
@@ -842,6 +857,7 @@ fn build_plan_internal(
             &prepared.target_path,
             &prepared.manifest.blacklist,
             &whitelist_paths,
+            &prepared.manifest.ignorelist,
             include_liveries,
             &mut warnings,
         )?;
@@ -856,10 +872,11 @@ fn build_plan_internal(
 
     let local_version = prepared.local.version.clone();
     let remote_version = Some(prepared.remote.version.clone());
-    let has_update = remote_version.as_deref() != local_version.as_deref()
-        || !add_files.is_empty()
-        || !replace_files.is_empty()
-        || !delete_files.is_empty();
+    let has_update = !prepared.remote.locked
+        && (remote_version.as_deref() != local_version.as_deref()
+            || !add_files.is_empty()
+            || !replace_files.is_empty()
+            || !delete_files.is_empty());
 
     if prepared.remote.locked {
         warnings.push("Remote repository is locked".to_string());
@@ -883,7 +900,9 @@ fn build_plan_internal(
         delete_files,
         skip_files,
         warnings,
-        has_beta_config: prepared.local.beta_zone.is_some() || prepared.local.beta_module.is_some(),
+        has_beta_config: prepared.local.has_legacy_beta,
+        active_channel: prepared.active_channel.clone(),
+        legacy_beta_enabled: prepared.local.has_legacy_beta && prepared.local.selected.is_some(),
     })
 }
 
@@ -891,6 +910,7 @@ fn expand_blacklist_delete_files(
     target_root: &Path,
     blacklist: &HashSet<String>,
     whitelist_paths: &HashSet<String>,
+    ignored_paths: &HashSet<String>,
     include_liveries: bool,
     warnings: &mut Vec<String>,
 ) -> Result<Vec<String>> {
@@ -939,42 +959,33 @@ fn expand_blacklist_delete_files(
         }
     }
 
-    let mut directory_paths: HashSet<String> = local_entries
-        .iter()
-        .filter(|entry| entry.is_dir)
-        .map(|entry| entry.rel_path.clone())
-        .collect();
-
-    let mut delete_entries: Vec<LocalRelativeEntry> = local_entries
-        .into_iter()
-        .filter(|entry| delete_candidates.contains(&entry.rel_path))
-        .filter(|entry| {
-            if !include_liveries && is_livery_path(&entry.rel_path) {
-                return false;
+    let mut retained_ancestors = HashSet::new();
+    let mut delete_entries = Vec::new();
+    for entry in local_entries {
+        let path = &entry.rel_path;
+        let candidate = delete_candidates.contains(path);
+        let whitelisted = whitelist_paths.contains(path);
+        if candidate && whitelisted {
+            warnings.push(format!(
+                "Blacklist entry '{path}' is also in whitelist; skipped"
+            ));
+        }
+        if !candidate
+            || whitelisted
+            || is_protected_path(path)
+            || ignored_paths.contains(path)
+            || (!include_liveries && is_livery_path(path))
+        {
+            let mut parent = path.as_str();
+            while let Some((ancestor, _)) = parent.rsplit_once('/') {
+                retained_ancestors.insert(ancestor.to_owned());
+                parent = ancestor;
             }
-
-            if whitelist_paths.contains(&entry.rel_path) {
-                warnings.push(format!(
-                    "Blacklist entry '{}' is also in whitelist; skipped for safety",
-                    entry.rel_path
-                ));
-                return false;
-            }
-
-            if entry.is_dir {
-                let prefix = format!("{}/", entry.rel_path);
-                if whitelist_paths.iter().any(|path| path.starts_with(&prefix)) {
-                    warnings.push(format!(
-                        "Blacklist directory '{}' contains whitelisted entries; skipped directory delete",
-                        entry.rel_path
-                    ));
-                    return false;
-                }
-            }
-
-            true
-        })
-        .collect();
+        } else {
+            delete_entries.push(entry);
+        }
+    }
+    delete_entries.retain(|entry| !entry.is_dir || !retained_ancestors.contains(&entry.rel_path));
 
     delete_entries.sort_by(|a, b| {
         let a_depth = a.rel_path.matches('/').count();
@@ -985,246 +996,259 @@ fn expand_blacklist_delete_files(
             .then_with(|| a.rel_path.cmp(&b.rel_path))
     });
 
-    let mut delete_files = Vec::new();
-    let mut seen = HashSet::new();
-
-    for entry in delete_entries {
-        if !seen.insert(entry.rel_path.clone()) {
-            continue;
-        }
-        if entry.is_dir {
-            directory_paths.remove(&entry.rel_path);
-        }
-        delete_files.push(entry.rel_path);
-    }
-
-    delete_files.retain(|path| {
-        let prefix = format!("{}/", path);
-        !directory_paths.iter().any(|dir| dir.starts_with(&prefix))
-    });
-
-    Ok(delete_files)
+    Ok(delete_entries
+        .into_iter()
+        .map(|entry| entry.rel_path)
+        .collect())
 }
 
-async fn prepare_update_context(target_path: &Path, use_beta: bool) -> Result<PreparedUpdate> {
-    let local = read_local_config(target_path)?;
-    let module_url = select_module_url(&local, use_beta)?;
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .user_agent("XFast Manager")
+pub(crate) fn update_client(timeout: Duration) -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .user_agent("Mozilla/5.0 (compatible; XFast Manager)")
         .build()
-        .context("Failed to build HTTP client")?;
+        .context("Failed to build HTTP client")
+}
 
-    let remote = fetch_remote_config(&client, &module_url).await?;
-    let manifest = fetch_remote_manifest(&client, &module_url).await?;
+#[derive(Debug)]
+pub(crate) struct CheckedVersion {
+    pub(crate) installed: Option<String>,
+    pub(crate) remote: String,
+    pub(crate) locked: bool,
+}
+
+pub(crate) async fn check_local_version(
+    client: &reqwest::Client,
+    target_path: &Path,
+    use_beta: Option<bool>,
+) -> Result<Option<CheckedVersion>> {
+    let local = read_local_config(target_path, use_beta)?;
+    Ok(resolve_remote_depot(client, &local)
+        .await?
+        .map(|depot| CheckedVersion {
+            installed: local.version,
+            remote: depot.config.version,
+            locked: depot.config.locked,
+        }))
+}
+
+pub(crate) async fn check_depot_version(
+    client: &reqwest::Client,
+    base_url: &str,
+) -> Result<Option<(String, bool)>> {
+    Ok(fetch_remote_config(client, base_url)
+        .await?
+        .map(|config| (config.version, config.locked)))
+}
+
+async fn prepare_update_context(
+    target_path: &Path,
+    use_beta: Option<bool>,
+    expected_module: Option<&str>,
+) -> Result<PreparedUpdate> {
+    let local = read_local_config(target_path, use_beta)?;
+    let client = update_client(Duration::from_secs(20))?;
+    let depot = resolve_remote_depot(&client, &local)
+        .await?
+        .context("SkunkCrafts Main depot configuration was not found")?;
+    if expected_module.is_some_and(|expected| !same_depot(expected, &depot.url)) {
+        return Err(anyhow!(CHANNEL_CHANGED));
+    }
+    let mut manifest = if depot.config.locked {
+        RemoteManifest::default()
+    } else {
+        fetch_remote_manifest(&client, &depot.url, &depot.config).await?
+    };
+    match fs::read_to_string(target_path.join(LOCAL_IGNORE_FILE)) {
+        Ok(content) => {
+            manifest
+                .ignorelist
+                .extend(parse_path_set(&content, &mut manifest.warnings));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("Failed to read SkunkCrafts local ignore list"),
+    }
 
     Ok(PreparedUpdate {
         local,
-        remote,
+        remote: depot.config,
         manifest,
-        module_url,
+        module_url: depot.url,
+        active_channel: depot.channel,
         target_path: target_path.to_path_buf(),
     })
 }
 
-fn read_local_config(target_path: &Path) -> Result<LocalConfig> {
-    let cfg_path = target_path.join(LOCAL_CFG_FILE);
-    if !cfg_path.exists() {
-        return Err(anyhow!(
-            "Missing '{}' in '{}'",
-            LOCAL_CFG_FILE,
-            target_path.display()
-        ));
+fn ensure_local_config_current(prepared: &PreparedUpdate, use_beta: Option<bool>) -> Result<()> {
+    if read_local_config(&prepared.target_path, use_beta)? != prepared.local {
+        return Err(anyhow!(CHANNEL_CHANGED));
     }
+    Ok(())
+}
 
-    let cfg_content = fs::read_to_string(&cfg_path)
-        .with_context(|| format!("Failed to read {}", cfg_path.display()))?;
-    let cfg_map = parse_cfg_lines(&cfg_content);
-
-    let zone = cfg_map
-        .get("zone")
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
-    let module = cfg_map
-        .get("module")
-        .cloned()
-        .ok_or_else(|| anyhow!("Missing 'module|' in {}", cfg_path.display()))?;
-
-    let version = cfg_map.get("version").cloned();
-    let liveries = cfg_map
-        .get("liveries")
-        .map(|v| parse_bool(v).unwrap_or(true))
-        .unwrap_or(true);
-
-    let beta_cfg_path = {
-        let primary = target_path.join(LOCAL_BETA_CFG_FILE);
-        if primary.exists() {
-            Some(primary)
-        } else {
-            let legacy = target_path.join(LOCAL_BETA_CFG_LEGACY_FILE);
-            if legacy.exists() {
-                Some(legacy)
-            } else {
-                None
+async fn resolve_remote_depot(
+    client: &reqwest::Client,
+    local: &LocalConfig,
+) -> Result<Option<RemoteDepot>> {
+    if let Some(channel) = &local.selected {
+        let mut url = channel.url.clone();
+        let mut config = fetch_remote_config(client, &url).await?.with_context(|| {
+            format!("SkunkCrafts channel '{}' depot was not found", channel.name)
+        })?;
+        // A selected public depot can advertise its own move, independently of Main.
+        if channel.public && !config.locked {
+            if let Some(next) = config.public_channels.get(&channel.name) {
+                if !same_depot(next, &url) && !same_depot(next, &local.main_url) {
+                    let next_config =
+                        fetch_remote_config(client, next).await?.with_context(|| {
+                            format!(
+                                "SkunkCrafts channel '{}' moved to a depot that was not found",
+                                channel.name
+                            )
+                        })?;
+                    url = next.clone();
+                    config = next_config;
+                }
             }
         }
-    };
-
-    let (beta_zone, beta_module) = if let Some(beta_cfg_path) = beta_cfg_path {
-        let beta_content = fs::read_to_string(&beta_cfg_path)
-            .with_context(|| format!("Failed to read {}", beta_cfg_path.display()))?;
-        let beta_map = parse_cfg_lines(&beta_content);
-        let beta_zone = beta_map
-            .get("zone")
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty());
-        let beta_module = beta_map
-            .get("module")
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty());
-        (beta_zone, beta_module)
-    } else {
-        (None, None)
-    };
-
-    // Validate default module resolution early to fail fast on malformed local cfg.
-    let _ = resolve_module_url(zone.as_deref(), &module)?;
-
-    // Validate beta override if configured.
-    if beta_zone.is_some() || beta_module.is_some() {
-        let override_zone = beta_zone.as_deref().or(zone.as_deref());
-        let override_module = beta_module.as_deref().unwrap_or(module.trim());
-        let _ = resolve_module_url(override_zone, override_module)?;
+        let label = local.main_name.is_some().then(|| channel.name.clone());
+        return Ok(Some(RemoteDepot {
+            url,
+            channel: label,
+            config,
+        }));
     }
 
-    Ok(LocalConfig {
-        cfg_path,
-        zone,
-        module: module.trim().to_string(),
-        version: version
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty()),
-        liveries,
-        beta_zone,
-        beta_module,
-    })
-}
+    if let Some(config) = fetch_remote_config(client, &local.main_url).await? {
+        let channel = config.main_name.clone().or_else(|| {
+            local
+                .main_name
+                .clone()
+                .or_else(|| (!config.public_channels.is_empty()).then(|| "Main".to_owned()))
+        });
+        return Ok(Some(RemoteDepot {
+            url: local.main_url.clone(),
+            channel,
+            config,
+        }));
+    }
 
-fn select_module_url(local: &LocalConfig, use_beta: bool) -> Result<String> {
-    let mut selected_zone = local.zone.clone();
-    let mut selected_module = local.module.clone();
-
-    if use_beta {
-        if let Some(beta_zone) = local.beta_zone.as_ref() {
-            selected_zone = Some(beta_zone.clone());
-        }
-        if let Some(beta) = local.beta_module.as_ref() {
-            selected_module = beta.clone();
+    // The publishing guide permits fallback to the first public channel only
+    // when Main returns 404. Private selections and other errors stay on their depot.
+    if !local.has_legacy_beta {
+        if let Some((channel, url)) = local.public_channels.first_key_value() {
+            let config = fetch_remote_config(client, url).await?.with_context(|| {
+                format!("SkunkCrafts public channel '{channel}' depot was not found")
+            })?;
+            return Ok(Some(RemoteDepot {
+                url: url.clone(),
+                channel: Some(channel.clone()),
+                config,
+            }));
         }
     }
-
-    resolve_module_url(selected_zone.as_deref(), &selected_module)
+    Ok(None)
 }
 
-pub(crate) fn resolve_local_module_url(
-    target_path: &Path,
-    use_beta: bool,
-) -> Result<Option<String>> {
-    let cfg_path = target_path.join(LOCAL_CFG_FILE);
-    if !cfg_path.exists() {
-        return Ok(None);
-    }
-
-    let local = read_local_config(target_path)?;
-    Ok(Some(select_module_url(&local, use_beta)?))
-}
-
-async fn fetch_remote_config(client: &reqwest::Client, base_url: &str) -> Result<RemoteConfig> {
+async fn fetch_remote_config(
+    client: &reqwest::Client,
+    base_url: &str,
+) -> Result<Option<RemoteConfig>> {
     let cfg_url = join_url(base_url, REMOTE_CFG_FILE)?;
-    let content = fetch_text_required(client, &cfg_url).await?;
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .to_string();
+    let Some(content) = fetch_text_optional(client, &cfg_url, ("t", &timestamp)).await? else {
+        return Ok(None);
+    };
 
-    let map = parse_cfg_lines(&content);
+    let mut map = parse_cfg_lines(&content);
+    let public_channels = public_channels(&map);
     let version = map
-        .get("version")
-        .cloned()
-        .ok_or_else(|| anyhow!("Remote config is missing 'version|'"))?;
-    let zone = map
-        .get("zone")
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
-    let module = map
-        .get("module")
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
-    let name = map
-        .get("name")
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
+        .remove("version")
+        .filter(|v| !v.is_empty())
+        .context("Remote config is missing 'version|'")?;
+    let zone = map.remove("zone").filter(|v| !v.is_empty());
+    let module = map.remove("module").filter(|v| !v.is_empty());
+    let name = map.remove("name").filter(|v| !v.is_empty());
+    let main_name = map.remove("main_name").filter(|v| !v.is_empty());
+    let protocol = map
+        .get("protocol")
+        .filter(|v| !v.is_empty())
+        .map(|v| {
+            v.parse::<u32>()
+                .context("Invalid SkunkCrafts depot protocol")
+        })
+        .transpose()?
+        .unwrap_or(1);
     let locked = map
         .get("locked")
-        .map(|v| parse_bool(v).unwrap_or(false))
+        .and_then(|v| parse_bool(v))
         .unwrap_or(false);
 
     if let Some(module_value) = module.as_deref() {
-        let module_trim = module_value.trim();
-        if module_trim.contains("://") {
-            ensure_http_or_https(module_trim)?;
+        if module_value.contains("://") {
+            ensure_http_or_https(module_value)?;
         } else if zone.is_some() {
-            let _ = resolve_module_url(zone.as_deref(), module_trim)?;
+            let _ = resolve_module_url(zone.as_deref(), module_value)?;
         }
     }
 
-    Ok(RemoteConfig {
-        version: version.trim().to_string(),
+    Ok(Some(RemoteConfig {
+        version,
         locked,
         zone,
         module,
         name,
-    })
+        main_name,
+        public_channels,
+        protocol,
+    }))
 }
 
-async fn fetch_remote_manifest(client: &reqwest::Client, base_url: &str) -> Result<RemoteManifest> {
-    let whitelist_url = join_url(base_url, REMOTE_WHITELIST_FILE)?;
-    let whitelist_text = fetch_text_required(client, &whitelist_url).await?;
+async fn fetch_remote_manifest(
+    client: &reqwest::Client,
+    base_url: &str,
+    config: &RemoteConfig,
+) -> Result<RemoteManifest> {
+    let version = ("v", config.version.as_str());
+    let combined = config.protocol >= 2;
+    let file_list = if combined {
+        REMOTE_MANIFEST_FILE
+    } else {
+        REMOTE_WHITELIST_FILE
+    };
+    let url = join_url(base_url, file_list)?;
+    let text = fetch_text_optional(client, &url, version)
+        .await?
+        .with_context(|| format!("Required SkunkCrafts file '{file_list}' was not found"))?;
     let mut warnings = Vec::new();
-    let whitelist = parse_whitelist(&whitelist_text, &mut warnings)?;
-    if whitelist.is_empty() {
-        return Err(anyhow!("Remote whitelist is empty"));
+    let (whitelist, mut sizes) = parse_file_list(&text, combined, &mut warnings)?;
+    let mut ignorelist = HashSet::new();
+    let mut oncelist = HashSet::new();
+
+    if !combined {
+        let url = join_url(base_url, REMOTE_IGNORELIST_FILE)?;
+        if let Some(text) = fetch_text_optional(client, &url, version).await? {
+            ignorelist = parse_path_set(&text, &mut warnings);
+        }
+        let url = join_url(base_url, REMOTE_ONCELIST_FILE)?;
+        if let Some(text) = fetch_text_optional(client, &url, version).await? {
+            oncelist = parse_path_set(&text, &mut warnings);
+        }
+        let url = join_url(base_url, REMOTE_SIZESLIST_FILE)?;
+        if let Some(text) = fetch_text_optional(client, &url, version).await? {
+            sizes = parse_sizes_list(&text, &mut warnings);
+        }
     }
 
-    let ignorelist = {
-        let url = join_url(base_url, REMOTE_IGNORELIST_FILE)?;
-        if let Some(text) = fetch_text_optional(client, &url).await? {
-            parse_path_set(&text, &mut warnings)
-        } else {
-            HashSet::new()
-        }
-    };
-    let oncelist = {
-        let url = join_url(base_url, REMOTE_ONCELIST_FILE)?;
-        if let Some(text) = fetch_text_optional(client, &url).await? {
-            parse_path_set(&text, &mut warnings)
-        } else {
-            HashSet::new()
-        }
-    };
-    let sizes = {
-        let url = join_url(base_url, REMOTE_SIZESLIST_FILE)?;
-        if let Some(text) = fetch_text_optional(client, &url).await? {
-            parse_sizes_list(&text, &mut warnings)
-        } else {
-            HashMap::new()
-        }
-    };
-    let blacklist = {
-        let url = join_url(base_url, REMOTE_BLACKLIST_FILE)?;
-        if let Some(text) = fetch_text_optional(client, &url).await? {
-            parse_path_set(&text, &mut warnings)
-        } else {
-            HashSet::new()
-        }
-    };
+    let url = join_url(base_url, REMOTE_BLACKLIST_FILE)?;
+    let blacklist = fetch_text_optional(client, &url, version)
+        .await?
+        .map(|text| parse_path_set(&text, &mut warnings))
+        .unwrap_or_default();
 
     Ok(RemoteManifest {
         whitelist,
@@ -1776,11 +1800,7 @@ async fn download_files(
         total_threads,
     } = config;
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("XFast Manager")
-        .build()
-        .context("Failed to build HTTP client")?;
+    let client = update_client(Duration::from_secs(30))?;
 
     let base = base_url.trim_end_matches('/').to_string();
     let expected_crc = Arc::new(expected_crc.clone());
@@ -1982,7 +2002,7 @@ fn update_local_cfg_fields(cfg_path: &Path, remote: &RemoteConfig) -> Result<()>
     if let Some(name) = remote.name.as_deref() {
         upsert_cfg_field(&mut lines, "name", name.trim());
     }
-    fs::write(cfg_path, lines.join("\n"))
+    write_file_atomic(cfg_path, lines.join("\n").as_bytes())
         .with_context(|| format!("Failed to write cfg '{}'", cfg_path.display()))?;
     Ok(())
 }
@@ -2088,7 +2108,27 @@ fn resolve_module_url(zone: Option<&str>, module: &str) -> Result<String> {
                 module_value
             )
         })?;
-    join_url(zone_value, module_value)
+    if ensure_http_or_https(zone_value).is_ok() {
+        return join_url(zone_value, module_value);
+    }
+
+    // Older SkunkCrafts depots use a CDN zone name instead of a full URL.
+    if zone_value.eq_ignore_ascii_case("custom")
+        || zone_value.len() > 59
+        || zone_value.starts_with('-')
+        || zone_value.ends_with('-')
+        || !zone_value
+            .bytes()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == b'-')
+    {
+        return Err(anyhow!(
+            "Invalid SkunkCrafts zone '{zone_value}' for a relative module"
+        ));
+    }
+    join_url(
+        &format!("http://{}-ccd.kxcdn.com/", zone_value.to_ascii_lowercase()),
+        module_value,
+    )
 }
 
 fn compute_file_crc32(path: &Path) -> Result<u32> {
@@ -2191,7 +2231,13 @@ fn parse_cfg_lines(content: &str) -> HashMap<String, String> {
             continue;
         }
         if let Some((k, v)) = line.split_once('|') {
-            let key = k.trim().to_lowercase();
+            let k = k.trim();
+            let lower = k.to_ascii_lowercase();
+            let key = if let Some(name) = lower.strip_prefix("channel.") {
+                format!("channel.{}", &k[k.len() - name.len()..])
+            } else {
+                lower
+            };
             let value = v.trim().to_string();
             if !key.is_empty() {
                 map.insert(key, value);
@@ -2201,56 +2247,70 @@ fn parse_cfg_lines(content: &str) -> HashMap<String, String> {
     map
 }
 
-fn parse_whitelist(content: &str, warnings: &mut Vec<String>) -> Result<Vec<WhitelistEntry>> {
-    let mut map: HashMap<String, i64> = HashMap::new();
-    for raw_line in content.lines() {
-        let line = raw_line.trim();
+fn parse_file_list(
+    content: &str,
+    combined: bool,
+    warnings: &mut Vec<String>,
+) -> Result<(Vec<WhitelistEntry>, HashMap<String, u64>)> {
+    let mut files = BTreeMap::new();
+    let mut sizes = HashMap::new();
+    let mut rows = 0;
+    for line in content.lines().map(str::trim) {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let (path_raw, crc_raw) = match line.split_once('|') {
-            Some(parts) => parts,
-            None => {
-                warnings.push(format!("Skipped malformed whitelist line '{}'", line));
-                continue;
-            }
-        };
-        let path = match normalize_manifest_path(path_raw) {
-            Ok(v) => v,
-            Err(e) => {
-                warnings.push(format!(
-                    "Skipped unsafe whitelist path '{}': {}",
-                    path_raw.trim(),
-                    e
-                ));
-                continue;
-            }
-        };
-        let crc32 = match crc_raw.trim().parse::<i64>() {
-            Ok(v) => v,
-            Err(_) => {
-                warnings.push(format!(
-                    "Skipped whitelist path '{}' due to invalid CRC '{}'",
-                    path,
-                    crc_raw.trim()
-                ));
-                continue;
-            }
-        };
-        if crc32 < -1 {
+        rows += 1;
+        let Some((raw_path, metadata)) = line.split_once('|') else {
             warnings.push(format!(
-                "Skipped whitelist path '{}' due to unsupported negative CRC '{}'",
-                path, crc32
+                "Skipped malformed SkunkCrafts file list entry '{line}'"
+            ));
+            continue;
+        };
+        let path = match normalize_manifest_path(raw_path) {
+            Ok(path) => path,
+            Err(error) => {
+                warnings.push(format!(
+                    "Skipped unsafe file list path '{raw_path}': {error}"
+                ));
+                continue;
+            }
+        };
+        let (raw_crc, size) = if combined {
+            let Some((crc, size)) = metadata.split_once('|') else {
+                warnings.push(format!("Skipped manifest entry '{path}' with no size"));
+                continue;
+            };
+            let Ok(size) = size.trim().parse::<u64>() else {
+                warnings.push(format!("Skipped manifest entry '{path}' with invalid size"));
+                continue;
+            };
+            (crc, Some(size))
+        } else {
+            (metadata, None)
+        };
+        let Ok(crc32) = raw_crc.trim().parse::<i64>() else {
+            warnings.push(format!("Skipped file list entry '{path}' with invalid CRC"));
+            continue;
+        };
+        if crc32 != -1 && u32::try_from(crc32).is_err() {
+            warnings.push(format!(
+                "Skipped file list entry '{path}' with unsupported CRC"
             ));
             continue;
         }
-        map.insert(path, crc32);
+        if let Some(size) = size {
+            sizes.insert(path.clone(), size);
+        }
+        files.insert(path, crc32);
     }
-
-    Ok(map
+    if rows != 0 && files.is_empty() {
+        return Err(anyhow!("SkunkCrafts file list contains no valid entries"));
+    }
+    let whitelist = files
         .into_iter()
         .map(|(path, crc32)| WhitelistEntry { path, crc32 })
-        .collect())
+        .collect();
+    Ok((whitelist, sizes))
 }
 
 fn parse_path_set(content: &str, warnings: &mut Vec<String>) -> HashSet<String> {
@@ -2326,21 +2386,36 @@ fn ensure_http_or_https(url: &str) -> Result<()> {
     }
 }
 
-async fn fetch_text_optional(client: &reqwest::Client, url: &str) -> Result<Option<String>> {
-    let response = client
+async fn fetch_text_optional(
+    client: &reqwest::Client,
+    url: &str,
+    cache_parameter: (&str, &str),
+) -> Result<Option<String>> {
+    use reqwest::StatusCode;
+
+    let mut response = client
         .get(url)
+        .query(&[cache_parameter])
         .send()
         .await
-        .with_context(|| format!("Failed to request '{}'", url))?;
-
-    if response.status().as_u16() == 404 {
+        .with_context(|| format!("Failed to request '{url}'"))?;
+    if matches!(
+        response.status(),
+        StatusCode::NOT_FOUND | StatusCode::FORBIDDEN
+    ) {
+        // Some depots reject query parameters.
+        response = client
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("Failed to request '{url}'"))?;
+    }
+    if response.status() == StatusCode::NOT_FOUND {
         return Ok(None);
     }
-
     if !response.status().is_success() {
         return Err(anyhow!(
-            "Request to '{}' failed with HTTP {}",
-            url,
+            "Request to '{url}' failed with HTTP {}",
             response.status()
         ));
     }
@@ -2348,44 +2423,28 @@ async fn fetch_text_optional(client: &reqwest::Client, url: &str) -> Result<Opti
     let text = response
         .text()
         .await
-        .with_context(|| format!("Failed to read response from '{}'", url))?;
+        .with_context(|| format!("Failed to read response from '{url}'"))?;
+    let start = text.trim_start_matches('\u{feff}').trim_start();
+    let prefix: String = start
+        .chars()
+        .take(16)
+        .flat_map(char::to_lowercase)
+        .collect();
+    if prefix.starts_with("<!doctype html") || prefix.starts_with("<html") {
+        return Err(anyhow!("SkunkCrafts depot returned a web page for '{url}'"));
+    }
     Ok(Some(text))
-}
-
-async fn fetch_text_required(client: &reqwest::Client, url: &str) -> Result<String> {
-    fetch_text_optional(client, url)
-        .await?
-        .ok_or_else(|| anyhow!("Required remote file '{}' was not found", url))
 }
 
 fn join_url(base_url: &str, path: &str) -> Result<String> {
     ensure_http_or_https(base_url)?;
-    let mut base = Url::parse(base_url).with_context(|| format!("Invalid URL '{}'", base_url))?;
-
-    let mut new_segments: Vec<String> = Vec::new();
-    if let Some(existing) = base.path_segments() {
-        for seg in existing {
-            if !seg.is_empty() {
-                new_segments.push(seg.to_string());
-            }
-        }
-    }
-
+    let mut base = Url::parse(base_url).with_context(|| format!("Invalid URL '{base_url}'"))?;
     let normalized = normalize_manifest_path(path)?;
-    for seg in normalized.split('/') {
-        new_segments.push(seg.to_string());
-    }
-
-    {
-        let mut path_segments = base
-            .path_segments_mut()
-            .map_err(|_| anyhow!("URL cannot be used for path segments"))?;
-        path_segments.clear();
-        for seg in &new_segments {
-            path_segments.push(seg);
-        }
-    }
-
+    base.path_segments_mut()
+        .map_err(|_| anyhow!("URL cannot be used for path segments"))?
+        .pop_if_empty()
+        .extend(normalized.split('/'));
+    base.set_fragment(None);
     Ok(base.to_string())
 }
 
@@ -2562,6 +2621,342 @@ mod tests {
                 .eq_ignore_ascii_case(name)
                 .then(|| value.trim().to_string())
         })
+    }
+
+    fn test_response(status: u16, body: impl Into<Vec<u8>>) -> TestResponse {
+        TestResponse {
+            status,
+            headers: Vec::new(),
+            body: body.into(),
+        }
+    }
+
+    fn update_options() -> SkunkUpdateOptions {
+        serde_json::from_value(serde_json::json!({
+            "includeLiveries": true,
+            "applyBlacklist": true,
+            "rollbackOnFailure": true,
+            "chunkedDownloadEnabled": false,
+        }))
+        .unwrap()
+    }
+
+    fn write_fixture(path: &Path, relative_path: &str, text: &str) {
+        let path = path.join(relative_path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+
+    fn remote_version(check: CheckedVersion) -> (String, bool) {
+        (check.remote, check.locked)
+    }
+
+    #[tokio::test]
+    async fn migrated_v3_beta_keeps_its_depot_and_can_still_update_and_repair() {
+        let beta_revision = Arc::new(AtomicUsize::new(1));
+        let current_revision = Arc::clone(&beta_revision);
+        let server = TestHttpServer::start(Arc::new(move |request| {
+            let url = request.split_whitespace().nth(1).unwrap();
+            let (path, query) = url.split_once('?').unwrap_or((url, ""));
+            let revision = current_revision.load(Ordering::SeqCst);
+            let beta = format!("beta build {revision}");
+            let response = match path {
+                "/main/skunkcrafts_updater.cfg" => test_response(200, "version|2.8.22"),
+                "/beta/skunkcrafts_updater.cfg" => {
+                    assert!(query.starts_with("t="));
+                    test_response(200, format!("version|2.8.23.{revision}"))
+                }
+                "/beta/skunkcrafts_updater_whitelist.txt" => {
+                    assert_eq!(query, format!("v=2.8.23.{revision}"));
+                    test_response(
+                        200,
+                        format!("plugin.xpl|{}\n", crc32fast::hash(beta.as_bytes())),
+                    )
+                }
+                "/beta/plugin.xpl" => test_response(200, beta),
+                _ => test_response(404, ""),
+            };
+            Some(response)
+        }));
+        let xp = tempfile::tempdir().unwrap();
+        let path = xp.path().join("Resources/plugins/FlyWithLua");
+        let main = format!("module|{}/main\nversion|2.8.23.1\n", server.base_url);
+        let legacy_file = "skunkcrafts_updater_beta.cfg";
+        write_fixture(&path, LOCAL_CFG_FILE, &main);
+        write_fixture(
+            &path,
+            legacy_file,
+            &format!("module|{}/beta\n", server.base_url),
+        );
+        write_fixture(&path, "plugin.xpl", "beta build 1");
+        let client = update_client(Duration::from_secs(5)).unwrap();
+        let check_version = |use_beta| check_local_version(&client, &path, use_beta);
+        assert_eq!(
+            check_version(None).await.unwrap().map(remote_version),
+            Some(("2.8.23.1".into(), false))
+        );
+        assert_eq!(
+            check_version(Some(false))
+                .await
+                .unwrap()
+                .map(remote_version),
+            Some(("2.8.22".into(), false))
+        );
+        write_fixture(
+            &path,
+            legacy_file,
+            &format!("module|{}/beta\nenabled|false\n", server.base_url),
+        );
+        assert_eq!(
+            check_version(None).await.unwrap().map(remote_version),
+            Some(("2.8.22".into(), false))
+        );
+        assert_eq!(
+            check_version(Some(true)).await.unwrap().map(remote_version),
+            Some(("2.8.23.1".into(), false))
+        );
+
+        // Reproduce the official v4 import, including a sanitized on-disk channel filename.
+        fs::remove_file(path.join(legacy_file)).unwrap();
+        let selected = "channel|Beta candidate / test?\n";
+        write_fixture(&path, "skunkcrafts/channel.cfg", selected);
+        write_fixture(
+            &path,
+            "skunkcrafts/channels/Beta_candidate___test_.cfg",
+            &format!("{selected}module|{}/beta\nzone|custom\n", server.base_url),
+        );
+        let mut options = update_options();
+        options.use_beta = Some(false);
+        let preview = build_update_plan(xp.path(), "plugin", "FlyWithLua", options.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            preview.active_channel.as_deref(),
+            Some("Beta candidate / test?")
+        );
+        assert_eq!(preview.remote_version.as_deref(), Some("2.8.23.1"));
+        assert!(!preview.has_update);
+        assert!(!preview.has_beta_config);
+
+        beta_revision.store(2, Ordering::SeqCst);
+        let preview = build_update_plan(xp.path(), "plugin", "FlyWithLua", options.clone())
+            .await
+            .unwrap();
+        assert_eq!(preview.replace_files, ["plugin.xpl"]);
+        options.expected_skunk_module = preview.remote_module;
+        let result = execute_update(
+            xp.path(),
+            "plugin",
+            "FlyWithLua",
+            options.clone(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.remote_version.as_deref(), Some("2.8.23.2"));
+        assert_eq!(
+            fs::read_to_string(path.join("plugin.xpl")).unwrap(),
+            "beta build 2"
+        );
+        assert_eq!(
+            fs::read_to_string(path.join("skunkcrafts/channel.cfg")).unwrap(),
+            selected
+        );
+        let cfg = fs::read_to_string(path.join(LOCAL_CFG_FILE)).unwrap();
+        assert!(cfg.contains("version|2.8.23.2"));
+        assert!(cfg.contains(&format!("module|{}/main", server.base_url)));
+
+        // An equal-version repair also uses the beta manifest.
+        write_fixture(&path, "plugin.xpl", "damaged");
+        let repair = build_update_plan(xp.path(), "plugin", "FlyWithLua", options)
+            .await
+            .unwrap();
+        assert_eq!(repair.local_version, repair.remote_version);
+        assert_eq!(repair.replace_files, ["plugin.xpl"]);
+    }
+
+    #[test]
+    fn early_v4_configs_and_explicit_main_survive_mixed_layouts() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path();
+        let main = "module|https://example.test/main\nversion|1.0\n";
+        let inline = format!(
+            "{main}channel|RC\nchannel.RC.module|https://example.test/rc\nchannel.RC.zone|custom\n"
+        );
+        write_fixture(path, "skunkcrafts/updater.cfg", &inline);
+        let local = read_local_config(path, Some(false)).unwrap();
+        assert!(local.cfg_path.ends_with("skunkcrafts/updater.cfg"));
+        assert_eq!(local.selected.unwrap().url, "https://example.test/rc");
+
+        write_fixture(path, LOCAL_CFG_FILE, &inline);
+        write_fixture(
+            path,
+            "skunkcrafts_updater_beta.cfg",
+            "module|https://example.test/stale\n",
+        );
+        write_fixture(path, "skunkcrafts/channel.cfg", "channel|stable\n");
+        let local = read_local_config(path, Some(true)).unwrap();
+        assert!(local.cfg_path.ends_with(LOCAL_CFG_FILE));
+        assert!(local.selected.is_none());
+        assert!(!local.has_legacy_beta);
+
+        write_fixture(path, "skunkcrafts/channel.cfg", "channel|removed\n");
+        write_fixture(
+            path,
+            "skunkcrafts/channels/removed.cfg.removed",
+            "channel|removed\nmodule|https://example.test/removed\n",
+        );
+        assert!(read_local_config(path, None)
+            .unwrap_err()
+            .to_string()
+            .contains("no longer available"));
+    }
+
+    #[test]
+    fn historical_zone_and_encoded_depot_paths_resolve() {
+        assert_eq!(
+            resolve_module_url(Some("aerobask"), "products/Aircraft").unwrap(),
+            "http://aerobask-ccd.kxcdn.com/products/Aircraft"
+        );
+        assert!(resolve_module_url(Some("custom"), "relative").is_err());
+        assert!(resolve_module_url(Some("invalid.zone"), "relative").is_err());
+        assert_eq!(
+            join_url(
+                "https://example.test/My%20folder/?token=example",
+                "file name.txt"
+            )
+            .unwrap(),
+            "https://example.test/My%20folder/file%20name.txt?token=example"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_v4_public_fallback_requires_main_404_and_follows_named_selection() {
+        let main_status = Arc::new(AtomicUsize::new(404));
+        let status = Arc::clone(&main_status);
+        let server = TestHttpServer::start(Arc::new(move |request| {
+            let url = request.split_whitespace().nth(1).unwrap();
+            let (path, query) = url.split_once('?').unwrap_or((url, ""));
+            let response = match path {
+                "/main/skunkcrafts_updater.cfg" => {
+                    let status = status.load(Ordering::SeqCst) as u16;
+                    test_response(status, "version|1.0")
+                }
+                "/a/skunkcrafts_updater.cfg" if !query.is_empty() => test_response(403, ""),
+                "/a/skunkcrafts_updater.cfg" => test_response(200, "version|2.0"),
+                "/z/skunkcrafts_updater.cfg" => test_response(200, "version|3.0"),
+                _ => test_response(404, ""),
+            };
+            Some(response)
+        }));
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path();
+        let cfg = format!(
+            "module|{url}/main\nversion|1.0\nchannel.Z beta|{url}/z\nchannel.A beta|{url}/a\n",
+            url = server.base_url
+        );
+        write_fixture(path, LOCAL_CFG_FILE, &cfg);
+        let client = update_client(Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            check_local_version(&client, path, None)
+                .await
+                .unwrap()
+                .map(remote_version),
+            Some(("2.0".into(), false))
+        );
+        let legacy_beta = "skunkcrafts_updater_beta.cfg";
+        write_fixture(path, legacy_beta, &format!("module|{}/z", server.base_url));
+        assert!(check_local_version(&client, path, Some(false))
+            .await
+            .unwrap()
+            .is_none());
+        fs::remove_file(path.join(legacy_beta)).unwrap();
+
+        main_status.store(503, Ordering::SeqCst);
+        assert!(check_local_version(&client, path, None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("503"));
+        write_fixture(path, "skunkcrafts/channel.cfg", "channel|Z beta\n");
+        assert_eq!(
+            check_local_version(&client, path, None)
+                .await
+                .unwrap()
+                .map(remote_version),
+            Some(("3.0".into(), false))
+        );
+    }
+
+    #[tokio::test]
+    async fn combined_manifest_keeps_updater_state_and_local_ignores_in_updates() {
+        let content = b"new files";
+        let server =
+            TestHttpServer::start(Arc::new(move |request| {
+                let url = request.split_whitespace().nth(1).unwrap();
+                let (path, query) = url.split_once('?').unwrap_or((url, ""));
+                let response = match path {
+                "/skunkcrafts_updater.cfg" => test_response(200, "version|2.0\nprotocol|2"),
+                "/skunkcrafts_updater_manifest.txt" => {
+                    assert_eq!(query, "v=2.0");
+                    test_response(200, format!(
+                        "files/data.bin|{}|{}\nprefs.ini|-1|100\nskunkcrafts/channel.cfg|0|0\n",
+                        crc32fast::hash(content), content.len()
+                    ))
+                }
+                "/skunkcrafts_updater_blacklist.txt" => test_response(200,
+                    "skunkcrafts\nskunkcrafts_updater.cfg\nuser\nskunkcrafts_updater_ignore.txt\n"),
+                "/files/data.bin" => test_response(200, content.to_vec()),
+                _ => test_response(404, ""),
+            };
+                Some(response)
+            }));
+        let xp = tempfile::tempdir().unwrap();
+        let path = xp.path().join("Custom Scenery/Package");
+        write_fixture(
+            &path,
+            LOCAL_CFG_FILE,
+            &format!("module|{}\nversion|1.0", server.base_url),
+        );
+        write_fixture(&path, LOCAL_IGNORE_FILE, "user/keep.ini\n");
+        write_fixture(&path, "user/keep.ini", "user file");
+        write_fixture(&path, "user/remove.ini", "retired");
+        write_fixture(&path, "prefs.ini", "modified preferences");
+        write_fixture(&path, "skunkcrafts/channel.cfg", "channel|stable\n");
+        let mut options = update_options();
+        options.fresh_install = true;
+        let plan = build_update_plan(xp.path(), "scenery", "Package", options.clone())
+            .await
+            .unwrap();
+        assert_eq!(plan.add_files, ["files/data.bin"]);
+        assert_eq!(plan.delete_files, ["user/remove.ini"]);
+        assert_eq!(plan.estimated_download_bytes, content.len() as u64);
+
+        options.expected_skunk_module = Some(format!("{}/other-channel", server.base_url));
+        let error = execute_update(xp.path(), "scenery", "Package", options.clone(), None, None)
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), CHANNEL_CHANGED);
+        assert!(!path.join("files/data.bin").exists());
+        assert!(path.join("user/remove.ini").exists());
+
+        options.expected_skunk_module = plan.remote_module;
+        execute_update(xp.path(), "scenery", "Package", options, None, None)
+            .await
+            .unwrap();
+        assert_eq!(fs::read(path.join("files/data.bin")).unwrap(), content);
+        assert_eq!(
+            fs::read_to_string(path.join("prefs.ini")).unwrap(),
+            "modified preferences"
+        );
+        assert_eq!(
+            fs::read_to_string(path.join("user/keep.ini")).unwrap(),
+            "user file"
+        );
+        assert!(path.join("skunkcrafts/channel.cfg").exists());
+        assert!(path.join(LOCAL_IGNORE_FILE).exists());
+        assert!(!path.join("user/remove.ini").exists());
     }
 
     #[test]

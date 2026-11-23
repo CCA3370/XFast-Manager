@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use crate::logger;
 use crate::management_index::read_version_info_with_url;
+use crate::skunk_updater::local_config_path;
 use crate::task_control::TaskControl;
 use crate::x_updater_profile::{
     find_profile_in_folder, parse_tagged_update_url, write_credentials_in_folder, XUpdaterProfile,
@@ -26,7 +27,6 @@ pub use crate::skunk_updater::{
     SkunkUpdateResult as AddonUpdateResult,
 };
 
-const SKUNK_CFG_FILE: &str = "skunkcrafts_updater.cfg";
 const XUPDATER_AUTH_PATH: &str = "/api/v2/service/auth/consumers";
 const XUPDATER_UPDATES_PATH: &str = "/api/v2/experimental/updates";
 const LOG_CTX: &str = "addon_updater";
@@ -62,7 +62,7 @@ fn enforce_obfuscated_xupdater_lock(
     folder_name: &str,
     target_path: &Path,
 ) -> Result<()> {
-    if target_path.join(SKUNK_CFG_FILE).exists() {
+    if local_config_path(target_path).is_some() {
         return Ok(());
     }
     if find_profile_in_folder(target_path).is_some() {
@@ -446,7 +446,7 @@ pub async fn build_update_plan(
     progress_callback: Option<AddonUpdateProgressCallback>,
 ) -> Result<AddonUpdatePlan> {
     log_addon_info(format!(
-        "build_update_plan start itemType={} folder={} beta={} includeLiveries={} applyBlacklist={} rollback={} parallelDownloads={:?}",
+        "build_update_plan start itemType={} folder={} beta={:?} includeLiveries={} applyBlacklist={} rollback={} parallelDownloads={:?}",
         item_type,
         folder_name,
         options.use_beta,
@@ -491,8 +491,8 @@ pub async fn build_update_plan(
     );
     ensure_not_cancelled(task_control.as_ref(), "scan")?;
 
-    if target_path.join(SKUNK_CFG_FILE).exists() {
-        log_addon_info("detected legacy updater metadata; delegating to legacy updater flow");
+    if local_config_path(&target_path).is_some() {
+        log_addon_info("Using the SkunkCrafts updater to plan the update");
         return crate::skunk_updater::build_update_plan(
             xplane_path,
             item_type,
@@ -567,7 +567,7 @@ pub async fn fetch_update_preview(
     );
     ensure_not_cancelled(task_control.as_ref(), "check")?;
 
-    if target_path.join(SKUNK_CFG_FILE).exists() {
+    if local_config_path(&target_path).is_some() {
         return Err(anyhow!(
             "Preview flow is only available for x-updater targets"
         ));
@@ -660,7 +660,7 @@ pub async fn execute_update(
     progress_callback: Option<AddonUpdateProgressCallback>,
 ) -> Result<AddonUpdateResult> {
     log_addon_info(format!(
-        "execute_update start itemType={} folder={} beta={} includeLiveries={} applyBlacklist={} rollback={} parallelDownloads={:?}",
+        "execute_update start itemType={} folder={} beta={:?} includeLiveries={} applyBlacklist={} rollback={} parallelDownloads={:?}",
         item_type,
         folder_name,
         options.use_beta,
@@ -707,10 +707,8 @@ pub async fn execute_update(
     );
     ensure_not_cancelled(task_control.as_ref(), "install")?;
 
-    if target_path.join(SKUNK_CFG_FILE).exists() {
-        log_addon_info(
-            "detected legacy updater metadata; delegating to legacy updater execution flow",
-        );
+    if local_config_path(&target_path).is_some() {
+        log_addon_info("Using the SkunkCrafts updater to install the update");
         let mapped_progress_callback: Option<crate::skunk_updater::SkunkUpdateProgressCallback> =
             progress_callback.as_ref().map(|cb| {
                 let addon_cb = Arc::clone(cb);
@@ -1003,9 +1001,9 @@ pub fn set_updater_credentials(
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
     enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
-    if target_path.join(SKUNK_CFG_FILE).exists() {
+    if local_config_path(&target_path).is_some() {
         return Err(anyhow!(
-            "This addon is using legacy updater metadata and does not support account credentials"
+            "SkunkCrafts metadata has no account credential fields"
         ));
     }
 
@@ -1021,7 +1019,7 @@ pub fn get_updater_credentials(
     let target_path = resolve_target_path(xplane_path, item_type, folder_name)?;
     enforce_obfuscated_xupdater_lock(item_type, folder_name, &target_path)?;
 
-    if target_path.join(SKUNK_CFG_FILE).exists() {
+    if local_config_path(&target_path).is_some() {
         return Ok(None);
     }
 
@@ -1103,6 +1101,8 @@ fn build_xupdater_plan(
         skip_files: Vec::new(),
         warnings: context.warnings.clone(),
         has_beta_config: false,
+        active_channel: None,
+        legacy_beta_enabled: false,
     })
 }
 
@@ -1115,7 +1115,7 @@ async fn prepare_xupdater_context(
     progress_callback: Option<AddonUpdateProgressCallback>,
 ) -> Result<XPlanContext> {
     log_addon_info(format!(
-        "prepare_xupdater_context start target={} beta={} includeLiveries={} applyBlacklist={} parallelDownloads={:?}",
+        "prepare_xupdater_context start target={} beta={:?} includeLiveries={} applyBlacklist={} parallelDownloads={:?}",
         target_path.display(),
         options.use_beta,
         options.include_liveries,
@@ -1791,7 +1791,7 @@ fn requested_channel(options: &AddonUpdateOptions) -> String {
         Some("beta") => "beta",
         Some("stable") | Some("release") => "stable",
         _ => {
-            if options.use_beta {
+            if options.use_beta.unwrap_or(false) {
                 "beta"
             } else {
                 "stable"

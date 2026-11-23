@@ -118,7 +118,7 @@ mod disk_usage;
 #[path = "analysis/doctor.rs"]
 mod doctor;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -2790,7 +2790,7 @@ fn is_xupdater_disabled_target(xplane_path: &str, item_type: &str, folder_name: 
         return false;
     };
 
-    if target_path.join("skunkcrafts_updater.cfg").exists() {
+    if skunk_updater::local_config_path(&target_path).is_some() {
         return false;
     }
 
@@ -2841,20 +2841,34 @@ async fn get_aircraft_folder_state(
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+fn legacy_beta_preferences(
+    beta_folders: Option<Vec<String>>,
+    stable_folders: Option<Vec<String>>,
+) -> HashMap<String, bool> {
+    stable_folders
+        .into_iter()
+        .flatten()
+        .map(|folder| (folder, false))
+        .chain(
+            beta_folders
+                .into_iter()
+                .flatten()
+                .map(|folder| (folder, true)),
+        )
+        .collect()
+}
+
 #[tauri::command]
 async fn check_aircraft_updates(
     xplane_path: String,
     mut aircraft: Vec<AircraftInfo>,
     beta_folders: Option<Vec<String>>,
+    stable_folders: Option<Vec<String>>,
 ) -> Result<Vec<AircraftInfo>, String> {
-    let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
+    let legacy_beta = legacy_beta_preferences(beta_folders, stable_folders);
     let xplane_path = PathBuf::from(xplane_path);
-    management_index::check_aircraft_updates(
-        xplane_path.as_path(),
-        &mut aircraft,
-        &beta_folder_set,
-    )
-    .await;
+    management_index::check_aircraft_updates(xplane_path.as_path(), &mut aircraft, &legacy_beta)
+        .await;
     Ok(aircraft)
 }
 
@@ -2863,14 +2877,15 @@ async fn check_plugins_updates(
     xplane_path: String,
     mut plugins: Vec<PluginInfo>,
     beta_folders: Option<Vec<String>>,
+    stable_folders: Option<Vec<String>>,
     check_migrations: Option<bool>,
 ) -> Result<Vec<PluginInfo>, String> {
-    let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
+    let legacy_beta = legacy_beta_preferences(beta_folders, stable_folders);
     let xplane_path = PathBuf::from(xplane_path);
     management_index::check_plugins_updates(
         xplane_path.as_path(),
         &mut plugins,
-        &beta_folder_set,
+        &legacy_beta,
         check_migrations.unwrap_or(false),
     )
     .await;
@@ -2882,14 +2897,15 @@ async fn check_scenery_updates(
     xplane_path: String,
     mut scenery: Vec<SceneryManagerEntry>,
     beta_folders: Option<Vec<String>>,
+    stable_folders: Option<Vec<String>>,
     check_migrations: Option<bool>,
 ) -> Result<Vec<SceneryManagerEntry>, String> {
-    let beta_folder_set: HashSet<String> = beta_folders.unwrap_or_default().into_iter().collect();
+    let legacy_beta = legacy_beta_preferences(beta_folders, stable_folders);
     let xplane_path = PathBuf::from(xplane_path);
     management_index::check_scenery_updates(
         xplane_path.as_path(),
         &mut scenery,
-        &beta_folder_set,
+        &legacy_beta,
         check_migrations.unwrap_or(false),
     )
     .await;

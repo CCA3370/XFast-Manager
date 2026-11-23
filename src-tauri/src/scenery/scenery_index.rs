@@ -13,6 +13,7 @@ use crate::models::{
 };
 use crate::scenery_classifier::classify_scenery;
 use crate::scenery_sorting::simheaven_layer_number;
+use crate::skunk_updater;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use sea_orm::DatabaseConnection;
@@ -317,12 +318,8 @@ fn apply_known_package_profiles(packages: &mut [SceneryPackageInfo]) -> bool {
 }
 
 fn read_scenery_update_info(folder_path: &Path) -> (Option<String>, Option<String>) {
-    let cfg_path = folder_path.join("skunkcrafts_updater.cfg");
-    if !cfg_path.is_file() {
-        return (None, None);
-    }
-
-    let (version, update_url, _cfg_disabled) = read_version_from_paths(Some(&cfg_path), &[]);
+    let cfg_path = skunk_updater::local_config_path(folder_path);
+    let (version, update_url, _cfg_disabled) = read_version_from_paths(cfg_path.as_deref(), &[]);
     (version, update_url)
 }
 

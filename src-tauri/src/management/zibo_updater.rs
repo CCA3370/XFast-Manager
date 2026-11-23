@@ -2195,6 +2195,8 @@ pub async fn build_update_plan(
         skip_files: Vec::new(),
         warnings: context.warnings,
         has_beta_config: false,
+        active_channel: None,
+        legacy_beta_enabled: false,
     };
 
     emit_progress_event(
@@ -4157,7 +4159,8 @@ mod tests {
     #[test]
     fn full_package_download_mode_follows_settings() {
         let disabled = AddonUpdateOptions {
-            use_beta: false,
+            use_beta: None,
+            expected_skunk_module: None,
             include_liveries: false,
             apply_blacklist: false,
             rollback_on_failure: false,
