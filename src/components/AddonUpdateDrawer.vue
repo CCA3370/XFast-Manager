@@ -25,6 +25,7 @@ interface AddonUpdateProgressEvent {
 
 interface TaskUiState {
   plan: AddonUpdatePlan | null
+  legacyBetaEnabled?: boolean
   loadingPlan: boolean
   planError: string
   progress: number
@@ -386,23 +387,27 @@ async function refreshTaskPlanAfterPreferenceChange(task: AddonUpdateDrawerTask)
   preferenceRefreshPending.value = false
 }
 
-async function setTaskBetaPreference(task: AddonUpdateDrawerTask, value: boolean) {
+async function setTaskBetaPreference(task: AddonUpdateDrawerTask, event: Event) {
   if (!isCurrent()) return
+  const input = event.target as HTMLInputElement
+  const state = stateFor(task)
+  const enabled = input.checked
   const token = ++preferenceMutationToken
   preferenceSaving.value = true
   clearPreferenceRefreshTimer()
   preferenceRefreshPending.value = true
   try {
-    await managementStore.setAddonUpdateItemBetaPreference(task.itemType, task.folderName, value)
-    if (token === preferenceMutationToken) {
+    await managementStore.setAddonUpdateItemBetaPreference(task.itemType, task.folderName, enabled)
+    if (isCurrent() && token === preferenceMutationToken) {
+      state.legacyBetaEnabled = enabled
       await refreshTaskPlanAfterPreferenceChange(task)
     }
-  } catch {
-    if (token === preferenceMutationToken) {
+  } catch (error) {
+    if (isCurrent() && token === preferenceMutationToken) {
+      input.checked = state.legacyBetaEnabled ?? false
       preferenceRefreshPending.value = false
-      preferenceSaving.value = false
+      toast.error(t('management.updateFailed') + ': ' + String(error))
     }
-    return
   } finally {
     if (token === preferenceMutationToken) {
       preferenceSaving.value = false
@@ -468,6 +473,7 @@ async function loadPlanForTask(task: AddonUpdateDrawerTask, force = false) {
   try {
     const plan = await managementStore.buildAddonUpdatePlan(task.itemType, task.folderName)
     state.plan = plan
+    state.legacyBetaEnabled = plan.hasBetaConfig ? !!plan.legacyBetaEnabled : undefined
     if (!planNeedsAction(plan) && !plan.remoteLocked) {
       state.progress = 100
       state.status = 'completed'
@@ -601,14 +607,15 @@ function cancelFreshInstall() {
 }
 
 async function confirmFreshInstall() {
-  if (!isCurrent()) return
+  if (!isCurrent() || !props.show) return
   const task = freshInstallDialogTask.value
   if (!task) return
   freshInstallDialogTask.value = null
 
   const key = taskKeyOf(task)
   const state = ensureTaskState(key)
-  if (state.installing) return
+  const plan = state.plan
+  if (!plan || state.loadingPlan || state.installing || plan.remoteLocked) return
 
   state.installing = true
   state.status = 'installing'
@@ -621,8 +628,7 @@ async function confirmFreshInstall() {
     const isAircraft = task.itemType === 'aircraft'
     const result = await managementStore.executeAddonUpdate(task.itemType, task.folderName, {
       freshInstall: true,
-      expectedSkunkModule:
-        state.plan?.provider === 'manifest' ? state.plan.remoteModule : undefined,
+      expectedSkunkModule: plan.provider === 'manifest' ? plan.remoteModule : undefined,
       ...(isAircraft && {
         preserveLiveries: freshInstallPreserveLiveries.value,
         preserveConfigFiles: freshInstallPreserveConfigFiles.value,
@@ -756,13 +762,13 @@ watch(
   (open) => {
     if (!open) {
       stopResize()
+      cancelFreshInstall()
       preferenceRefreshPending.value = false
       clearPreferenceRefreshTimer()
       return
     }
     resetSheetHeight()
     syncTaskStates()
-    void managementStore.loadAddonUpdateOptions()
     primePlansForVisibleTasks()
   },
 )
@@ -978,11 +984,18 @@ watch(
                         </p>
                       </div>
 
-                      <div v-else-if="stateFor(task).plan" class="mt-2 space-y-3">
+                      <div
+                        v-if="
+                          !stateFor(task).loadingPlan &&
+                          (stateFor(task).plan || stateFor(task).legacyBetaEnabled !== undefined)
+                        "
+                        class="mt-2 space-y-3"
+                      >
                         <div
                           class="grid gap-2 text-xs [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]"
                         >
                           <div
+                            v-if="stateFor(task).plan"
                             class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2"
                           >
                             <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
@@ -1008,6 +1021,7 @@ watch(
                             </p>
                           </div>
                           <div
+                            v-if="stateFor(task).plan"
                             class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 p-2"
                           >
                             <p class="text-[12px] font-medium text-slate-500 dark:text-slate-400">
@@ -1034,8 +1048,10 @@ watch(
                           </div>
                           <div
                             v-if="
-                              stateFor(task).plan?.provider !== 'zibo' &&
-                              (task.itemType === 'aircraft' || stateFor(task).plan?.hasBetaConfig)
+                              stateFor(task).legacyBetaEnabled !== undefined ||
+                              (stateFor(task).plan &&
+                                stateFor(task).plan?.provider !== 'zibo' &&
+                                task.itemType === 'aircraft')
                             "
                             class="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/70 dark:to-slate-900/50 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-none"
                           >
@@ -1044,7 +1060,7 @@ watch(
                             </p>
                             <div class="mt-2 space-y-2">
                               <label
-                                v-if="stateFor(task).plan?.hasBetaConfig"
+                                v-if="stateFor(task).legacyBetaEnabled !== undefined"
                                 class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
                                 :class="
                                   taskUpdateOptionsDisabled(task)
@@ -1055,14 +1071,9 @@ watch(
                                 <input
                                   type="checkbox"
                                   class="peer sr-only"
-                                  :checked="stateFor(task).plan?.legacyBetaEnabled"
+                                  :checked="stateFor(task).legacyBetaEnabled"
                                   :disabled="taskUpdateOptionsDisabled(task)"
-                                  @change="
-                                    setTaskBetaPreference(
-                                      task,
-                                      ($event.target as HTMLInputElement).checked,
-                                    )
-                                  "
+                                  @change="setTaskBetaPreference(task, $event)"
                                 />
                                 <span
                                   class="relative h-5 w-9 shrink-0 rounded-full border border-slate-300 bg-slate-200 transition-colors duration-200 dark:border-slate-600 dark:bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform after:duration-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-disabled:opacity-60"
@@ -1070,7 +1081,7 @@ watch(
                                 <span class="font-semibold">{{ t('management.useBeta') }}</span>
                               </label>
                               <label
-                                v-if="task.itemType === 'aircraft'"
+                                v-if="stateFor(task).plan && task.itemType === 'aircraft'"
                                 class="group flex items-center gap-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 px-2.5 py-2 text-[12px] text-slate-700 dark:text-slate-300"
                                 :class="
                                   taskUpdateOptionsDisabled(task)
@@ -1264,6 +1275,7 @@ watch(
 
                         <p
                           v-if="
+                            stateFor(task).plan &&
                             stateFor(task).plan?.provider !== 'zibo' &&
                             (stateFor(task).plan?.addFiles?.length || 0) === 0 &&
                             (stateFor(task).plan?.replaceFiles?.length || 0) === 0 &&
@@ -1275,7 +1287,14 @@ watch(
                         </p>
                       </div>
 
-                      <p v-else class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      <p
+                        v-if="
+                          !stateFor(task).loadingPlan &&
+                          !stateFor(task).planError &&
+                          !stateFor(task).plan
+                        "
+                        class="mt-2 text-xs text-slate-500 dark:text-slate-400"
+                      >
                         {{ t('management.noPlanYet') }}
                       </p>
                     </div>
