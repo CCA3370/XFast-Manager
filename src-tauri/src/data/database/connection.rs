@@ -108,6 +108,17 @@ pub async fn open_connection_at(db_path: &Path) -> Result<DatabaseConnection, Ap
     Ok(db)
 }
 
+pub(super) async fn open_read_only_at(db_path: &Path) -> Result<DatabaseConnection, ApiError> {
+    let path = db_path.to_path_buf();
+    let mut options = ConnectOptions::new("sqlite:");
+    options
+        .max_connections(1)
+        .connect_timeout(Duration::from_secs(10))
+        .sqlx_logging(false)
+        .map_sqlx_sqlite_opts(move |opts| opts.filename(&path).read_only(true));
+    Database::connect(options).await.map_err(ApiError::from)
+}
+
 /// Open an in-memory database for testing
 #[cfg(test)]
 pub async fn open_memory_connection_async() -> Result<DatabaseConnection, ApiError> {

@@ -977,7 +977,7 @@ fn validate_xplane_root(xplane_path: &str) -> ApiResult<PathBuf> {
     Ok(path)
 }
 
-fn normalize_xplane_key(path: &Path) -> String {
+pub(crate) fn normalize_xplane_key(path: &Path) -> String {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let text = canonical.to_string_lossy().replace('\\', "/");
     if cfg!(windows) {

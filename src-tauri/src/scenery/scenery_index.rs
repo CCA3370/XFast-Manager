@@ -617,10 +617,12 @@ impl SceneryIndexManager {
         }
     }
 
-    /// Check if the scenery index has been created (has any packages)
-    /// Returns true if there are packages in the index, false otherwise
+    /// Only a complete scan establishes a baseline, including for an empty root.
     pub async fn has_index(&self) -> Result<bool> {
-        Ok(self.index_status().await?.index_exists)
+        Ok(SceneryQueries::get_metadata(&self.db, "version")
+            .await
+            .map_err(|e| anyhow!("{}", e))?
+            .is_some())
     }
 
     /// Load index from database or create new empty index
@@ -630,7 +632,7 @@ impl SceneryIndexManager {
             .await
             .map_err(|e| anyhow!("{}", e))?;
 
-        if has_packages {
+        if has_packages || self.has_index().await? {
             SceneryQueries::load_all(&self.db)
                 .await
                 .map_err(|e| anyhow!("{}", e))
@@ -653,8 +655,7 @@ impl SceneryIndexManager {
             .map_err(|e| anyhow!("{}", e))
     }
 
-    /// Rebuild entire index by scanning all scenery packages
-    /// This completely clears the existing index and rebuilds from scratch
+    /// Scan all scenery packages and replace the existing index in one transaction.
     pub async fn rebuild_index(&self) -> Result<SceneryIndex> {
         let custom_scenery_path = self.xplane_path.join("Custom Scenery");
         if !custom_scenery_path.exists() {
@@ -662,16 +663,6 @@ impl SceneryIndexManager {
         }
 
         let first_baseline = !self.has_index().await?;
-        // Clear all existing index data for a fresh rebuild
-        SceneryQueries::clear_all(&self.db)
-            .await
-            .map_err(|e| anyhow!("{}", e))?;
-
-        logger::log_info(
-            "Cleared existing index, starting fresh rebuild",
-            Some("scenery_index"),
-        );
-
         let xplane_path = self.xplane_path.clone();
         let custom_scenery_path = custom_scenery_path.clone();
 
@@ -842,7 +833,7 @@ impl SceneryIndexManager {
             .import_file_state(&mut index)
             .await?;
         }
-        self.save_index(&index).await?;
+        let index = self.update_missing_libraries(index).await?;
         logger::log_info(
             &format!(
                 "Scenery index rebuilt with {} packages",
@@ -850,9 +841,6 @@ impl SceneryIndexManager {
             ),
             Some("scenery_index"),
         );
-
-        // Update missing libraries for all packages using the complete index
-        let index = self.update_missing_libraries(index).await?;
 
         Ok(index)
     }
@@ -1254,12 +1242,7 @@ impl SceneryIndexManager {
         let total_packages = SceneryQueries::get_package_count(&self.db)
             .await
             .map_err(|e| anyhow!("{}", e))?;
-        // A deliberately rebuilt empty installation still has a baseline.
-        let index_exists = total_packages > 0
-            || SceneryQueries::get_metadata(&self.db, "version")
-                .await
-                .map_err(|e| anyhow!("{}", e))?
-                .is_some();
+        let index_exists = self.has_index().await?;
 
         Ok(SceneryIndexStatus {
             index_exists,
@@ -1276,7 +1259,7 @@ impl SceneryIndexManager {
         &self,
         locked_folder_names: Vec<String>,
     ) -> Result<SceneryIndexScanResult> {
-        if !self.index_status().await?.index_exists {
+        if !self.has_index().await? {
             return Ok(SceneryIndexScanResult {
                 index_exists: false,
                 added: Vec::new(),

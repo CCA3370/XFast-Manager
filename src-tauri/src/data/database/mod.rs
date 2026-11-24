@@ -5,6 +5,7 @@
 
 mod connection;
 pub mod entities;
+mod legacy;
 mod migration;
 mod migrations;
 mod queries;
@@ -32,7 +33,7 @@ pub struct DatabaseState {
     directory: std::path::PathBuf,
 }
 
-fn root_identity(root: &str) -> Result<String, crate::error::ApiError> {
+pub(crate) fn root_identity(root: &str) -> Result<String, crate::error::ApiError> {
     if root.trim().is_empty() {
         return Err(crate::error::ApiError::validation(
             "X-Plane path is required",
@@ -53,8 +54,6 @@ fn root_identity(root: &str) -> Result<String, crate::error::ApiError> {
 }
 
 impl DatabaseState {
-    /// Legacy scenery.db has no reliable ownership information. Retain it for
-    /// recovery, but never seed an installation from potentially mixed data.
     pub fn new() -> Self {
         Self::in_directory(crate::app_dirs::get_app_data_dir())
     }
@@ -85,6 +84,12 @@ impl DatabaseState {
         }
         let conn = connection::open_connection_at(&self.path_for_identity(&identity)).await?;
         apply_migrations_async(&conn).await?;
+        if let Err(error) = legacy::import_root_records(&conn, &self.directory, &identity).await {
+            crate::logger::log_error(
+                &format!("Could not recover previous installation records: {error}"),
+                Some("database"),
+            );
+        }
         pools.insert(identity, conn.clone());
         Ok(conn)
     }
@@ -99,6 +104,7 @@ impl DatabaseState {
         reset_schema(&conn).await?;
         let fresh = connection::open_connection_at(&self.path_for_identity(&identity)).await?;
         apply_migrations_async(&fresh).await?;
+        legacy::mark_imported(&fresh).await?;
         pools.insert(identity, fresh);
         // Do not close cloned pools still held by in-flight operations.
         Ok(())
@@ -109,6 +115,7 @@ impl DatabaseState {
 mod root_isolation_tests {
     use super::*;
     use crate::scenery_index::SceneryIndexManager;
+    use sea_orm::{ConnectionTrait, DatabaseBackend, EntityTrait, Set, Statement};
     use std::fs;
 
     #[test]
@@ -207,6 +214,144 @@ mod root_isolation_tests {
             assert_eq!(a_manager.get_stats().await.unwrap().total_packages, 1);
             assert!(a_manager.get_package("Only-B").await.unwrap().is_none());
         });
+    }
+
+    #[tokio::test]
+    async fn legacy_records_are_imported_once_to_their_own_installation() {
+        use entities::{airport_flatten_overrides as flatten, gateway_installs as gateway};
+
+        let temp = tempfile::tempdir().unwrap();
+        let a = temp.path().join("XP-A");
+        let b = temp.path().join("XP-B");
+        let data = temp.path().join("data");
+        let legacy_path = data.join("scenery.db");
+        let legacy = connection::open_connection_at(&legacy_path).await.unwrap();
+        apply_migrations_async(&legacy).await.unwrap();
+        for (root, scenery_id) in [(&a, 42), (&b, 43)] {
+            fs::create_dir_all(root).unwrap();
+            gateway::Entity::insert(gateway::ActiveModel {
+                xplane_path: Set(crate::gateway::normalize_xplane_key(root)),
+                airport_icao: Set("TEST".to_string()),
+                airport_name: Set("Test Airport".to_string()),
+                scenery_id: Set(scenery_id),
+                folder_name: Set("Test Folder".to_string()),
+                artist: Set(None),
+                approved_date: Set(None),
+                installed_at: Set(1),
+                ..Default::default()
+            })
+            .exec(&legacy)
+            .await
+            .unwrap();
+        }
+        fs::write(a.join("apt.dat"), "test").unwrap();
+        for (path, desired, updated) in [(a.clone(), false, 1), (a.join("."), true, 2)] {
+            let xplane_path = path.to_string_lossy().into_owned();
+            #[cfg(windows)]
+            let xplane_path = xplane_path.to_lowercase();
+            flatten::Entity::insert(flatten::ActiveModel {
+                xplane_path: Set(xplane_path),
+                icao: Set("TEST".to_string()),
+                source_path: Set(path.join("apt.dat").display().to_string()),
+                source_kind: Set("default".to_string()),
+                source_label: Set("Default".to_string()),
+                folder_name: Set(None),
+                airport_name: Set("Test Airport".to_string()),
+                desired_flattened: Set(desired),
+                updated_at: Set(updated),
+                ..Default::default()
+            })
+            .exec(&legacy)
+            .await
+            .unwrap();
+        }
+        SceneryQueries::set_metadata(&legacy, "owner", "unknown")
+            .await
+            .unwrap();
+        // Establish the byte baseline after committed WAL frames reach the main file.
+        let checkpoint = legacy
+            .query_one(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "PRAGMA wal_checkpoint(TRUNCATE)",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(checkpoint.try_get_by_index::<i64>(0).unwrap(), 0);
+        legacy.close().await.unwrap();
+        let legacy_before = fs::read(&legacy_path).unwrap();
+
+        let state = DatabaseState::in_directory(data.clone());
+        let a_conn = state
+            .get_for_root(a.join(".").to_str().unwrap())
+            .await
+            .unwrap();
+        let b_conn = state.get_for_root(b.to_str().unwrap()).await.unwrap();
+        let rows = gateway::Entity::find().all(&a_conn).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].scenery_id, 42);
+        let rows = gateway::Entity::find().all(&b_conn).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].scenery_id, 43);
+        let overrides = flatten::Entity::find().all(&a_conn).await.unwrap();
+        assert_eq!(overrides.len(), 1);
+        assert!(overrides[0].desired_flattened);
+        assert_eq!(
+            overrides[0].xplane_path,
+            root_identity(a.to_str().unwrap()).unwrap()
+        );
+        assert!(flatten::Entity::find()
+            .all(&b_conn)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            SceneryQueries::get_metadata(&a_conn, "owner")
+                .await
+                .unwrap(),
+            None
+        );
+        flatten::Entity::delete_many().exec(&a_conn).await.unwrap();
+        state.reset_for_root(a.to_str().unwrap()).await.unwrap();
+        let reopened = DatabaseState::in_directory(data);
+        let a_again = reopened.get_for_root(a.to_str().unwrap()).await.unwrap();
+        assert!(gateway::Entity::find()
+            .all(&a_again)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(flatten::Entity::find()
+            .all(&a_again)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(fs::read(&legacy_path).unwrap(), legacy_before);
+    }
+
+    #[tokio::test]
+    async fn cached_classification_does_not_skip_first_scenery_baseline() {
+        let temp = tempfile::tempdir().unwrap();
+        let scenery = temp.path().join("Custom Scenery");
+        let package = scenery.join("Only Package");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(package.join("library.txt"), "A\n800\nLIBRARY\n").unwrap();
+        let ini = "SCENERY_PACK_DISABLED Custom Scenery/Only Package/\n";
+        fs::write(scenery.join("scenery_packs.ini"), ini).unwrap();
+        let conn = open_memory_connection_async().await.unwrap();
+        apply_migrations_async(&conn).await.unwrap();
+        let manager = SceneryIndexManager::new(temp.path(), conn);
+
+        manager.get_or_classify(&package).await.unwrap();
+        assert!(!manager.index_status().await.unwrap().index_exists);
+        assert!(!manager.quick_scan_and_update().await.unwrap().index_exists);
+
+        let index = manager.rebuild_index().await.unwrap();
+        assert!(!index.packages["Only Package"].enabled);
+        assert!(manager.index_status().await.unwrap().index_exists);
+        assert_eq!(
+            fs::read_to_string(scenery.join("scenery_packs.ini")).unwrap(),
+            ini
+        );
     }
 
     #[test]

@@ -318,7 +318,7 @@ fn summarize_single_scenery_target(
         airport_name: airport.name.clone(),
         source_kind: AirportFlattenSourceKind::Custom,
         source_label: folder_name.to_string(),
-        source_path: apt_path.display().to_string(),
+        source_path: canonical_source_path(&apt_path),
         folder_name: Some(folder_name.to_string()),
         flattened: airport.flattened,
     }))
@@ -733,21 +733,20 @@ fn search_score(row: &AirportFlattenSearchResult, query_upper: &str) -> (i32, us
 }
 
 fn airport_flatten_cache_key(xplane_root: &Path) -> String {
-    xplane_root.to_string_lossy().to_string()
+    normalize_xplane_root_key(xplane_root)
 }
 
 fn normalize_xplane_root_key(xplane_root: &Path) -> String {
-    let value = xplane_root.to_string_lossy().to_string();
+    let value = xplane_root.to_string_lossy();
+    crate::database::root_identity(&value).unwrap_or_else(|_| value.into_owned())
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        value.to_lowercase()
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        value
-    }
+pub(crate) fn canonical_source_path(path: &Path) -> String {
+    path.canonicalize()
+        .as_deref()
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 fn airport_flatten_cache_path(xplane_root: &Path) -> PathBuf {
@@ -838,7 +837,7 @@ fn candidate_source_files(
         files.push(CandidateSourceFile {
             source_kind: AirportFlattenSourceKind::Default,
             source_label: "Global Airports".to_string(),
-            source_path: default_apt.display().to_string(),
+            source_path: canonical_source_path(&default_apt),
             folder_name: None,
         });
     }
@@ -861,7 +860,7 @@ fn candidate_source_files(
         files.push(CandidateSourceFile {
             source_kind: AirportFlattenSourceKind::Custom,
             source_label: info.folder_name.clone(),
-            source_path: apt_path.display().to_string(),
+            source_path: canonical_source_path(&apt_path),
             folder_name: Some(info.folder_name.clone()),
         });
     }
@@ -955,7 +954,12 @@ async fn load_scenery_packages(
         .await
         .map_err(|error| format!("Failed to load scenery index: {}", error))?;
 
-    if index.packages.is_empty() && xplane_root.join("Custom Scenery").is_dir() {
+    if !manager
+        .has_index()
+        .await
+        .map_err(|error| error.to_string())?
+        && xplane_root.join("Custom Scenery").is_dir()
+    {
         index = manager
             .rebuild_index()
             .await

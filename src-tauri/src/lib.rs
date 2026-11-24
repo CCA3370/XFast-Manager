@@ -4664,8 +4664,8 @@ pub fn run() {
                 ),
             }
 
-            // Open only explicitly scoped databases on demand. The legacy shared
-            // database is preserved untouched because its ownership is ambiguous.
+            // Open installation databases on demand and retain the shared database
+            // as the read-only source for records with a known owner.
             app.manage(DatabaseState::new());
 
             // Log application startup

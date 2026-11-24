@@ -728,34 +728,6 @@ impl SceneryQueries {
             .map_err(ApiError::from)?;
         Ok(count > 0)
     }
-
-    /// Clear all scenery data from the database
-    /// Used before rebuilding index to ensure a completely fresh start
-    pub async fn clear_all(conn: &DatabaseConnection) -> Result<(), ApiError> {
-        required_libraries::Entity::delete_many()
-            .exec(conn)
-            .await
-            .map_err(ApiError::from)?;
-        missing_libraries::Entity::delete_many()
-            .exec(conn)
-            .await
-            .map_err(ApiError::from)?;
-        exported_libraries::Entity::delete_many()
-            .exec(conn)
-            .await
-            .map_err(ApiError::from)?;
-        scenery_packages::Entity::delete_many()
-            .exec(conn)
-            .await
-            .map_err(ApiError::from)?;
-        index_metadata::Entity::delete_many()
-            .exec(conn)
-            .await
-            .map_err(ApiError::from)?;
-
-        logger::log_info("Cleared all scenery index data", Some("database"));
-        Ok(())
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
