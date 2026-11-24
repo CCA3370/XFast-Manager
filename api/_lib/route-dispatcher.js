@@ -1,3 +1,5 @@
+import adCampaignsHandler from './routes/ad-campaigns.js'
+import adImageHandler from './routes/ad-image.js'
 import bugReportHandler from './routes/bug-report.js'
 import feedbackIssueHandler from './routes/feedback-issue.js'
 import issueCommentHandler from './routes/issue-comment.js'
@@ -15,6 +17,8 @@ import releaseRedirectHandler from './routes/release-redirect.js'
 import updateReleaseHandler from './routes/update-release.js'
 
 const handlers = {
+  'ad-campaigns': adCampaignsHandler,
+  'ad-image': adImageHandler,
   'bug-report': bugReportHandler,
   'feedback-issue': feedbackIssueHandler,
   'issue-comment': issueCommentHandler,
