@@ -3,8 +3,10 @@ import { directoryMessages } from './directory.ts'
 import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import { doctorCenterMessages } from './doctorCenter.ts'
+import { startupAdMessages } from './startupAds.ts'
 
 export default {
+  startupAd: startupAdMessages.en,
   settingsPanels: settingsPanelMessages.en,
   settingsSetup: directoryMessages.en,
   healthDetails: healthDetailMessages.en,

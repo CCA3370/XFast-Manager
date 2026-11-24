@@ -121,6 +121,7 @@ export async function hasKey(key: string): Promise<boolean> {
  */
 export const STORAGE_KEYS = {
   XPLANE_PATH: 'xplanePath',
+  HIDDEN_STARTUP_ADS: 'hiddenStartupAds.v1',
   FLIGHT_PLAN_CONFLICT_ACTION: 'flightPlanConflictAction',
   PATCH_MAPPING_PREFIX: 'patchMappings.v1.',
   INSTALL_PREFERENCES: 'installPreferences',

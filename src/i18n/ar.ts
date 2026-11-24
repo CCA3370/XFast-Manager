@@ -4,8 +4,10 @@ import { healthDetailMessages } from './healthDetails.ts'
 import { flightPlanDetailMessages } from './flightPlanDetails.ts'
 import type { LocaleSchema } from './schema'
 import { doctorCenterMessages } from './doctorCenter.ts'
+import { startupAdMessages } from './startupAds.ts'
 
 export default {
+  startupAd: startupAdMessages.ar,
   settingsPanels: settingsPanelMessages.ar,
   settingsSetup: directoryMessages.ar,
   healthDetails: healthDetailMessages.ar,

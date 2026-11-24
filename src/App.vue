@@ -369,6 +369,7 @@
     <SponsorModal :show="showSponsor" @close="showSponsor = false" />
     <IssueUpdateModal />
     <UpdateChangelogModal />
+    <StartupAdModal :ad="startupAd" @dismiss="dismissStartupAd" />
     <FeedbackModal
       v-model:show="feedbackStore.showSubmitModal"
       @dirty-change="handleFeedbackDirtyChange"
@@ -417,10 +418,12 @@ import ContextMenu from '@/components/ContextMenu.vue'
 import SponsorModal from '@/components/SponsorModal.vue'
 import IssueUpdateModal from '@/components/IssueUpdateModal.vue'
 import UpdateChangelogModal from '@/components/UpdateChangelogModal.vue'
+import StartupAdModal from '@/components/StartupAdModal.vue'
 import FeedbackModal from '@/components/FeedbackModal.vue'
 import AddonUpdateDrawer from '@/components/AddonUpdateDrawer.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
-import { registerShortcut } from '@/composables/useKeyboardShortcuts'
+import { registerShortcut, type ShortcutEntry } from '@/composables/useKeyboardShortcuts'
+import { useStartupAd } from '@/composables/useStartupAd'
 
 const { t, locale } = useI18n()
 const store = useAppStore()
@@ -465,6 +468,41 @@ const addonDrawerVisible = computed({
 // Always on top state
 const isAlwaysOnTop = ref(false)
 const showSponsor = ref(false)
+const startupFilesChecked = ref(false)
+const startupChangelogChecked = ref(false)
+const {
+  ad: startupAd,
+  start: startStartupAd,
+  dismiss: dismissStartupAd,
+} = useStartupAd({
+  locale: () => locale.value,
+  canLoad: () => startupFilesChecked.value && route.matched.length > 0,
+  canShow: () => startupChangelogChecked.value,
+  blocked: () =>
+    (route.matched.length > 0 && route.path !== '/') ||
+    store.isAnalyzing ||
+    store.isAnalyzeInProgress ||
+    store.isInstalling ||
+    store.isConfirmationOpen ||
+    !!store.pendingCliArgs?.length ||
+    store.showCompletion ||
+    updateStore.isDownloading ||
+    updateStore.showPostUpdateChangelog ||
+    issueTrackerStore.pendingUpdates.length > 0 ||
+    modalStore.errorModal.visible ||
+    modalStore.confirmModal.visible ||
+    showSponsor.value ||
+    feedbackStore.showSubmitModal ||
+    addonDrawerVisible.value ||
+    !!commandPaletteRef.value?.visible,
+})
+
+function registerAppShortcut(entry: ShortcutEntry) {
+  registerShortcut({
+    ...entry,
+    when: () => !startupAd.value && (entry.when?.() ?? true),
+  })
+}
 
 // Sponsor button: Chinese locale opens the in-app modal; other locales open the Patreon shop.
 function onSponsorClick() {
@@ -1063,6 +1101,7 @@ async function handleGlobalAddonUpdated() {
 }
 
 onMounted(async () => {
+  startStartupAd()
   reconnectNavLayoutObserver()
   schedulePrimaryNavLayout()
   scheduleOverflowNavHeightUpdate()
@@ -1100,63 +1139,63 @@ onMounted(async () => {
   syncLocaleToBackend()
 
   // Register keyboard shortcuts
-  registerShortcut({
+  registerAppShortcut({
     id: 'command-palette-open',
     keys: 'ctrl+shift+p',
     label: t('commandPalette.title'),
     category: t('commandPalette.categoryGlobal'),
     action: () => commandPaletteRef.value?.toggle(),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'nav-install',
     keys: 'ctrl+1',
     label: t('common.home'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/'),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'nav-management',
     keys: 'ctrl+2',
     label: t('management.navTitle'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/management'),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'nav-screenshots',
     keys: 'ctrl+3',
     label: t('screenshot.navTitle'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/screenshots'),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'nav-doctor',
     keys: 'ctrl+4',
     label: t('doctor.navTitle'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/doctor'),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'nav-gateway',
     keys: 'ctrl+5',
     label: t('gatewayManager.navTitle'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/gateway'),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'nav-airport-flatten',
     keys: 'ctrl+6',
     label: t('airportFlatten.navTitle'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/airport-flatten'),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'nav-settings',
     keys: 'ctrl+,',
     label: t('common.settings'),
     category: t('commandPalette.categoryNav'),
     action: () => router.push('/settings'),
   })
-  registerShortcut({
+  registerAppShortcut({
     id: 'command-palette-close',
     keys: 'escape',
     label: t('commandPalette.close'),
@@ -1167,7 +1206,10 @@ onMounted(async () => {
 
   // Keep the first-run directory form clear of update dialogs.
   setTimeout(() => {
-    if (!isOnboardingRoute.value) void updateStore.checkAndShowPostUpdateChangelog()
+    if (isOnboardingRoute.value) return
+    void updateStore.checkAndShowPostUpdateChangelog().finally(() => {
+      startupChangelogChecked.value = true
+    })
   }, 1500)
 
   setTimeout(() => {
@@ -1230,6 +1272,7 @@ onMounted(async () => {
         // (Windows launches separate instances for each file)
         const fileArgs = store.addCliArgsToBatch(event.payload)
         if (fileArgs.length > 0) {
+          dismissStartupAd()
           await router.push('/')
         }
       }
@@ -1248,10 +1291,13 @@ onMounted(async () => {
       logBasic('Launched with arguments', 'app')
       const fileArgs = store.addCliArgsToBatch(args)
       if (fileArgs.length > 0) {
+        dismissStartupAd()
         await router.push('/')
       }
     }
+    startupFilesChecked.value = true
   } catch (error) {
+    dismissStartupAd()
     logError(`Failed to get CLI args on startup: ${error}`, 'app')
   }
 
