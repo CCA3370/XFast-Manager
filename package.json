@@ -29,7 +29,7 @@
     "x-plane",
     "installer"
   ],
-  "author": "3370Tech",
+  "author": "SimWired Labs",
   "license": "GPL-3.0",
   "devDependencies": {
     "@eslint/js": "^10.0.1",

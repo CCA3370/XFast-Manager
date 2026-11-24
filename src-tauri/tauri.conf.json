@@ -34,6 +34,7 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "SimWired Labs",
     "createUpdaterArtifacts": true,
     "targets": ["app", "dmg", "deb", "rpm", "appimage", "msi"],
     "icon": [

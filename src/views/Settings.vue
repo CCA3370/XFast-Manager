@@ -393,7 +393,7 @@
           <div>
             <h2 :class="sectionTitle">XFast Manager</h2>
             <p :class="helpStyle">
-              <span v-if="appVersion">v{{ appVersion }} · </span>© 2026 3370Tech
+              <span v-if="appVersion">v{{ appVersion }} · </span>© 2026 {{ APP_PUBLISHER }}
             </p>
           </div>
         </div>
@@ -427,6 +427,7 @@ import FlightPlanImportPreference from '@/components/FlightPlanImportPreference.
 import SelectDropdown from '@/components/SelectDropdown.vue'
 import SettingToggle from '@/components/SettingToggle.vue'
 import XplaneDirectoryForm from '@/components/XplaneDirectoryForm.vue'
+import { APP_PUBLISHER } from '@/constants/appPublisher'
 import { logger, logDebug, logError } from '@/services/logger'
 import { useAppStore, type LogLevel } from '@/stores/app'
 import { useManagementStore } from '@/stores/management'
