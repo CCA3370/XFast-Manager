@@ -35,6 +35,7 @@ export default {
     confirmDelete: '永久删除 {name}？',
   },
   common: {
+    developedBy: '由 {publisher} 开发',
     home: '安装',
     settings: '设置',
     save: '保存',

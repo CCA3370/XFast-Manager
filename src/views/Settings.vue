@@ -392,6 +392,9 @@
           />
           <div>
             <h2 :class="sectionTitle">XFast Manager</h2>
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-200">
+              {{ t('common.developedBy', { publisher: APP_PUBLISHER }) }}
+            </p>
             <p :class="helpStyle">
               <span v-if="appVersion">v{{ appVersion }} · </span>© 2026 {{ APP_PUBLISHER }}
             </p>

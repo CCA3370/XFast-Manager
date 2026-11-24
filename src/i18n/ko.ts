@@ -35,6 +35,7 @@ export default {
     confirmDelete: '{name}을 영구 삭제할까요?',
   },
   common: {
+    developedBy: '{publisher}에서 개발',
     home: '설치',
     settings: '설정',
     save: '저장',

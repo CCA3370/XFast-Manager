@@ -36,6 +36,7 @@ export default {
     confirmDelete: '{name} dauerhaft löschen?',
   },
   common: {
+    developedBy: 'Entwickelt von {publisher}',
     home: 'Installieren',
     settings: 'Einstellungen',
     save: 'Speichern',

@@ -35,6 +35,7 @@ export default {
     confirmDelete: 'Удалить {name} навсегда?',
   },
   common: {
+    developedBy: 'Разработано {publisher}',
     home: 'Установить',
     settings: 'Настройки',
     save: 'Сохранить',

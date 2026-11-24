@@ -34,6 +34,7 @@ export default {
     confirmDelete: 'Permanently delete {name}?',
   },
   common: {
+    developedBy: 'Developed by {publisher}',
     home: 'Install',
     settings: 'Settings',
     save: 'Save',

@@ -35,6 +35,7 @@ export default {
     confirmDelete: '{name} को हमेशा के लिए हटाएँ?',
   },
   common: {
+    developedBy: '{publisher} द्वारा विकसित',
     home: 'स्थापित करें',
     settings: 'सेटिंग्स',
     save: 'सहेजें',

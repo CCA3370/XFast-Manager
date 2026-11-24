@@ -1,6 +1,6 @@
 <template>
   <div
-    class="home-view h-full flex flex-col p-6 animate-fade-in relative overflow-hidden select-none"
+    class="home-view h-full flex flex-col px-6 pt-6 pb-1.5 animate-fade-in relative overflow-hidden select-none"
   >
     <!-- Background Decor (Dark Mode Only for deep glow) -->
     <div
@@ -410,6 +410,13 @@
         </div>
       </transition>
     </div>
+    <footer
+      class="relative z-10 mt-1.5 shrink-0 text-center text-xs leading-4.5 text-gray-600 dark:text-gray-400"
+    >
+      <bdi class="font-medium">XFast Manager</bdi>
+      <span class="mx-1.5" aria-hidden="true">·</span>
+      <bdi>{{ t('common.developedBy', { publisher: APP_PUBLISHER }) }}</bdi>
+    </footer>
     <FlightPlanConflictModal :conflict="flightPlanConflict" @resolve="resolveFlightPlanConflict" />
   </div>
 </template>
@@ -439,6 +446,7 @@ import AnimatedText from '@/components/AnimatedText.vue'
 import UpdateBanner from '@/components/UpdateBanner.vue'
 import InstallProgressOverlay from '@/components/InstallProgressOverlay.vue'
 import AnalyzingOverlay from '@/components/AnalyzingOverlay.vue'
+import { APP_PUBLISHER } from '@/constants/appPublisher'
 import type { AnalysisResult, InstallProgress, InstallResult, InstallTask } from '@/types'
 import { AddonType } from '@/types'
 import { getErrorMessage } from '@/types'

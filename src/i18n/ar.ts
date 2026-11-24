@@ -35,6 +35,7 @@ export default {
     confirmDelete: 'هل تريد حذف {name} نهائيًا؟',
   },
   common: {
+    developedBy: 'من تطوير {publisher}',
     home: 'تثبيت',
     settings: 'الإعدادات',
     save: 'حفظ',

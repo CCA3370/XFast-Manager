@@ -35,6 +35,7 @@ export default {
     confirmDelete: '{name} を完全に削除しますか？',
   },
   common: {
+    developedBy: '{publisher} が開発',
     home: 'インストール',
     settings: '設定',
     save: '保存',
