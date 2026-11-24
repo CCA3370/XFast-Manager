@@ -23,6 +23,7 @@ const assets = new Map([
 ])
 const primary = {
   id: 'smoke-primary',
+  firstParty: true,
   creative: { image: 'poster.png', alt: 'XFast Manager test poster' },
   localizations: { zh: { image: 'installer.png', alt: 'XFast Manager 安装界面测试图' } },
   url: 'https://example.com/',

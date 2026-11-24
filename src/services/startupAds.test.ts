@@ -97,6 +97,20 @@ describe('startup ad delivery', () => {
     }
   })
 
+  it.each([true, false, undefined, 'true'])(
+    'honors first-party opt-in only for literal true (%s)',
+    async (firstParty) => {
+      serveCampaigns([{ ...campaign, firstParty }])
+      fetchResource.mockResolvedValueOnce(imageResponse())
+
+      const ad = await load()
+
+      expect(ad?.id).toBe(campaign.id)
+      if (firstParty === true) expect(ad).toHaveProperty('firstParty', true)
+      else expect(ad).not.toHaveProperty('firstParty')
+    },
+  )
+
   it('skips unsafe destinations and filenames and falls through a creative that cannot decode', async () => {
     serveCampaigns([
       { ...campaign, url: 'file:///etc/passwd' },

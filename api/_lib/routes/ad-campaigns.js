@@ -114,6 +114,7 @@ function normalizeManifest(raw, revision) {
     const localizations = normalizeLocalizations(row.localizations)
     campaigns.set(row.id, {
       id: row.id,
+      ...(row.firstParty === true && { firstParty: true }),
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       creative,

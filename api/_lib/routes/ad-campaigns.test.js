@@ -157,6 +157,34 @@ describe('ad campaigns route', () => {
     expect(res.body.campaigns.map(({ id }) => id)).toEqual(['valid'])
   })
 
+  it('marks only campaigns with literal first-party opt-in', async () => {
+    mockFetch(
+      refResponse(),
+      Response.json(
+        source([
+          campaign({ id: 'ours', firstParty: true }),
+          campaign({ id: 'external', firstParty: false }),
+          campaign({ id: 'legacy' }),
+          campaign({ id: 'invalid-flag', firstParty: 'true' }),
+        ]),
+      ),
+    )
+
+    const res = await request(apiEntrypoint, '/api/ad-campaigns')
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.campaigns.map(({ id }) => id)).toEqual([
+      'ours',
+      'external',
+      'legacy',
+      'invalid-flag',
+    ])
+    expect(res.body.campaigns[0]).toHaveProperty('firstParty', true)
+    for (const ordinary of res.body.campaigns.slice(1)) {
+      expect(ordinary).not.toHaveProperty('firstParty')
+    }
+  })
+
   it.each(['ref', 'manifest', 'disabled'])('returns an empty document for %s', async (kind) => {
     const missing = new Response(null, { status: 404 })
     if (kind === 'ref') mockFetch(missing)

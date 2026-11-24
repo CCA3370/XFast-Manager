@@ -17,6 +17,7 @@ interface Creative {
 
 export interface StartupAd {
   id: string
+  firstParty?: true
   imageUrl: string
   alt: string
   url: string
@@ -233,6 +234,7 @@ export async function loadStartupAd({
           if (!signal.aborted && isActive(start, end)) {
             return {
               id: campaign.id,
+              ...(campaign.firstParty === true && { firstParty: true }),
               imageUrl,
               alt: creative.alt,
               url,
