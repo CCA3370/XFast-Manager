@@ -25,6 +25,7 @@ export type ApiErrorCode =
   | 'migration_failed'
   | 'environment_error'
   | 'external_software_blocked'
+  | 'application_control_blocked'
   | 'internal'
 
 export type ApiErrorOrigin =

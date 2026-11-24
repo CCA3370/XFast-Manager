@@ -43,6 +43,8 @@ pub enum ApiErrorCode {
     EnvironmentError,
     /// Antivirus or another external security product blocked an operation
     ExternalSoftwareBlocked,
+    /// A Windows application control policy blocked a file (system error 4551)
+    ApplicationControlBlocked,
 }
 
 impl fmt::Display for ApiErrorCode {
@@ -66,6 +68,7 @@ impl fmt::Display for ApiErrorCode {
             ApiErrorCode::Internal => write!(f, "internal"),
             ApiErrorCode::EnvironmentError => write!(f, "environment_error"),
             ApiErrorCode::ExternalSoftwareBlocked => write!(f, "external_software_blocked"),
+            ApiErrorCode::ApplicationControlBlocked => write!(f, "application_control_blocked"),
         }
     }
 }
@@ -126,7 +129,8 @@ impl ApiError {
             | ApiErrorCode::ConflictExists
             | ApiErrorCode::InsufficientSpace
             | ApiErrorCode::EnvironmentError
-            | ApiErrorCode::ExternalSoftwareBlocked => (ApiErrorOrigin::Environment, false),
+            | ApiErrorCode::ExternalSoftwareBlocked
+            | ApiErrorCode::ApplicationControlBlocked => (ApiErrorOrigin::Environment, false),
         }
     }
 
@@ -272,6 +276,7 @@ fn classify_windows_raw_os_error(code: i32) -> Option<ApiErrorCode> {
         5 => Some(ApiErrorCode::PermissionDenied),
         21 | 32 | 33 | 999 => Some(ApiErrorCode::EnvironmentError),
         225 | 483 => Some(ApiErrorCode::ExternalSoftwareBlocked),
+        4551 => Some(ApiErrorCode::ApplicationControlBlocked),
         _ => None,
     }
 }
@@ -627,6 +632,28 @@ mod tests {
         assert_eq!(
             classify_windows_raw_os_error(225),
             Some(ApiErrorCode::ExternalSoftwareBlocked)
+        );
+    }
+
+    #[test]
+    fn windows_application_control_has_a_dedicated_environment_category() {
+        let code = classify_windows_raw_os_error(4551)
+            .expect("4551 must be recognized independently of the system message language");
+        assert_eq!(
+            serde_json::to_value(&code).unwrap(),
+            "application_control_blocked"
+        );
+        let error = ApiError::new(code, "Windows application control blocked a file");
+        assert_eq!(error.origin, ApiErrorOrigin::Environment);
+        assert!(!error.reportable);
+    }
+
+    #[test]
+    fn native_io_conversion_only_interprets_4551_as_a_windows_error_on_windows() {
+        let error = ApiError::from(io::Error::from_raw_os_error(4551));
+        assert_eq!(
+            serde_json::to_value(error.code).unwrap() == "application_control_blocked",
+            cfg!(target_os = "windows")
         );
     }
 }

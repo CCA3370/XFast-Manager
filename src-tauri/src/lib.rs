@@ -29,6 +29,9 @@ mod startup_migrations;
 mod task_control;
 #[path = "core/vercel_api.rs"]
 mod vercel_api;
+#[cfg(any(target_os = "windows", test))]
+#[path = "core/xplane_launch.rs"]
+mod xplane_launch;
 #[path = "core/zip_package.rs"]
 mod zip_package;
 
@@ -1997,29 +2000,11 @@ fn launch_xplane(xplane_path: String, args: Option<Vec<String>>) -> Result<(), S
             .ok_or_else(|| "X-Plane executable not found (expected X-Plane*.exe)".to_string())?;
 
         // Try to launch without elevation first
-        let result = std::process::Command::new(&exe_path)
+        std::process::Command::new(&exe_path)
             .args(&extra_args)
-            .spawn();
-
-        // If it fails with error 740 (requires elevation), inform user
-        match result {
-            Ok(_) => {
-                logger::log_info("X-Plane launched successfully", Some("app"));
-            }
-            Err(e) if e.raw_os_error() == Some(740) => {
-                // Return a structured error that frontend can handle
-                return Err(format!("ELEVATION_REQUIRED:{}", exe_path.display()));
-            }
-            Err(e) if e.raw_os_error() == Some(193) => {
-                return Err(
-                    "Selected X-Plane executable is not a valid Windows executable. Check that the X-Plane path points to the real X-Plane installation."
-                        .to_string(),
-                );
-            }
-            Err(e) => {
-                return Err(format!("Failed to launch X-Plane: {}", e));
-            }
-        }
+            .spawn()
+            .map_err(|error| xplane_launch::windows_launch_error(&exe_path, error))?;
+        logger::log_info("X-Plane launched successfully", Some("app"));
     }
 
     #[cfg(target_os = "macos")]

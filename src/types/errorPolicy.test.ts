@@ -35,6 +35,7 @@ describe('error report policy', () => {
     'cancelled',
     'insufficient_space',
     'timeout',
+    'application_control_blocked',
   ] as const)('does not report structured %s errors', (code) => {
     expect(getErrorReportPolicy({ code, message: 'Example failure' }).reportable).toBe(false)
   })

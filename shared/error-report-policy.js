@@ -20,6 +20,7 @@ export const NON_REPORTABLE_ERROR_CODES = Object.freeze([
   'timeout',
   'environment_error',
   'external_software_blocked',
+  'application_control_blocked',
 ])
 
 const NON_REPORTABLE_CODE_SET = new Set(NON_REPORTABLE_ERROR_CODES)
