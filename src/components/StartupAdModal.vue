@@ -5,13 +5,23 @@
       ref="dialog"
       :dir="locale === 'ar' ? 'rtl' : 'ltr'"
       aria-labelledby="startup-ad-title"
+      :aria-describedby="ad.firstParty === true ? 'startup-ad-publisher' : undefined"
       class="startup-ad-dialog m-auto rounded-2xl bg-white p-0 text-slate-900 shadow-2xl dark:bg-gray-900 dark:text-slate-100"
       @cancel.prevent="dismiss"
     >
-      <header class="flex items-center justify-between gap-3 py-2.5 ps-5 pe-3">
-        <h2 id="startup-ad-title" class="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {{ t('startupAd.label') }}
-        </h2>
+      <header class="flex items-center justify-between gap-4 py-2.5 ps-5 pe-3">
+        <div class="min-w-0">
+          <h2 id="startup-ad-title" class="text-sm leading-5 font-semibold">
+            {{ t('startupAd.label') }}
+          </h2>
+          <p
+            v-if="ad.firstParty === true"
+            id="startup-ad-publisher"
+            class="mt-0.5 text-xs leading-4 text-slate-600 dark:text-slate-400"
+          >
+            {{ t('startupAd.firstParty', { publisher: APP_PUBLISHER }) }}
+          </p>
+        </div>
         <button
           ref="closeButton"
           type="button"
@@ -30,20 +40,40 @@
         </button>
       </header>
 
-      <div class="flex justify-center px-4 pb-4">
+      <div class="px-4 pb-3">
         <button
           type="button"
-          class="startup-ad-image-button block min-w-0 max-w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 transition-colors hover:border-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 aria-disabled:cursor-wait motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-950 dark:hover:border-blue-400 dark:focus-visible:outline-blue-400"
-          :aria-label="t('startupAd.open', { alt: ad.alt })"
+          class="startup-ad-image-button group grid w-full min-w-0 cursor-pointer overflow-hidden rounded-xl border border-slate-200 text-start transition-colors hover:border-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 aria-disabled:cursor-wait motion-reduce:transition-none dark:border-slate-700 dark:hover:border-blue-400 dark:focus-visible:outline-blue-400"
+          aria-labelledby="startup-ad-action-label"
+          aria-describedby="startup-ad-action-description"
           :aria-disabled="opening"
           @click="openAd"
         >
-          <img
-            :src="ad.imageUrl"
-            :alt="ad.alt"
-            class="startup-ad-image rounded-[11px]"
-            draggable="false"
-          />
+          <span class="grid min-w-0 place-items-center bg-slate-100 dark:bg-slate-950">
+            <img :src="ad.imageUrl" :alt="ad.alt" class="startup-ad-image" draggable="false" />
+          </span>
+          <span
+            class="flex min-h-10 items-center justify-between gap-3 border-t border-slate-200 bg-white px-3.5 py-2.5 text-sm leading-5 font-semibold text-blue-700 transition-colors group-hover:bg-blue-50 group-active:bg-blue-100 motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-800 dark:text-blue-300 dark:group-hover:bg-slate-700 dark:group-active:bg-slate-700/75"
+          >
+            <span id="startup-ad-action-label">{{ t('startupAd.details') }}</span>
+            <svg
+              aria-hidden="true"
+              class="size-4 shrink-0 rtl:-scale-x-100"
+              viewBox="0 0 20 20"
+              fill="none"
+            >
+              <path
+                d="M10 4.75h5.25V10m0-5.25L8 12m6.5-.5v3.25a.5.5 0 0 1-.5.5H5.25a.5.5 0 0 1-.5-.5V6a.5.5 0 0 1 .5-.5H8.5"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+              />
+            </svg>
+          </span>
+          <span id="startup-ad-action-description" class="sr-only">
+            {{ t('startupAd.open', { alt: ad.alt }) }}
+          </span>
         </button>
       </div>
 
@@ -90,6 +120,7 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
+import { APP_PUBLISHER } from '@/constants/appPublisher'
 import { parseStartupAdUrl, setStartupAdSeen, type StartupAd } from '@/services/startupAds'
 
 const props = defineProps<{ ad: StartupAd | null }>()
@@ -178,8 +209,8 @@ onBeforeUnmount(() => dialog.value?.close())
 <style scoped>
 .startup-ad-dialog {
   width: max-content;
-  min-width: min(24rem, calc(100% - 2rem));
-  max-width: min(42rem, calc(100% - 2rem));
+  min-width: min(25rem, calc(100% - 2rem));
+  max-width: min(44rem, calc(100% - 2rem));
   max-height: calc(100% - 2rem);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -192,7 +223,7 @@ onBeforeUnmount(() => dialog.value?.close())
 .startup-ad-image {
   display: block;
   max-width: 100%;
-  max-height: min(29rem, 65vh);
+  max-height: min(31rem, max(10rem, calc(100vh - 13rem)));
   width: auto;
   height: auto;
   object-fit: contain;

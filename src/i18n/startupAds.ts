@@ -1,6 +1,8 @@
 export const startupAdMessages = {
   en: {
     label: 'Advertisement',
+    firstParty: 'A {publisher} product',
+    details: 'Learn more',
     open: 'Open advertisement in your browser: {alt}',
     hide: 'Don’t show this advertisement again',
     openFailed: 'Couldn’t open the advertisement link.',
@@ -8,6 +10,8 @@ export const startupAdMessages = {
   },
   zh: {
     label: '广告',
+    firstParty: '{publisher} 自家产品',
+    details: '查看详情',
     open: '在浏览器中打开广告：{alt}',
     hide: '不再显示此广告',
     openFailed: '无法打开广告链接。',
@@ -15,6 +19,8 @@ export const startupAdMessages = {
   },
   ar: {
     label: 'إعلان',
+    firstParty: 'منتج من {publisher}',
+    details: 'مزيد من التفاصيل',
     open: 'افتح الإعلان في المتصفح: {alt}',
     hide: 'عدم عرض هذا الإعلان مرة أخرى',
     openFailed: 'تعذر فتح رابط الإعلان.',
@@ -22,6 +28,8 @@ export const startupAdMessages = {
   },
   de: {
     label: 'Werbung',
+    firstParty: 'Ein Produkt von {publisher}',
+    details: 'Mehr erfahren',
     open: 'Werbung im Browser öffnen: {alt}',
     hide: 'Diese Werbung nicht mehr anzeigen',
     openFailed: 'Der Werbelink konnte nicht geöffnet werden.',
@@ -29,6 +37,8 @@ export const startupAdMessages = {
   },
   es: {
     label: 'Publicidad',
+    firstParty: 'Un producto de {publisher}',
+    details: 'Más información',
     open: 'Abrir el anuncio en el navegador: {alt}',
     hide: 'No volver a mostrar este anuncio',
     openFailed: 'No se pudo abrir el enlace del anuncio.',
@@ -36,6 +46,8 @@ export const startupAdMessages = {
   },
   fr: {
     label: 'Publicité',
+    firstParty: 'Un produit de {publisher}',
+    details: 'En savoir plus',
     open: 'Ouvrir la publicité dans le navigateur : {alt}',
     hide: 'Ne plus afficher cette publicité',
     openFailed: 'Impossible d’ouvrir le lien de la publicité.',
@@ -43,6 +55,8 @@ export const startupAdMessages = {
   },
   hi: {
     label: 'विज्ञापन',
+    firstParty: '{publisher} का उत्पाद',
+    details: 'और जानें',
     open: 'ब्राउज़र में विज्ञापन खोलें: {alt}',
     hide: 'यह विज्ञापन दोबारा न दिखाएँ',
     openFailed: 'विज्ञापन का लिंक नहीं खुल सका।',
@@ -50,6 +64,8 @@ export const startupAdMessages = {
   },
   ja: {
     label: '広告',
+    firstParty: '{publisher} の自社製品',
+    details: '詳しく見る',
     open: 'ブラウザーで広告を開く：{alt}',
     hide: 'この広告を今後表示しない',
     openFailed: '広告のリンクを開けませんでした。',
@@ -57,6 +73,8 @@ export const startupAdMessages = {
   },
   ko: {
     label: '광고',
+    firstParty: '{publisher}의 자체 제품',
+    details: '자세히 보기',
     open: '브라우저에서 광고 열기: {alt}',
     hide: '이 광고 다시 보지 않기',
     openFailed: '광고 링크를 열 수 없습니다.',
@@ -64,6 +82,8 @@ export const startupAdMessages = {
   },
   pt: {
     label: 'Publicidade',
+    firstParty: 'Um produto da {publisher}',
+    details: 'Saiba mais',
     open: 'Abrir o anúncio no navegador: {alt}',
     hide: 'Não mostrar este anúncio novamente',
     openFailed: 'Não foi possível abrir o link do anúncio.',
@@ -71,6 +91,8 @@ export const startupAdMessages = {
   },
   ru: {
     label: 'Реклама',
+    firstParty: 'Продукт от {publisher}',
+    details: 'Подробнее',
     open: 'Открыть рекламу в браузере: {alt}',
     hide: 'Больше не показывать эту рекламу',
     openFailed: 'Не удалось открыть рекламную ссылку.',

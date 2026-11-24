@@ -31,6 +31,10 @@ function getDialog() {
   return new DOMWrapper(document.body).get<HTMLDialogElement>('dialog.startup-ad-dialog')
 }
 
+function getAdAction() {
+  return getDialog().get('button[aria-labelledby="startup-ad-action-label"]')
+}
+
 enableAutoUnmount(afterEach)
 
 beforeEach(() => {
@@ -48,6 +52,8 @@ describe('startup ad dialog', () => {
     const dialog = getDialog()
     expect(dialog.element.open).toBe(true)
     expect(dialog.get('h2').text()).toBe('Advertisement')
+    expect(dialog.find('#startup-ad-publisher').exists()).toBe(false)
+    expect(dialog.attributes('aria-describedby')).toBeUndefined()
     expect(dialog.get('img').attributes('alt')).toBe(campaign.alt)
     expect(document.activeElement).toBe(dialog.get('button[aria-label="Close"]').element)
     expect(dialog.get<HTMLInputElement>('input').element.checked).toBe(false)
@@ -58,14 +64,37 @@ describe('startup ad dialog', () => {
     expect(setStartupAdSeen).not.toHaveBeenCalled()
   })
 
-  it('opens the ad only from the image control and dismisses on successful browser launch', async () => {
+  it('identifies an advertised first-party product in the current language', async () => {
+    render({ ...campaign, firstParty: true })
+    await flushPromises()
+
+    const dialog = getDialog()
+    expect(dialog.get('h2').text()).toBe('Advertisement')
+    expect(dialog.get('#startup-ad-publisher').text()).toBe('A SimWired Labs product')
+    expect(dialog.attributes('aria-describedby')).toBe('startup-ad-publisher')
+
+    i18n.global.locale.value = 'zh'
+    await flushPromises()
+    expect(dialog.get('h2').text()).toBe('广告')
+    expect(dialog.get('#startup-ad-publisher').text()).toBe('SimWired Labs 自家产品')
+    expect(getAdAction().get('#startup-ad-action-label').text()).toBe('查看详情')
+
+    i18n.global.locale.value = 'ar'
+    await flushPromises()
+    expect(dialog.attributes('dir')).toBe('rtl')
+    expect(dialog.get('#startup-ad-publisher').text()).toBe('منتج من SimWired Labs')
+  })
+
+  it('shares one browser action between the artwork and the visible details cue', async () => {
     const wrapper = render()
     await flushPromises()
     expect(invoke).not.toHaveBeenCalled()
 
-    const imageButton = getDialog().get('button[aria-label^="Open advertisement"]')
-    expect(imageButton.attributes('aria-label')).toContain(campaign.alt)
-    await imageButton.trigger('click')
+    const action = getAdAction()
+    expect(action.get('#startup-ad-action-label').text()).toBe('Learn more')
+    expect(action.attributes('aria-describedby')).toBe('startup-ad-action-description')
+    expect(action.get('#startup-ad-action-description').text()).toContain(campaign.alt)
+    await action.get('img').trigger('click')
     await flushPromises()
 
     expect(invoke).toHaveBeenCalledExactlyOnceWith('open_url', { url: campaign.url })
@@ -76,14 +105,14 @@ describe('startup ad dialog', () => {
     vi.mocked(invoke).mockRejectedValueOnce(new Error('Browser launch failed'))
     const wrapper = render()
     await flushPromises()
-    await getDialog().get('button[aria-label^="Open advertisement"]').trigger('click')
+    await getAdAction().get('#startup-ad-action-label').trigger('click')
     await flushPromises()
 
     expect(getDialog().get('[role="alert"]').text()).toContain('Couldn’t open')
     expect(wrapper.emitted('dismiss')).toBeUndefined()
 
     await wrapper.setProps({ ad: { ...campaign, url: 'javascript:alert(1)' } })
-    await getDialog().get('button[aria-label^="Open advertisement"]').trigger('click')
+    await getAdAction().trigger('click')
     expect(invoke).toHaveBeenCalledTimes(1)
     expect(getDialog().element.open).toBe(true)
   })
