@@ -23,7 +23,7 @@
   </a>
 </p>
 
-XFast Manager makes installing and managing X-Plane addons effortless. Drop in a file and get a ready-to-fly setup in minutes. Available for Windows, macOS, and Linux.
+Developed by SimWired Labs, XFast Manager makes installing and managing X-Plane addons effortless. Drop in a file and get a ready-to-fly setup in minutes. Available for Windows, macOS, and Linux.
 
 ---
 
