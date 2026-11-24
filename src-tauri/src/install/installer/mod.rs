@@ -457,8 +457,9 @@ fn format_install_error_for_display(error: &anyhow::Error) -> String {
         || lower.contains("failed to open rar")
         || lower.contains("failed to read rar")
     {
-        return "This RAR archive could not be extracted. Make sure all RAR volumes are present in the same folder and that the archive is not still downloading or corrupted."
-            .to_string();
+        return format!(
+            "This RAR archive could not be read. Make sure the download has finished and all volumes are present, then test the archive with WinRAR or 7-Zip.\n{raw}"
+        );
     }
 
     if lower.contains("checksumverificationfailed")
@@ -2437,6 +2438,16 @@ impl Installer {
             } else {
                 self.prepare_task(task, &mut archives, &mut sevenz_archives)
             };
+            if let Err(error) = &preparation {
+                logger::log_error(
+                    &format!(
+                        "Installation preparation failed for {} (source: {}): {error:#}",
+                        task.display_name,
+                        task_source_path(task).display()
+                    ),
+                    Some("installer"),
+                );
+            }
             let size = preparation.as_ref().map_or(0, |prepared| prepared.size);
             prepared.push(preparation);
             task_sizes.push(size);
@@ -2558,7 +2569,7 @@ impl Installer {
             }
             prepared.sevenz = Some(sevenz);
         } else if format == Some(ArchiveFormat::Rar) {
-            prepared.size = self.get_rar_size(
+            prepared.size = Self::get_rar_size(
                 source,
                 task.archive_internal_root.as_deref(),
                 task.password.as_deref(),
@@ -2756,7 +2767,7 @@ impl Installer {
                 self.get_7z_size(archive, internal_root)
             }
             Some(crate::archive_input::ArchiveFormat::Rar) => {
-                self.get_rar_size(archive, internal_root, None)
+                Self::get_rar_size(archive, internal_root, None)
             }
             // Non-archive files (e.g. standalone Lua scripts) are installed by direct copy.
             _ => Ok(fs::metadata(archive)?.len()),
@@ -2826,23 +2837,16 @@ impl Installer {
     }
 
     /// Get uncompressed size of RAR archive
-    fn get_rar_size(
-        &self,
-        archive: &Path,
-        root: Option<&str>,
-        password: Option<&str>,
-    ) -> Result<u64> {
-        let prepared = crate::archive_input::prepare_archive_for_read(
-            archive,
-            crate::archive_input::ArchiveFormat::Rar,
-        )?;
-        let input = match password {
-            Some(password) => unrar::Archive::with_password(prepared.read_path(), password),
-            None => unrar::Archive::new(prepared.read_path()),
-        };
+    fn get_rar_size(archive: &Path, root: Option<&str>, password: Option<&str>) -> Result<u64> {
+        let entries =
+            crate::archive_input::read_rar_entries(archive, password).with_context(|| {
+                format!(
+                    "RAR installation preflight failed for {}",
+                    archive.display()
+                )
+            })?;
         let mut total = 0u64;
-        for entry in input.open_for_listing()? {
-            let entry = entry?;
+        for entry in entries {
             if entry.is_file()
                 && archive_entry_destination(&entry.filename.to_string_lossy(), root).is_some()
             {
@@ -2856,6 +2860,55 @@ impl Installer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rar_preflight_checks_the_complete_archive_before_filtering_the_selected_root() {
+        use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempfile::tempdir().unwrap();
+            let path = temp.path().join("package.rar");
+            let mut fixture = stored_rar(
+                version,
+                &[
+                    ("Selected/texture.dds", b"selected bytes"),
+                    ("Other/readme.txt", b"other bytes"),
+                ],
+            );
+            fs::write(&path, &fixture.bytes).unwrap();
+            assert_eq!(
+                Installer::get_rar_size(&path, Some("Selected"), None).unwrap(),
+                14
+            );
+
+            fixture.bytes[fixture.header_offsets[1]] ^= 1;
+            fs::write(&path, fixture.bytes).unwrap();
+            let error = Installer::get_rar_size(&path, Some("Selected"), None).unwrap_err();
+            let message = format_install_error_for_display(&error);
+            assert!(message.contains("RAR installation preflight failed"));
+            assert!(message.contains("package.rar"));
+            assert!(message.contains("File header damaged"));
+            assert_eq!(
+                fs::read_dir(temp.path()).unwrap().count(),
+                1,
+                "preflight must not create a staging directory or destination files"
+            );
+        }
+    }
+
+    #[test]
+    fn rar_preflight_error_keeps_the_phase_source_and_native_failure() {
+        let error = anyhow::Error::new(unrar::error::UnrarError::from(
+            unrar::error::Code::BadData,
+            unrar::error::When::Read,
+        ))
+        .context("Failed to read RAR archive entry 2 in downloaded.rar")
+        .context("RAR installation preflight failed");
+        let message = format_install_error_for_display(&error);
+        assert!(message.contains("RAR installation preflight failed"));
+        assert!(message.contains("downloaded.rar"));
+        assert!(message.contains("File header damaged"));
+    }
 
     #[cfg(windows)]
     #[test]

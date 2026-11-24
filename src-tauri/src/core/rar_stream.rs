@@ -221,6 +221,147 @@ impl Drop for RarStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+    #[test]
+    fn stored_rar4_and_rar5_stream_complete_members() -> Result<()> {
+        let large_payload: Vec<u8> = (0..192 * 1024 + 257)
+            .map(|index| (index % 251) as u8)
+            .collect();
+        let entries: [(&str, &[u8]); 2] = [
+            ("[60NG] Jet2/objects/fuselage.dds", large_payload.as_slice()),
+            ("[60NG] Jet2/readme.txt", b"selected RAR entry"),
+        ];
+
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempfile::tempdir()?;
+            let archive = temp.path().join("fixture.rar");
+            std::fs::write(&archive, stored_rar(version, &entries).bytes)?;
+            let mut stream = RarStream::open(&archive, None)?;
+
+            for &(name, expected) in &entries {
+                let member = stream.next()?.expect("expected the next archive member");
+                assert_eq!(member.name, name, "{version:?}");
+                assert_eq!(member.size, expected.len() as u64, "{version:?}");
+                assert!(!member.directory && !member.redirected, "{version:?}");
+                let mut output = Vec::new();
+                stream.read(|bytes| {
+                    output.extend_from_slice(bytes);
+                    Ok(())
+                })?;
+                assert_eq!(output, expected, "{version:?}: {name}");
+            }
+            assert!(stream.next()?.is_none(), "{version:?}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn damaged_later_rar_header_fails_complete_traversal() -> Result<()> {
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempfile::tempdir()?;
+            let archive = temp.path().join("damaged-header.rar");
+            let mut fixture = stored_rar(
+                version,
+                &[
+                    ("first.txt", b"valid first member"),
+                    ("second.txt", b"second member"),
+                ],
+            );
+            fixture.bytes[fixture.header_offsets[1]] ^= 1;
+            std::fs::write(&archive, fixture.bytes)?;
+
+            let mut stream = RarStream::open(&archive, None)?;
+            assert_eq!(
+                stream.next()?.expect("first header is valid").name,
+                "first.txt"
+            );
+            let mut first = Vec::new();
+            stream.read(|bytes| {
+                first.extend_from_slice(bytes);
+                Ok(())
+            })?;
+            assert_eq!(first, b"valid first member", "{version:?}");
+            // UnRAR can defer a header CRC error until the next end-of-archive
+            // check. Readable members must not turn that error into success.
+            let completion = (|| -> Result<()> {
+                while stream.next()?.is_some() {
+                    stream.read(|_| Ok(()))?;
+                }
+                Ok(())
+            })();
+            assert!(
+                completion.is_err(),
+                "{version:?}: damaged archive completed successfully"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rar_payload_crc_failure_is_detected_after_successful_header_listing() -> Result<()> {
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempfile::tempdir()?;
+            let archive = temp.path().join("damaged-data.rar");
+            let mut fixture = stored_rar(version, &[("entry.txt", b"payload with a valid header")]);
+            fixture.bytes[fixture.data_offsets[0]] ^= 1;
+            std::fs::write(&archive, fixture.bytes)?;
+
+            let mut listing = RarStream::open(&archive, None)?;
+            assert_eq!(
+                listing.next()?.expect("header remains valid").name,
+                "entry.txt"
+            );
+            listing.skip()?;
+            assert!(listing.next()?.is_none(), "{version:?}");
+
+            let mut stream = RarStream::open(&archive, None)?;
+            assert!(stream.next()?.is_some());
+            assert!(
+                stream.read(|_| Ok(())).is_err(),
+                "{version:?}: bad data CRC was accepted"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn rar_callback_cancellation_and_write_errors_preserve_the_original_error() -> Result<()> {
+        let payload = vec![0x42; 128 * 1024 + 1];
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempfile::tempdir()?;
+            let archive = temp.path().join("callback.rar");
+            std::fs::write(
+                &archive,
+                stored_rar(version, &[("entry.bin", &payload)]).bytes,
+            )?;
+
+            for (kind, message) in [
+                (io::ErrorKind::Interrupted, "Cancelled by user"),
+                (
+                    io::ErrorKind::WriteZero,
+                    "Output destination stopped accepting bytes",
+                ),
+            ] {
+                let mut stream = RarStream::open(&archive, None)?;
+                assert!(stream.next()?.is_some());
+                let mut called = false;
+                let error = stream
+                    .read(|_| {
+                        called = true;
+                        Err(io::Error::new(kind, message))
+                    })
+                    .expect_err("callback failure must stop extraction");
+                assert!(called, "{version:?}: callback was not exercised");
+                let original = error
+                    .downcast_ref::<io::Error>()
+                    .expect("original I/O error");
+                assert_eq!(original.kind(), kind, "{version:?}");
+                assert_eq!(original.to_string(), message, "{version:?}");
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn local_rar_fixture_streams_selected_member_when_supplied() -> Result<()> {

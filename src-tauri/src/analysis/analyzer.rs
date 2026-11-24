@@ -391,7 +391,7 @@ impl Analyzer {
     }
 
     fn format_scan_error_for_display(path_str: &str, error: &anyhow::Error) -> String {
-        let raw = error.to_string();
+        let raw = format!("{error:#}");
         let lower = raw.to_ascii_lowercase();
         let prefix = format!("{} ({})", tr(LogMsg::ScanFailed), path_str);
 
@@ -1309,34 +1309,35 @@ impl Analyzer {
         }
 
         // Try to read actual uncompressed size from RAR archive
-        let estimated_uncompressed = match unrar::Archive::new(archive_path).open_for_listing() {
-            Ok(archive) => {
-                let mut total: u64 = 0;
-                let mut file_count: usize = 0;
-                for e in archive.flatten() {
-                    total = total.saturating_add(e.unpacked_size);
-                    file_count += 1;
-                }
+        let estimated_uncompressed =
+            match crate::archive_input::read_rar_entries(archive_path, None) {
+                Ok(archive) => {
+                    let mut total: u64 = 0;
+                    let mut file_count: usize = 0;
+                    for e in archive {
+                        total = total.saturating_add(e.unpacked_size);
+                        file_count += 1;
+                    }
 
-                // Cache the result
-                if total > 0 {
-                    crate::cache::cache_metadata(archive_path, total, file_count);
-                    total
-                } else {
-                    // Fallback to estimation if no size info
+                    // Cache the result
+                    if total > 0 {
+                        crate::cache::cache_metadata(archive_path, total, file_count);
+                        total
+                    } else {
+                        // Fallback to estimation if no size info
+                        archive_size.saturating_mul(5)
+                    }
+                }
+                Err(e) => {
+                    logger::log_debug(
+                        &format!("Failed to read RAR metadata for size estimation: {e:#}"),
+                        Some("analyzer"),
+                        Some("analyzer.rs"),
+                    );
+                    // If we can't open the archive, use conservative estimate
                     archive_size.saturating_mul(5)
                 }
-            }
-            Err(e) => {
-                logger::log_debug(
-                    &format!("Failed to open RAR for size estimation: {:?}", e),
-                    Some("analyzer"),
-                    Some("analyzer.rs"),
-                );
-                // If we can't open the archive, use conservative estimate
-                archive_size.saturating_mul(5)
-            }
-        };
+            };
 
         self.check_size_warning(archive_size, estimated_uncompressed)
     }
@@ -1410,6 +1411,45 @@ mod tests {
     use super::*;
     use crate::models::{ExtractionChain, NestedArchiveInfo};
     use tempfile::tempdir;
+
+    #[test]
+    fn rar_size_estimation_does_not_cache_a_partial_listing() {
+        use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("partial.rar");
+            let mut fixture = stored_rar(
+                version,
+                &[
+                    ("first.txt", b"valid first member"),
+                    ("second.txt", b"later member"),
+                ],
+            );
+            fixture.bytes[fixture.header_offsets[1]] ^= 1;
+            fs::write(&path, fixture.bytes).unwrap();
+
+            Analyzer::new().estimate_rar_size(&path);
+
+            assert!(
+                crate::cache::get_cached_metadata(&path).is_none(),
+                "an incomplete RAR listing must not become cached metadata"
+            );
+        }
+    }
+
+    #[test]
+    fn rar_scan_error_keeps_the_native_failure_and_source_context() {
+        let error = anyhow::Error::new(unrar::error::UnrarError::from(
+            unrar::error::Code::BadData,
+            unrar::error::When::Read,
+        ))
+        .context("Failed to read RAR archive entry 2 in downloaded.rar");
+        let message = Analyzer::format_scan_error_for_display("downloaded.rar", &error);
+        assert!(message.contains("downloaded.rar"));
+        assert!(message.contains("entry 2"));
+        assert!(message.contains("File header damaged"));
+    }
 
     #[test]
     fn multi_plugin_zip_returns_versions_and_a_shared_source_revision() {

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **RAR Archive Checks** - RAR packages with unreadable file lists are now rejected during analysis instead of appearing ready to install. Installation preparation errors identify the source archive and retain the underlying error details.
 - **Windows Launch Guidance** - When a Windows application control policy prevents X-Plane from starting, the app now explains how to identify the blocked file and policy in Event Viewer while keeping security protections enabled.
 
 ## [1.3.1] - 2026-11-14

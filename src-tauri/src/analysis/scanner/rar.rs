@@ -1,5 +1,31 @@
 use super::*;
 
+fn rar_scan_error(
+    error: anyhow::Error,
+    archive_path: &Path,
+    password: Option<&str>,
+) -> anyhow::Error {
+    use unrar::error::{Code, UnrarError};
+
+    if error
+        .downcast_ref::<UnrarError>()
+        .is_some_and(|error| matches!(error.code, Code::MissingPassword | Code::BadPassword))
+    {
+        if password.is_none() {
+            anyhow::anyhow!(PasswordRequiredError {
+                archive_path: archive_path.to_string_lossy().into_owned(),
+            })
+        } else {
+            error.context(format!(
+                "Wrong password for archive: {}",
+                archive_path.display()
+            ))
+        }
+    } else {
+        error
+    }
+}
+
 impl Scanner {
     /// Scan a RAR archive with context (supports nested archives via temp extraction)
     pub(super) fn scan_rar_with_context(
@@ -8,9 +34,6 @@ impl Scanner {
         ctx: &mut ScanContext,
         password: Option<&str>,
     ) -> Result<Vec<DetectedItem>> {
-        let normalized_archive_path =
-            crate::archive_input::normalize_archive_entry_path(archive_path);
-
         let scan_start = std::time::Instant::now();
         crate::log_debug!(
             &format!("[TIMING] RAR scan started: {}", archive_path.display()),
@@ -38,32 +61,16 @@ impl Scanner {
                 "scanner_timing"
             );
 
-            // Open archive to list files
-            let archive_builder = if let Some(pwd) = password {
-                unrar::Archive::with_password(&normalized_archive_path, pwd)
-            } else {
-                unrar::Archive::new(&normalized_archive_path)
-            };
-
-            let archive = archive_builder
-                .open_for_listing()
-                .map_err(|e| anyhow::anyhow!("Failed to open RAR archive: {:?}", e))?;
-
-            // Find nested archives
-            let nested_archives: Vec<String> = archive
-                .filter_map(|entry| {
-                    if let Ok(e) = entry {
-                        let name = e.filename.to_string_lossy().to_string();
-                        if !e.is_directory() && is_archive_file(&name) {
-                            Some(name)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            // Validate the complete listing before using any nested member names.
+            let nested_archives: Vec<String> =
+                crate::archive_input::read_rar_entries(archive_path, password)
+                    .map_err(|error| rar_scan_error(error, archive_path, password))?
+                    .into_iter()
+                    .filter_map(|entry| {
+                        let name = entry.filename.to_string_lossy().replace('\\', "/");
+                        (!entry.is_directory() && is_archive_file(&name)).then_some(name)
+                    })
+                    .collect();
 
             crate::log_debug!(
                 &format!("[TIMING] RAR nested archive enumeration completed in {:.2}ms: {} nested archives found",
@@ -247,46 +254,19 @@ impl Scanner {
         password: Option<&str>,
         read_archive_versions: bool,
     ) -> Result<Vec<DetectedItem>> {
-        let normalized_archive_path =
-            crate::archive_input::normalize_archive_entry_path(archive_path);
-
-        let open_start = std::time::Instant::now();
+        let listing_start = std::time::Instant::now();
         crate::log_debug!(
-            &format!("[TIMING] RAR open started: {}", archive_path.display()),
+            &format!("[TIMING] RAR listing started: {}", archive_path.display()),
             "scanner_timing"
         );
 
-        // Create archive with or without password
-        let archive_builder = if let Some(pwd) = password {
-            unrar::Archive::with_password(&normalized_archive_path, pwd)
-        } else {
-            unrar::Archive::new(&normalized_archive_path)
-        };
-
-        let archive = archive_builder.open_for_listing().map_err(|e| {
-            let err_str = format!("{:?}", e);
-            // Check for password-related errors
-            if err_str.contains("password")
-                || err_str.contains("Password")
-                || err_str.contains("encrypted")
-                || err_str.contains("ERAR_MISSING_PASSWORD")
-            {
-                if password.is_none() {
-                    anyhow::anyhow!(PasswordRequiredError {
-                        archive_path: archive_path.to_string_lossy().to_string(),
-                    })
-                } else {
-                    anyhow::anyhow!("Wrong password for archive: {}", archive_path.display())
-                }
-            } else {
-                anyhow::anyhow!("Failed to open RAR archive: {:?}", e)
-            }
-        })?;
+        let archive = crate::archive_input::read_rar_entries(archive_path, password)
+            .map_err(|error| rar_scan_error(error, archive_path, password))?;
 
         crate::log_debug!(
             &format!(
-                "[TIMING] RAR open completed in {:.2}ms",
-                open_start.elapsed().as_secs_f64() * 1000.0
+                "[TIMING] RAR listing completed in {:.2}ms",
+                listing_start.elapsed().as_secs_f64() * 1000.0
             ),
             "scanner_timing"
         );
@@ -297,7 +277,7 @@ impl Scanner {
 
         // Collect all file paths
         let enumerate_start = std::time::Instant::now();
-        for e in archive.flatten() {
+        for e in archive {
             let file_path = e.filename.to_string_lossy().replace('\\', "/");
             if !e.is_directory() {
                 sound_packs.record_file(&file_path);
@@ -551,5 +531,115 @@ impl Scanner {
             archive.skip()?;
         }
         anyhow::bail!("RAR member not found: {name}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+    #[test]
+    fn rar_listing_password_errors_keep_password_prompts_and_native_causes() {
+        use unrar::error::{Code, UnrarError, When};
+
+        let path = Path::new("encrypted.rar");
+        for code in [Code::MissingPassword, Code::BadPassword] {
+            for when in [When::Open, When::Read, When::Process] {
+                let native = || {
+                    anyhow::Error::new(UnrarError::from(code, when))
+                        .context("Failed to read RAR archive encrypted.rar")
+                };
+                let missing = rar_scan_error(native(), path, None);
+                assert_eq!(
+                    missing
+                        .downcast_ref::<PasswordRequiredError>()
+                        .unwrap()
+                        .archive_path,
+                    "encrypted.rar"
+                );
+                let nested = ScanContext::new().nested_scan_error(
+                    missing,
+                    Path::new("outer.rar"),
+                    "encrypted.rar",
+                );
+                assert!(nested
+                    .downcast_ref::<NestedPasswordRequiredError>()
+                    .is_some());
+
+                let wrong = rar_scan_error(native(), path, Some("incorrect"));
+                assert!(wrong.to_string().contains("Wrong password"));
+                assert_eq!(wrong.downcast_ref::<UnrarError>().unwrap().code, code);
+            }
+        }
+        let damaged = rar_scan_error(
+            UnrarError::from(Code::BadData, When::Read).into(),
+            path,
+            None,
+        );
+        assert!(damaged.downcast_ref::<PasswordRequiredError>().is_none());
+        assert_eq!(
+            damaged.downcast_ref::<UnrarError>().unwrap().code,
+            Code::BadData
+        );
+    }
+
+    fn rejects_damaged_later_header(version: RarVersion) {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("library.rar");
+        let mut fixture = stored_rar(
+            version,
+            &[
+                ("Package/library.txt", b"A\n800\nLIBRARY\n"),
+                ("Package/objects/test.bin", b"second member"),
+            ],
+        );
+        fs::write(&path, &fixture.bytes).unwrap();
+        let scanner = Scanner::new();
+        let items = scanner.scan_rar(&path, None).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].addon_type, AddonType::SceneryLibrary);
+
+        // Keep the detectable marker intact; only the next file header's CRC is invalid.
+        fixture.bytes[fixture.header_offsets[1]] ^= 1;
+        fs::write(&path, &fixture.bytes).unwrap();
+        let native_entries = unrar::Archive::new(&path)
+            .open_for_listing()
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>();
+        assert!(
+            native_entries.is_err(),
+            "the fixture must fail native validation"
+        );
+
+        assert!(
+            scanner.scan_rar(&path, None).is_err(),
+            "a valid marker before a damaged header must not produce a partial scan"
+        );
+        assert!(scanner
+            .scan_rar_with_context(&path, &mut ScanContext::new(), None)
+            .is_err());
+    }
+
+    #[test]
+    fn rar4_scan_rejects_damaged_later_header() {
+        rejects_damaged_later_header(RarVersion::Rar4);
+    }
+
+    #[test]
+    fn rar5_scan_rejects_damaged_later_header() {
+        rejects_damaged_later_header(RarVersion::Rar5);
+    }
+
+    #[test]
+    fn rar_scan_does_not_treat_a_damaged_first_header_as_an_empty_archive() {
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempfile::tempdir().unwrap();
+            let path = temp.path().join("broken.rar");
+            let mut fixture = stored_rar(version, &[("Package/library.txt", b"LIBRARY")]);
+            fixture.bytes[fixture.header_offsets[0]] ^= 1;
+            fs::write(&path, &fixture.bytes).unwrap();
+            assert!(Scanner::new().scan_rar(&path, None).is_err());
+        }
     }
 }

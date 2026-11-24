@@ -19,6 +19,9 @@ mod path_utils;
 mod performance;
 #[path = "core/rar_stream.rs"]
 mod rar_stream;
+#[cfg(test)]
+#[path = "core/rar_test_fixtures.rs"]
+mod rar_test_fixtures;
 #[path = "core/registry.rs"]
 mod registry;
 #[path = "core/sevenz_package.rs"]

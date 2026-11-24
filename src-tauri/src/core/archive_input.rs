@@ -712,6 +712,39 @@ fn concat_parts_to_temp(parts: &[PathBuf], format: ArchiveFormat) -> Result<Prep
     })
 }
 
+/// Read the complete RAR directory before accepting any detected add-ons or sizes.
+/// UnRAR can defer a damaged-header error until the end of iteration, so an
+/// apparently valid member must never make a partial listing count as success.
+/// Listing validates headers, not file data; extraction must still validate every
+/// selected payload. Keep the native error as a source for password handling.
+/// This propagates errors reported by UnRAR; its DLL may treat some truncated
+/// RAR5 headers as EOF, so listing is not a full archive-integrity guarantee.
+pub(crate) fn read_rar_entries(
+    path: &Path,
+    password: Option<&str>,
+) -> Result<Vec<unrar::FileHeader>> {
+    let prepared = prepare_archive_for_read(path, ArchiveFormat::Rar)?;
+    let input = match password {
+        Some(password) => unrar::Archive::with_password(prepared.read_path(), password),
+        None => unrar::Archive::new(prepared.read_path()),
+    };
+    let archive = input
+        .open_for_listing()
+        .with_context(|| format!("Failed to open RAR archive: {}", path.display()))?;
+    archive
+        .enumerate()
+        .map(|(index, entry)| {
+            entry.with_context(|| {
+                format!(
+                    "Failed to read RAR archive {} (after {} listed entries)",
+                    path.display(),
+                    index
+                )
+            })
+        })
+        .collect()
+}
+
 pub(crate) fn extract_rar_member(
     path: &Path,
     name: &str,
@@ -857,6 +890,151 @@ mod tests {
     use std::fs;
     use std::io::Read;
     use tempfile::tempdir;
+
+    #[test]
+    fn rar_listing_validates_all_headers_and_accepts_valid_empty_archives() {
+        use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("fixture.rar");
+            fs::write(&path, stored_rar(version, &[]).bytes).unwrap();
+            assert!(super::read_rar_entries(&path, None).unwrap().is_empty());
+
+            let mut fixture = stored_rar(
+                version,
+                &[
+                    ("first.txt", b"first member"),
+                    ("second.txt", b"second member"),
+                ],
+            );
+            fs::write(&path, &fixture.bytes).unwrap();
+            let entries = super::read_rar_entries(&path, None).unwrap();
+            assert_eq!(entries.len(), 2);
+            assert_eq!(entries[0].unpacked_size, b"first member".len() as u64);
+            assert_eq!(entries[1].unpacked_size, b"second member".len() as u64);
+
+            fixture.bytes[fixture.header_offsets[1]] ^= 1;
+            fs::write(&path, fixture.bytes).unwrap();
+            let error = super::read_rar_entries(&path, None).unwrap_err();
+            let native = error.downcast_ref::<unrar::error::UnrarError>().unwrap();
+            assert_eq!(native.code, unrar::error::Code::BadData);
+            assert_eq!(native.when, unrar::error::When::Read);
+            let details = format!("{error:#}");
+            assert!(details.contains("fixture.rar"));
+            assert!(details.contains("listed entries"));
+            assert!(details.contains("File header damaged"));
+        }
+    }
+
+    #[test]
+    fn rar_listing_rejects_missing_split_volumes_before_reading() {
+        let temp = tempdir().unwrap();
+        let first = temp.path().join("package.part1.rar");
+        let third = temp.path().join("package.part3.rar");
+        fs::write(&first, b"incomplete download").unwrap();
+        fs::write(&third, b"incomplete download").unwrap();
+        let error = super::read_rar_entries(&third, None).unwrap_err();
+        assert!(error.to_string().contains("package.part2.rar"));
+        assert!(error.to_string().contains("Missing split archive volume"));
+    }
+
+    #[test]
+    fn rar_truncated_member_header_does_not_replace_existing_destination() {
+        use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("truncated-header.rar");
+            let output = temp.path().join("existing.txt");
+            let mut fixture = stored_rar(
+                version,
+                &[
+                    ("first.txt", b"first member"),
+                    ("second.txt", b"second member"),
+                ],
+            );
+            fixture.bytes.truncate(fixture.data_offsets[1] - 1);
+            fs::write(&path, fixture.bytes).unwrap();
+            fs::write(&output, b"original content").unwrap();
+            // The UnRAR DLL can report EOF for a truncated RAR5 header. This
+            // tests the requested-member boundary, not detection of every
+            // missing tail member when extracting an entire directory.
+            assert!(
+                super::extract_rar_member(&path, "second.txt", &output, None, || Ok(())).is_err(),
+                "{version:?}"
+            );
+            assert_eq!(fs::read(&output).unwrap(), b"original content");
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+        }
+    }
+
+    #[test]
+    fn rar_truncated_payload_does_not_replace_existing_destination() {
+        use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("truncated-data.rar");
+            let output = temp.path().join("existing.bin");
+            let mut fixture = stored_rar(version, &[("entry.bin", b"complete payload")]);
+            fixture.bytes.truncate(fixture.data_offsets[0] + 4);
+            fs::write(&path, fixture.bytes).unwrap();
+            fs::write(&output, b"original content").unwrap();
+            assert!(
+                super::extract_rar_member(&path, "entry.bin", &output, None, || Ok(())).is_err(),
+                "{version:?}"
+            );
+            assert_eq!(fs::read(&output).unwrap(), b"original content");
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+        }
+    }
+
+    #[test]
+    fn rar_member_crc_failure_and_cancellation_preserve_existing_destination() {
+        use crate::rar_test_fixtures::{stored_rar, RarVersion};
+
+        for version in [RarVersion::Rar4, RarVersion::Rar5] {
+            let temp = tempdir().unwrap();
+            let path = temp.path().join("fixture.rar");
+            let output = temp.path().join("existing.bin");
+            let payload = vec![0x42; 128 * 1024 + 1];
+            let mut fixture = stored_rar(version, &[("entry.bin", &payload)]);
+            fs::write(&output, b"original content").unwrap();
+
+            fs::write(&path, &fixture.bytes).unwrap();
+            let mut checks = 0;
+            let error = super::extract_rar_member(&path, "entry.bin", &output, None, || {
+                checks += 1;
+                if checks > 1 {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "Cancelled by user",
+                    ))
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+            assert!(checks > 1, "cancellation must occur during data extraction");
+            assert_eq!(error.to_string(), "Cancelled by user");
+            assert_eq!(fs::read(&output).unwrap(), b"original content");
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+
+            fixture.bytes[fixture.data_offsets[0]] ^= 1;
+            fs::write(&path, fixture.bytes).unwrap();
+            assert_eq!(super::read_rar_entries(&path, None).unwrap().len(), 1);
+            assert!(
+                super::extract_rar_member(&path, "entry.bin", &output, None, || Ok(())).is_err()
+            );
+            assert_eq!(fs::read(&output).unwrap(), b"original content");
+            assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+
+            fs::write(&path, stored_rar(version, &[("entry.bin", &payload)]).bytes).unwrap();
+            super::extract_rar_member(&path, "entry.bin", &output, None, || Ok(())).unwrap();
+            assert_eq!(fs::read(&output).unwrap(), payload);
+        }
+    }
 
     #[test]
     fn detect_archive_format_prefers_signature_for_single_file_archives() {
