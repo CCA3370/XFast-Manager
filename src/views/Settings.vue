@@ -436,6 +436,7 @@ import { useToastStore } from '@/stores/toast'
 import { useUpdateStore } from '@/stores/update'
 import { AddonType, getErrorMessage } from '@/types'
 import { validateGlobPattern } from '@/utils/validation'
+import { xplanePathKey } from '@/utils/xplaneStorage'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -704,7 +705,8 @@ async function handleCopyLogs() {
 }
 
 const savingAutoSort = ref(false)
-const isRebuilding = ref(false)
+const rebuildingPaths = ref(new Set<string>())
+const isRebuilding = computed(() => rebuildingPaths.value.has(xplanePathKey(store.xplanePath)))
 
 function confirmAutoSort(enabled: boolean) {
   if (!enabled) {
@@ -736,8 +738,9 @@ async function saveAutoSort(enabled: boolean) {
 
 async function handleRebuildIndex() {
   const root = store.captureXplaneContext()
-  if (isRebuilding.value || !root.path) return
-  isRebuilding.value = true
+  const key = xplanePathKey(root.path)
+  if (!key || rebuildingPaths.value.has(key)) return
+  rebuildingPaths.value.add(key)
   try {
     await invoke('rebuild_scenery_index', { xplanePath: root.path })
     if (!root.isCurrent()) return
@@ -746,7 +749,7 @@ async function handleRebuildIndex() {
   } catch (e) {
     if (root.isCurrent()) modal.showError(t('settings.indexRebuildFailed') + ': ' + String(e))
   } finally {
-    isRebuilding.value = false
+    rebuildingPaths.value.delete(key)
   }
 }
 

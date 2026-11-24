@@ -50,6 +50,7 @@ export const useAppStore = defineStore('app', () => {
   const currentTasks = ref<InstallTask[]>([])
   const isAnalyzing = ref(false)
   const isInstalling = ref(false)
+  const isChangingXplanePath = ref(false)
 
   // Mutex flag for analyzeFiles to prevent concurrent calls (TOCTOU protection)
   const isAnalyzeInProgress = ref(false)
@@ -360,17 +361,25 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function setXplanePath(path: string, completeOnboarding = false) {
+    if (isChangingXplanePath.value) {
+      throw new Error('An X-Plane directory change is already being saved')
+    }
     if (path !== xplanePath.value && isInstalling.value) {
       throw new Error('Cannot change the X-Plane directory during installation')
     }
-    if (!isInitialized.value) {
-      await ensureAddonBetaPreferencesMigrated(await getItem<string>(STORAGE_KEYS.XPLANE_PATH))
+    isChangingXplanePath.value = true
+    try {
+      if (!isInitialized.value) {
+        await ensureAddonBetaPreferencesMigrated(await getItem<string>(STORAGE_KEYS.XPLANE_PATH))
+      }
+      await saveSettings({
+        [STORAGE_KEYS.XPLANE_PATH]: path,
+        ...(completeOnboarding ? { [STORAGE_KEYS.ONBOARDING_COMPLETED]: 'true' } : {}),
+      })
+      xplanePath.value = path
+    } finally {
+      isChangingXplanePath.value = false
     }
-    await saveSettings({
-      [STORAGE_KEYS.XPLANE_PATH]: path,
-      ...(completeOnboarding ? { [STORAGE_KEYS.ONBOARDING_COMPLETED]: 'true' } : {}),
-    })
-    xplanePath.value = path
   }
 
   async function togglePreference(type: AddonType) {
@@ -741,6 +750,7 @@ export const useAppStore = defineStore('app', () => {
     currentTasks,
     isAnalyzing,
     isInstalling,
+    isChangingXplanePath,
     isAnalyzeInProgress,
     isWindows,
     isContextMenuRegistered,

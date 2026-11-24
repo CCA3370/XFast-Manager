@@ -139,10 +139,12 @@ import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useActivityLogStore } from '@/stores/activityLog'
 import { useModalStore } from '@/stores/modal'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 
 const { t } = useI18n()
 const store = useActivityLogStore()
 const modalStore = useModalStore()
+const { isCurrentRoot } = useXplaneViewRoot()
 
 onMounted(() => {
   store.loadRecent()
@@ -228,7 +230,12 @@ function handleClear() {
     cancelText: t('common.cancel'),
     type: 'danger',
     onConfirm: async () => {
-      await store.clearLog()
+      if (!isCurrentRoot()) return
+      try {
+        await store.clearLog()
+      } catch (e) {
+        if (isCurrentRoot()) modalStore.showError(e)
+      }
     },
     onCancel: () => {},
   })

@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   getItem: vi.fn(),
   setItem: vi.fn(),
+  isLocked: vi.fn(),
+  setLocked: vi.fn(),
   locks: vi.fn(),
 }))
 const app = reactive({ xplanePath: '/A' })
@@ -35,10 +37,11 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('./toast', () => ({ useToastStore: () => ({ error: vi.fn(), info: vi.fn() }) }))
 vi.mock('./lock', () => ({
   useLockStore: () => ({
-    isLocked: () => false,
-    setLocked: vi.fn(),
+    isLocked: mocks.isLocked,
+    setLocked: mocks.setLocked,
     applyLockState: mocks.locks,
     exportLockState: () => ({ aircraft: [], plugin: [], scenery: [], lua: [], navdata: [] }),
+    initStore: vi.fn().mockResolvedValue(undefined),
   }),
 }))
 vi.mock('@/services/logger', () => ({ logError: vi.fn() }))
@@ -68,6 +71,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.getItem.mockResolvedValue(null)
   mocks.setItem.mockResolvedValue(undefined)
+  mocks.isLocked.mockReturnValue(false)
+  mocks.setLocked.mockResolvedValue(undefined)
 })
 
 describe('installation-bound store operations', () => {
@@ -97,6 +102,45 @@ describe('installation-bound store operations', () => {
     expect(mocks.invoke).not.toHaveBeenCalled()
   })
 
+  it('discards an aircraft update check whose settings load outlives the selected root', async () => {
+    const pending = deferred<null>()
+    mocks.getItem.mockReturnValue(pending.promise)
+    mocks.invoke.mockResolvedValueOnce({
+      entries: [{ folderName: 'same', updateUrl: 'https://example.test/main', hasUpdate: false }],
+      totalCount: 1,
+      enabledCount: 1,
+    })
+    const store = useManagementStore()
+    const check = store.checkAircraftUpdates(true, true)
+    const finished = expect(check).resolves.toBeUndefined()
+    await vi.waitFor(() => expect(mocks.getItem).toHaveBeenCalled())
+    app.xplanePath = '/B'
+    pending.resolve(null)
+    await finished
+    expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith('scan_aircraft', { xplanePath: '/A' })
+    expect(store.isCheckingUpdates).toBe(false)
+  })
+
+  it('keeps a manual plugin lock in B when its same-named copy was auto-locked in A', async () => {
+    const store = useManagementStore()
+    mocks.invoke.mockImplementation(
+      async (command: string, args: { xplanePath: string }) =>
+        command === 'toggle_management_item' && args.xplanePath === '/B',
+    )
+    await store.toggleEnabled('plugin', 'same')
+    expect(mocks.setLocked).toHaveBeenCalledExactlyOnceWith('plugin', 'same', true, '/A')
+
+    app.xplanePath = '/B'
+    mocks.isLocked.mockReturnValue(true)
+    await store.toggleEnabled('plugin', 'same')
+    expect(mocks.setLocked).toHaveBeenCalledTimes(1)
+
+    app.xplanePath = '/A'
+    mocks.invoke.mockResolvedValue(true)
+    await store.toggleEnabled('plugin', 'same')
+    expect(mocks.setLocked).toHaveBeenLastCalledWith('plugin', 'same', false, '/A')
+  })
+
   it('isolates per-item beta preferences without changing global update options', async () => {
     mocks.invoke.mockResolvedValue({})
     const store = useManagementStore()
@@ -123,6 +167,23 @@ describe('installation-bound store operations', () => {
       .map(([key]) => key)
       .filter((key) => typeof key === 'string' && key.includes('betaItems'))
     expect(new Set(scopedKeys).size).toBe(2)
+  })
+
+  it('preserves both legacy channel choices when preferences are saved concurrently', async () => {
+    const store = useManagementStore()
+    const pending = deferred<undefined>()
+    mocks.setItem.mockReturnValueOnce(pending.promise)
+    const first = store.setAddonUpdateItemBetaPreference('aircraft', 'first', true)
+    const second = store.setAddonUpdateItemBetaPreference('plugin', 'second', false)
+    await vi.waitFor(() => expect(mocks.setItem).toHaveBeenCalled())
+    expect(mocks.setItem).toHaveBeenCalledTimes(1)
+
+    pending.resolve(undefined)
+    await Promise.all([first, second])
+    expect(mocks.setItem.mock.lastCall?.[1]).toEqual({
+      'aircraft:first': true,
+      'plugin:second': false,
+    })
   })
 
   it('rechecks SkunkCrafts replicas that share a Main URL and follow different channels', async () => {
@@ -233,12 +294,16 @@ describe('installation-bound store operations', () => {
     )
   })
 
-  it('does not apply an old preset lock snapshot to a replacement root', async () => {
+  it('finishes a submitted preset on its starting installation after a switch', async () => {
     const pending = deferred<unknown>()
     mocks.invoke.mockReturnValue(pending.promise)
     const store = usePresetsStore()
     const applying = store.applyPreset(1)
-    const rejected = expect(applying).rejects.toThrow('directory changed')
+    app.xplanePath = '/B'
+    expect(store.isApplying).toBe(false)
+    app.xplanePath = '/A/'
+    expect(store.isApplying).toBe(true)
+    await expect(store.applyPreset(2)).rejects.toThrow('already being applied')
     app.xplanePath = '/B'
     pending.resolve({
       changesMade: 1,
@@ -246,8 +311,14 @@ describe('installation-bound store operations', () => {
       missingItems: [],
       lockState: { aircraft: ['same'] },
     })
-    await rejected
-    expect(mocks.locks).not.toHaveBeenCalled()
+    await applying
+    expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith('apply_preset', {
+      xplanePath: '/A',
+      presetId: 1,
+    })
+    expect(mocks.locks).toHaveBeenCalledExactlyOnceWith({ aircraft: ['same'], navdata: [] }, '/A')
+    app.xplanePath = '/A'
+    expect(store.isApplying).toBe(false)
   })
 
   it('passes root for preset and activity queries, and does not query an empty root', async () => {
@@ -268,5 +339,31 @@ describe('installation-bound store operations', () => {
     await presets.loadPresets()
     await activity.loadRecent()
     expect(mocks.invoke).not.toHaveBeenCalled()
+  })
+
+  it('discards results if the installation changes before their consumers resume', async () => {
+    const diskResponse = deferred<unknown>()
+    const presetResponse = deferred<unknown>()
+    const activityResponse = deferred<unknown>()
+    mocks.invoke
+      .mockReturnValueOnce(diskResponse.promise)
+      .mockReturnValueOnce(presetResponse.promise)
+      .mockReturnValueOnce(activityResponse.promise)
+
+    const disk = useDiskUsageStore()
+    const presets = usePresetsStore()
+    const activity = useActivityLogStore()
+    const pending = [disk.scan(), presets.loadPresets(), activity.loadRecent()]
+    diskResponse.resolve({ totalBytes: 123, categories: [], scanDurationMs: 1 })
+    presetResponse.resolve([{ id: 1, name: 'Preset from A' }])
+    activityResponse.resolve({ entries: [{ id: 1, itemName: 'Add-on from A' }], totalCount: 1 })
+    // Let the scoped IPC requests resolve before the stores consume their results.
+    await Promise.resolve()
+    app.xplanePath = '/B'
+    await Promise.all(pending)
+
+    expect(disk.report).toBeNull()
+    expect(presets.presets).toEqual([])
+    expect(activity.entries).toEqual([])
   })
 })

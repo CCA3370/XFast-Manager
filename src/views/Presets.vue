@@ -13,12 +13,14 @@
       <div class="flex items-center gap-2">
         <button
           class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          @click="store.importPreset()"
+          :disabled="!xplanePath"
+          @click="handleImport"
         >
           {{ $t('presets.import') }}
         </button>
         <button
           class="text-sm px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          :disabled="!xplanePath"
           @click="showSaveModal = true"
         >
           {{ $t('presets.saveCurrent') }}
@@ -114,7 +116,7 @@
             <button
               class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
               :title="$t('presets.export')"
-              @click="store.exportPreset(preset.id)"
+              @click="handleExport(preset.id)"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -185,11 +187,13 @@ import { usePresetsStore, type PresetSummary } from '@/stores/presets'
 import { useModalStore } from '@/stores/modal'
 import { useToastStore } from '@/stores/toast'
 import PresetSaveModal from '@/components/PresetSaveModal.vue'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 
 const { t } = useI18n()
 const store = usePresetsStore()
 const modalStore = useModalStore()
 const toastStore = useToastStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const showSaveModal = ref(false)
 
 onMounted(() => {
@@ -207,8 +211,31 @@ function formatDate(epoch: number): string {
 }
 
 async function handleSave(name: string, description: string) {
+  if (!isCurrentRoot()) return
   showSaveModal.value = false
-  await store.savePreset(name, description || undefined)
+  try {
+    await store.savePreset(name, description || undefined)
+  } catch (e) {
+    if (isCurrentRoot()) modalStore.showError(e)
+  }
+}
+
+async function handleImport() {
+  if (!isCurrentRoot()) return
+  try {
+    await store.importPreset()
+  } catch (e) {
+    if (isCurrentRoot()) modalStore.showError(e)
+  }
+}
+
+async function handleExport(presetId: number) {
+  if (!isCurrentRoot()) return
+  try {
+    await store.exportPreset(presetId)
+  } catch (e) {
+    if (isCurrentRoot()) modalStore.showError(e)
+  }
 }
 
 function handleApply(preset: PresetSummary) {
@@ -219,13 +246,14 @@ function handleApply(preset: PresetSummary) {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: async () => {
+      if (!isCurrentRoot()) return
       try {
         const result = await store.applyPreset(preset.id)
-        if (result.errors.length > 0) {
+        if (isCurrentRoot() && result.errors.length > 0) {
           modalStore.showError(result.errors.join('\n'))
         }
       } catch (e) {
-        modalStore.showError(String(e), t('presets.applyTitle'))
+        if (isCurrentRoot()) modalStore.showError(String(e), t('presets.applyTitle'))
       }
     },
     onCancel: () => {},
@@ -240,11 +268,12 @@ function handleUpdateSnapshot(preset: PresetSummary) {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: async () => {
+      if (!isCurrentRoot()) return
       try {
         await store.updatePreset(preset.id, undefined, undefined, true)
-        toastStore.success(t('presets.updateSnapshotSuccess'))
+        if (isCurrentRoot()) toastStore.success(t('presets.updateSnapshotSuccess'))
       } catch (e) {
-        modalStore.showError(String(e), t('presets.updateSnapshotFailed'))
+        if (isCurrentRoot()) modalStore.showError(String(e), t('presets.updateSnapshotFailed'))
       }
     },
     onCancel: () => {},
@@ -259,7 +288,12 @@ function handleDelete(preset: PresetSummary) {
     cancelText: t('common.cancel'),
     type: 'danger',
     onConfirm: async () => {
-      await store.deletePreset(preset.id)
+      if (!isCurrentRoot()) return
+      try {
+        await store.deletePreset(preset.id)
+      } catch (e) {
+        if (isCurrentRoot()) modalStore.showError(e)
+      }
     },
     onCancel: () => {},
   })

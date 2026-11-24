@@ -357,7 +357,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useToastStore } from '@/stores/toast'
 import PatchSourcePicker from './PatchSourcePicker.vue'
 import PatchDestinationInput from './PatchDestinationInput.vue'
@@ -387,7 +387,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const store = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const toast = useToastStore()
 
 interface EditableMapping extends PatchMappingInput {
@@ -448,6 +448,7 @@ const usesRememberedMappings = computed(
 
 const canInstall = computed(
   () =>
+    isCurrentRoot() &&
     !!selectedFolder.value &&
     mappingsFolder.value === selectedFolder.value &&
     mappings.value.length > 0 &&
@@ -459,14 +460,12 @@ const canInstall = computed(
 )
 
 let summarizeTimer: ReturnType<typeof setTimeout> | null = null
-let mounted = true
 let inferenceRequest = 0
 let summaryRequest = 0
 let nextMappingId = 0
 let mappingKey = ''
 onMounted(runDetect)
 onUnmounted(() => {
-  mounted = false
   inferenceRequest++
   invalidateSummary()
 })
@@ -490,11 +489,12 @@ watch(
 )
 
 async function runDetect() {
+  if (!isCurrentRoot()) return
   detecting.value = true
   errorMsg.value = ''
   try {
-    const result = await detectPatchTargetAircraft(props.archivePath, store.xplanePath)
-    if (!mounted) return
+    const result = await detectPatchTargetAircraft(props.archivePath, xplanePath)
+    if (!isCurrentRoot()) return
     candidates.value = result.candidates
     recommendedFolder.value = result.recommendedFolder ?? null
 
@@ -511,15 +511,17 @@ async function runDetect() {
       await runInfer(selectedFolder.value)
     }
   } catch (e) {
-    if (mounted) errorMsg.value = getErrorMessage(e)
+    if (isCurrentRoot()) errorMsg.value = getErrorMessage(e)
   } finally {
-    if (mounted) detecting.value = false
+    if (isCurrentRoot()) detecting.value = false
   }
 }
 
 async function runInfer(folder: string) {
+  if (!isCurrentRoot()) return
   const request = ++inferenceRequest
-  const isCurrent = () => mounted && request === inferenceRequest && folder === selectedFolder.value
+  const isCurrent = () =>
+    isCurrentRoot() && request === inferenceRequest && folder === selectedFolder.value
   mappingsFolder.value = ''
   mappingKey = ''
   automaticMappings.value = []
@@ -538,7 +540,7 @@ async function runInfer(folder: string) {
   }
   errorMsg.value = ''
   try {
-    const plan = await inferPatchMappings(props.archivePath, store.xplanePath, folder)
+    const plan = await inferPatchMappings(props.archivePath, xplanePath, folder)
     if (!isCurrent()) return
     let remembered: PatchMappingInput[] | null = null
     let canRemember = true
@@ -601,7 +603,7 @@ function invalidateSummary() {
 function scheduleSummarize() {
   invalidateSummary()
   if (
-    !mounted ||
+    !isCurrentRoot() ||
     inferring.value ||
     mappingsFolder.value !== selectedFolder.value ||
     !selectedFolder.value
@@ -629,12 +631,13 @@ function scheduleSummarize() {
 async function runSummarize(request: number) {
   const folder = selectedFolder.value
   const inputs = mappingInputs.value
-  const isCurrent = () => mounted && request === summaryRequest && folder === selectedFolder.value
+  const isCurrent = () =>
+    isCurrentRoot() && request === summaryRequest && folder === selectedFolder.value
   if (!isCurrent() || !folder || !inputs.length) return
   try {
     const summary = await summarizePatchInstall({
       archivePath: props.archivePath,
-      xplanePath: store.xplanePath,
+      xplanePath,
       aircraftFolder: folder,
       mappings: inputs,
     })
@@ -680,23 +683,23 @@ async function confirmInstall() {
   try {
     const tasks = await buildPatchInstallTasks({
       archivePath: props.archivePath,
-      xplanePath: store.xplanePath,
+      xplanePath,
       aircraftFolder: selectedFolder.value,
       mappings: inputs,
       backupOverwritten: backupEnabled.value,
       expectedPlanId: planId.value,
     })
-    if (!mounted) return
+    if (!isCurrentRoot()) return
     if (mappingKey && JSON.stringify(memory) !== JSON.stringify(rememberedMappings.value)) {
       try {
         await savePatchMappings(mappingKey, memory)
       } catch {
-        if (mounted) toast.warning(t('patch.mappingMemoryError'))
+        if (isCurrentRoot()) toast.warning(t('patch.mappingMemoryError'))
       }
     }
-    if (mounted) emit('install', tasks)
+    if (isCurrentRoot()) emit('install', tasks)
   } catch (e) {
-    if (mounted) {
+    if (isCurrentRoot()) {
       building.value = false
       scheduleSummarize()
       errorMsg.value = getErrorMessage(e)

@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { createXplaneScope } from '@/utils/xplaneContext'
+import { xplanePathKey } from '@/utils/xplaneStorage'
 import { save, open } from '@tauri-apps/plugin-dialog'
+import { useAppStore } from './app'
 import { useLockStore, type LockedItemsData } from './lock'
 
 export interface PresetSummary {
@@ -44,12 +47,14 @@ export const usePresetsStore = defineStore('presets', () => {
   const presets = ref<PresetSummary[]>([])
   const isLoading = ref(false)
   const isSaving = ref(false)
-  const isApplying = ref(false)
+  const app = useAppStore()
+  const applyingPaths = ref(new Set<string>())
+  const isApplying = computed(() => applyingPaths.value.has(xplanePathKey(app.xplanePath)))
   const updatingSnapshotId = ref<number | null>(null)
 
   const capture = createXplaneScope(() => {
     presets.value = []
-    isLoading.value = isSaving.value = isApplying.value = false
+    isLoading.value = isSaving.value = false
     updatingSnapshotId.value = null
   })
 
@@ -58,7 +63,8 @@ export const usePresetsStore = defineStore('presets', () => {
     if (!path) return
     isLoading.value = true
     try {
-      presets.value = await invoke<PresetSummary[]>('list_presets')
+      const result = await invoke<PresetSummary[]>('list_presets')
+      if (isCurrent()) presets.value = result
     } catch (error) {
       if (isCurrent()) throw error
     } finally {
@@ -123,22 +129,27 @@ export const usePresetsStore = defineStore('presets', () => {
   }
 
   async function applyPreset(presetId: number): Promise<PresetApplyResult> {
-    const { path, invoke, isCurrent } = capture()
-    isApplying.value = true
+    const { path } = capture()
+    const key = xplanePathKey(path)
+    if (!key) throw new Error('Select an X-Plane directory first')
+    if (applyingPaths.value.has(key)) throw new Error('Another preset is already being applied')
+    applyingPaths.value.add(key)
     try {
       const lockStore = useLockStore()
-      const result = await invoke<PresetApplyResult>('apply_preset', {
+      const result = await tauriInvoke<PresetApplyResult>('apply_preset', {
         xplanePath: path,
         presetId,
       })
       if (result.lockState) {
         try {
+          // The backend has applied the snapshot. Finish applying its locks to the same root.
+          await lockStore.initStore()
           await lockStore.applyLockState(
             {
               ...result.lockState,
               navdata: lockStore.exportLockState(path).navdata,
             },
-            path || undefined,
+            path,
           )
         } catch (e) {
           result.errors.push(`Failed to apply lock state: ${String(e)}`)
@@ -146,7 +157,7 @@ export const usePresetsStore = defineStore('presets', () => {
       }
       return result
     } finally {
-      if (isCurrent()) isApplying.value = false
+      applyingPaths.value.delete(key)
     }
   }
 
@@ -155,12 +166,12 @@ export const usePresetsStore = defineStore('presets', () => {
   }
 
   async function exportPreset(presetId: number) {
-    const { invoke } = capture()
+    const { invoke, isCurrent } = capture()
     const filePath = await save({
       defaultPath: 'preset.json',
       filters: [{ name: 'JSON', extensions: ['json'] }],
     })
-    if (!filePath) return
+    if (!filePath || !isCurrent()) return
     await invoke('export_preset', { presetId, exportPath: filePath })
   }
 
@@ -170,7 +181,7 @@ export const usePresetsStore = defineStore('presets', () => {
       filters: [{ name: 'JSON', extensions: ['json'] }],
       multiple: false,
     })
-    if (!filePath) return
+    if (!filePath || !isCurrent()) return
     await invoke('import_preset', { importPath: filePath })
     if (isCurrent()) await loadPresets()
   }

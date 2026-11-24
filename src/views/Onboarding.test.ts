@@ -144,6 +144,23 @@ describe('X-Plane directory', () => {
     expect(values.has(rootStorageKey(sourceKey, newPath))).toBe(false)
   })
 
+  it('keeps the selected root stable while a directory save is pending', async () => {
+    const { store } = setup()
+    const pendingSave = pendingResult<void>()
+    save.mockReturnValueOnce(pendingSave.promise)
+    const change = store.setXplanePath(newPath)
+
+    expect(store.isChangingXplanePath).toBe(true)
+    expect(store.xplanePath).toBe(originalPath)
+    await expect(store.setXplanePath('/sim/another')).rejects.toThrow('already being saved')
+
+    pendingSave.resolve()
+    await change
+    expect(store.xplanePath).toBe(newPath)
+    expect(store.isChangingXplanePath).toBe(false)
+    expect(values.get(STORAGE_KEYS.XPLANE_PATH)).toBe(newPath)
+  })
+
   it('ignores earlier validation results even when they arrive after a newer submission', async () => {
     const { store, plugins } = setup()
     const oldValidation = pendingResult<boolean>()

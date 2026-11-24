@@ -41,6 +41,7 @@ export const useActivityLogStore = defineStore('activityLog', () => {
         offset: 0,
         itemType: filterItemType.value,
       })
+      if (!isCurrent()) return
       entries.value = page.entries
       totalCount.value = page.totalCount
       hasMore.value = entries.value.length < totalCount.value
@@ -62,6 +63,7 @@ export const useActivityLogStore = defineStore('activityLog', () => {
         offset: entries.value.length,
         itemType: filterItemType.value,
       })
+      if (!isCurrent()) return
       entries.value.push(...page.entries)
       totalCount.value = page.totalCount
       hasMore.value = entries.value.length < totalCount.value

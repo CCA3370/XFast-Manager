@@ -361,9 +361,6 @@ export const useSceneryStore = defineStore('scenery', () => {
 
     isCheckingUpdates.value = true
     try {
-      await managementStore.loadAddonUpdateOptions()
-      if (!context.isCurrent()) return
-
       // forceRefresh: rescan local data first so any cfg version edits on disk are
       // picked up before re-checking remote.
       if (forceRefresh) {

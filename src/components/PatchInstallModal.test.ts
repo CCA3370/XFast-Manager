@@ -1,8 +1,15 @@
 // @vitest-environment happy-dom
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PatchPlan, PatchInstallSummary, PatchMappingInput } from '@/types'
+import type {
+  PatchPlan,
+  PatchInstallSummary,
+  PatchMappingInput,
+  PatchTargetDetection,
+} from '@/types'
+import { useAppStore } from '@/stores/app'
 
 const api = vi.hoisted(() => ({
   detectPatchTargetAircraft: vi.fn(),
@@ -22,7 +29,6 @@ vi.mock('@/services/storage', () => ({
     savedMappings.delete(key)
   },
 }))
-vi.mock('@/stores/app', () => ({ useAppStore: () => ({ xplanePath: '/sim' }) }))
 vi.mock('@/stores/toast', () => ({ useToastStore: () => ({ warning: vi.fn() }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
@@ -95,6 +101,8 @@ async function preview() {
 }
 
 beforeEach(() => {
+  setActivePinia(createPinia())
+  useAppStore().xplanePath = '/sim'
   vi.useFakeTimers()
   vi.resetAllMocks()
   savedMappings.clear()
@@ -113,6 +121,31 @@ afterEach(() => {
 })
 
 describe('patch installation confirmation', () => {
+  it('discards aircraft detection when the installation changes before the modal closes', async () => {
+    const pending = deferred<PatchTargetDetection>()
+    api.detectPatchTargetAircraft.mockReturnValue(pending.promise)
+    await open()
+    useAppStore().xplanePath = '/replacement'
+    pending.resolve({
+      candidates: [
+        {
+          folderName: 'A',
+          displayName: 'A',
+          matchedCount: 1,
+          fileCount: 1,
+          matchScore: 1,
+          bestOffset: '',
+          bestDestination: '',
+          ambiguousMapping: false,
+          confidence: 'high',
+        },
+      ],
+      recommendedFolder: 'A',
+    })
+    await flushPromises()
+    expect(api.inferPatchMappings).not.toHaveBeenCalled()
+  })
+
   it('blocks installation until the preview completes', async () => {
     const pending = deferred<PatchInstallSummary>()
     api.summarizePatchInstall.mockReturnValue(pending.promise)

@@ -3,7 +3,7 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { useAppStore } from '@/stores/app'
 
 /** An epoch also rejects A → B → A completions, not just mismatched path strings. */
-export function createXplaneScope(onChange: () => void = () => {}) {
+export function createXplaneScope(onChange: () => void) {
   const app = useAppStore()
   watch(() => app.xplanePath, onChange, { flush: 'sync' })
   return () => {

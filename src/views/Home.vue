@@ -1135,7 +1135,7 @@ async function executeInstall(
   finalTasks: InstallTask[],
   opts?: { deleteSource?: boolean; parallel?: boolean },
 ) {
-  if (!isCurrent() || store.isInstalling) return
+  if (!isCurrent() || store.isInstalling || store.isChangingXplanePath) return
   if (finalTasks.length === 0) {
     toast.warning(t('home.noTasksEnabled'))
     return

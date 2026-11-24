@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { ManagementData, ManagementItemType } from '@/types'
 import { getItem, setItem } from '@/services/storage'
+import { xplanePathKey } from '@/utils/xplaneStorage'
 import { useAppStore } from './app'
 
 export interface LockedItemsData {
@@ -24,11 +25,6 @@ export const useLockStore = defineStore('lock', () => {
   const isInitialized = ref(false)
   let initialization: Promise<void> | undefined
   let writeQueue = Promise.resolve()
-
-  function rootKey(path: string): string {
-    const normalized = path.trim().replaceAll('\\', '/').replace(/\/+$/, '')
-    return /^[A-Za-z]:|^\/\//.test(normalized) ? normalized.toLowerCase() : normalized
-  }
 
   function normalizeKeys(items?: string[] | null): string[] {
     if (!Array.isArray(items)) return []
@@ -79,7 +75,7 @@ export const useLockStore = defineStore('lock', () => {
   }
 
   function exportLockState(xplanePath = useAppStore().xplanePath): LockedItemsData {
-    return snapshot(roots.value.get(rootKey(xplanePath)))
+    return snapshot(roots.value.get(xplanePathKey(xplanePath)))
   }
 
   function initStore(): Promise<void> {
@@ -89,7 +85,7 @@ export const useLockStore = defineStore('lock', () => {
       const data = await getItem<Record<string, LockedItemsData>>(ROOT_LOCKS_KEY)
       if (data && typeof data === 'object') {
         for (const [key, state] of Object.entries(data)) {
-          if (key) roots.value.set(rootKey(key), toSets(state))
+          if (key) roots.value.set(xplanePathKey(key), toSets(state))
         }
       }
       isInitialized.value = true
@@ -107,7 +103,7 @@ export const useLockStore = defineStore('lock', () => {
   }
 
   function getSetForType(type: LockItemType, xplanePath = useAppStore().xplanePath) {
-    return roots.value.get(rootKey(xplanePath))?.[type] ?? empty
+    return roots.value.get(xplanePathKey(xplanePath))?.[type] ?? empty
   }
 
   function isLocked(type: LockItemType, folderName: string, xplanePath?: string): boolean {
@@ -124,7 +120,7 @@ export const useLockStore = defineStore('lock', () => {
     xplanePath = useAppStore().xplanePath,
   ): Promise<boolean> {
     await initStore()
-    const key = rootKey(xplanePath)
+    const key = xplanePathKey(xplanePath)
     const name = folderName.trim().toLowerCase()
     if (!key || !name) return false
     if (!roots.value.has(key)) roots.value.set(key, toSets())
@@ -154,7 +150,7 @@ export const useLockStore = defineStore('lock', () => {
     locked: boolean,
     xplanePath = useAppStore().xplanePath,
   ) {
-    const key = rootKey(xplanePath)
+    const key = xplanePathKey(xplanePath)
     const name = folderName.trim().toLowerCase()
     if (!key || !name) return
     await initStore()
@@ -189,7 +185,7 @@ export const useLockStore = defineStore('lock', () => {
     state?: Partial<LockedItemsData> | null,
     xplanePath = useAppStore().xplanePath,
   ) {
-    const key = rootKey(xplanePath)
+    const key = xplanePathKey(xplanePath)
     if (!key) return
     await initStore()
     const sets = toSets(state)
@@ -201,8 +197,8 @@ export const useLockStore = defineStore('lock', () => {
 
   function isPathLocked(targetPath: string, xplanePath: string): boolean {
     if (!targetPath || !xplanePath) return false
-    const root = rootKey(xplanePath)
-    const normalizedTarget = rootKey(targetPath)
+    const root = xplanePathKey(xplanePath)
+    const normalizedTarget = xplanePathKey(targetPath)
     if (!normalizedTarget.startsWith(root + '/')) return false
     const cleanPath = normalizedTarget.slice(root.length + 1).toLowerCase()
 

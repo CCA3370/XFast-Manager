@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
-import { useAppStore } from '@/stores/app'
 import { useModalStore } from '@/stores/modal'
 import { useLockStore } from '@/stores/lock'
 import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
@@ -51,7 +50,6 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const appStore = useAppStore()
 const modalStore = useModalStore()
 const lockStore = useLockStore()
 const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
@@ -184,23 +182,19 @@ function handleToggleLock() {
 }
 
 async function handleDoubleClick() {
-  if (props.showCheckbox) return
-  if (isGlobalAirportsEntry.value) return
-
-  if (!appStore.xplanePath) {
-    modalStore.showError(t('sceneryManager.noXplanePath'))
-    return
-  }
+  if (!isCurrentRoot() || props.showCheckbox || isGlobalAirportsEntry.value) return
 
   try {
     await invoke('open_scenery_folder', {
-      xplanePath: appStore.xplanePath,
+      xplanePath,
       folderName: props.entry.folderName,
     })
   } catch (error) {
+    if (!isCurrentRoot()) return
     const apiError = parseApiError(error)
     if (apiError?.code === 'not_found') {
       await sceneryStore.loadData()
+      if (!isCurrentRoot()) return
       modalStore.showError({
         code: 'not_found',
         message: t('sceneryManager.stalePathMessage'),

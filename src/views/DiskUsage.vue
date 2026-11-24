@@ -172,14 +172,14 @@ import { computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useDiskUsageStore } from '@/stores/diskUsage'
-import { useAppStore } from '@/stores/app'
+import { useXplaneViewRoot } from '@/composables/useXplaneViewRoot'
 import { useThemeStore } from '@/stores/theme'
 import DiskUsageChart from '@/components/DiskUsageChart.vue'
 
 const { t } = useI18n()
 
 const store = useDiskUsageStore()
-const appStore = useAppStore()
+const { xplanePath, isCurrentRoot } = useXplaneViewRoot()
 const themeStore = useThemeStore()
 
 const isDark = computed(() => themeStore.isDark)
@@ -229,14 +229,15 @@ function formatSize(bytes: number): string {
 }
 
 async function scanAll() {
-  if (!appStore.xplanePath) return
+  if (!isCurrentRoot()) return
   await store.scan()
 }
 
 async function openFolder(itemType: string, folderName: string) {
+  if (!isCurrentRoot()) return
   try {
     await invoke('open_management_folder', {
-      xplanePath: appStore.xplanePath,
+      xplanePath,
       itemType,
       folderName,
     })
@@ -246,7 +247,7 @@ async function openFolder(itemType: string, folderName: string) {
 }
 
 onMounted(() => {
-  if (!appStore.xplanePath || store.isScanning) return
+  if (store.isScanning) return
   void scanAll()
 })
 </script>

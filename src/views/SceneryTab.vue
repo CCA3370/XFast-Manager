@@ -1607,10 +1607,11 @@ async function handleGroupChange(category: string, evt: DraggableChangeEvent<Sce
     try {
       await sceneryStore.updateCategory(entry.folderName, newCategory)
     } catch (e) {
+      if (!isCurrent()) return
       logError(`Failed to update category: ${e}`, 'management')
       try {
         await sceneryStore.loadData()
-        syncLocalEntries()
+        if (isCurrent()) syncLocalEntries()
       } catch (reloadError) {
         logError(`Failed to reload scenery data: ${reloadError}`, 'management')
       }
@@ -1641,6 +1642,7 @@ function handleReset() {
     cancelText: t('common.cancel'),
     type: 'warning',
     onConfirm: () => {
+      if (!isCurrent()) return
       sceneryStore.resetChanges()
       syncLocalEntries()
       // Restore sync warning if data still needs sync
@@ -1731,7 +1733,8 @@ async function handleResetDatabase() {
           modalStore.showError(t('sceneryManager.resetDatabaseFailed'))
         }
       } catch (e) {
-        modalStore.showError(t('sceneryManager.resetDatabaseFailed') + ': ' + String(e))
+        if (isCurrent())
+          modalStore.showError(t('sceneryManager.resetDatabaseFailed') + ': ' + String(e))
       } finally {
         isResettingDatabase.value = false
       }

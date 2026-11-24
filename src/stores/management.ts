@@ -25,7 +25,7 @@ import { useLockStore } from './lock'
 import { getNavdataCycleStatus } from '@/utils/airac'
 import { logError } from '@/services/logger'
 import { validateXPlanePath } from '@/utils/validation'
-import { rootStorageKey } from '@/utils/xplaneStorage'
+import { rootStorageKey, xplanePathKey } from '@/utils/xplaneStorage'
 import { getItem, setItem, STORAGE_KEYS } from '@/services/storage'
 import {
   addonUpdateItemKey,
@@ -176,7 +176,8 @@ export const useManagementStore = defineStore('management', () => {
   const error = ref<string | null>(null)
   const addonUpdateOptions = ref<AddonUpdateOptions>({ ...DEFAULT_ADDON_UPDATE_OPTIONS })
   const addonUpdateItemBetaPreferences = ref<AddonUpdateItemBetaPreferences>({})
-  const addonUpdateOptionsLoaded = ref(false)
+  let addonUpdateOptionsLoad: Promise<void> | undefined
+  let addonUpdatePreferenceWrite = Promise.resolve()
 
   // Counts
   const aircraftTotalCount = ref(0)
@@ -261,7 +262,7 @@ export const useManagementStore = defineStore('management', () => {
   }
 
   async function fetchAircraftFolderState(folderName: string): Promise<AircraftInfo> {
-    const { operationRoot, isCurrent, invoke } = captureOperation()
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -271,6 +272,7 @@ export const useManagementStore = defineStore('management', () => {
         xplanePath: operationRoot,
         folderName,
       })
+      assertCurrent()
 
       const existing = findAircraftEntry(folderName)
       return {
@@ -290,17 +292,22 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
     enabled: boolean,
   ) {
-    const { operationRoot, assertCurrent } = captureOperation()
+    const { operationRoot, assertCurrent, isCurrent } = captureOperation()
     await loadAddonUpdateOptions()
-    assertCurrent()
 
-    const key = addonUpdateItemKey(itemType, folderName)
-    const nextPreferences = { ...addonUpdateItemBetaPreferences.value, [key]: enabled }
-    addonUpdateItemBetaPreferences.value = nextPreferences
-    await setItem(
-      rootStorageKey(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES, operationRoot),
-      nextPreferences,
-    )
+    const write = addonUpdatePreferenceWrite.then(async () => {
+      assertCurrent()
+      const key = addonUpdateItemKey(itemType, folderName)
+      const nextPreferences = { ...addonUpdateItemBetaPreferences.value, [key]: enabled }
+      await setItem(
+        rootStorageKey(STORAGE_KEYS.ADDON_UPDATE_ITEM_BETA_PREFERENCES, operationRoot),
+        nextPreferences,
+      )
+      if (isCurrent()) addonUpdateItemBetaPreferences.value = nextPreferences
+    })
+    addonUpdatePreferenceWrite = write.catch(() => {})
+    await write
+    assertCurrent()
   }
 
   function buildAddonUpdateOptionsForItem(
@@ -318,14 +325,20 @@ export const useManagementStore = defineStore('management', () => {
     }
   }
 
-  async function loadAddonUpdateOptions() {
-    const operationRoot = appStore.xplanePath
-    const epoch = rootGeneration
-    const assertCurrent = () => {
-      if (epoch !== rootGeneration)
-        throw new Error('X-Plane directory changed; retry the operation')
-    }
-    if (addonUpdateOptionsLoaded.value) return
+  function loadAddonUpdateOptions() {
+    if (addonUpdateOptionsLoad) return addonUpdateOptionsLoad
+    const load = readAddonUpdateOptions().catch((error: unknown) => {
+      if (addonUpdateOptionsLoad === load) addonUpdateOptionsLoad = undefined
+      throw error
+    })
+    addonUpdateOptionsLoad = load
+    return load
+  }
+
+  async function readAddonUpdateOptions() {
+    const { operationRoot, isCurrent } = captureOperation()
+    await addonUpdatePreferenceWrite
+    if (!isCurrent()) return
 
     const [
       itemBetaPreferences,
@@ -351,7 +364,7 @@ export const useManagementStore = defineStore('management', () => {
       getItem<number>(STORAGE_KEYS.ADDON_UPDATE_TOTAL_THREADS),
     ])
 
-    assertCurrent()
+    if (!isCurrent()) return
     addonUpdateItemBetaPreferences.value =
       normalizeAddonUpdateItemBetaPreferences(itemBetaPreferences)
 
@@ -391,18 +404,12 @@ export const useManagementStore = defineStore('management', () => {
           ? Math.min(Math.max(totalThreads, 1), 64)
           : DEFAULT_ADDON_UPDATE_OPTIONS.totalThreads,
     }
-
-    addonUpdateOptionsLoaded.value = true
-
-    // Force persisted value to current UI default so old sessions (true) won't keep rolling back.
-    await setItem(
-      STORAGE_KEYS.ADDON_UPDATE_ROLLBACK_ON_FAILURE,
-      DEFAULT_ADDON_UPDATE_OPTIONS.rollbackOnFailure,
-    )
   }
 
   async function setAddonUpdateOptions(next: Partial<AddonUpdateOptions>) {
+    const { assertCurrent } = captureOperation()
     await loadAddonUpdateOptions()
+    assertCurrent()
 
     const { useBeta: _ignoredUseBeta, ...nextWithoutUseBeta } = next
     addonUpdateOptions.value = {
@@ -554,6 +561,7 @@ export const useManagementStore = defineStore('management', () => {
       const result = await invoke<ManagementData<T>>(config.scanCommand, {
         xplanePath: operationRoot,
       })
+      if (!isCurrent()) return
 
       config.itemsRef.value = config.applyCache?.(result.entries) ?? result.entries
       config.totalCountRef.value = result.totalCount
@@ -593,39 +601,38 @@ export const useManagementStore = defineStore('management', () => {
 
   const activeUpdateChecks = new Map<CheckableItemType, symbol>()
 
+  function skippedUpdateCheck(): UpdateCheckResult {
+    return { checked: false, updateCount: 0, failed: false }
+  }
+
   async function checkItemUpdates<T extends UpdatableItem>(
     config: UpdateCheckConfig<T>,
   ): Promise<UpdateCheckResult> {
-    const { isCurrent, invoke, assertCurrent } = captureOperation()
+    const { isCurrent, invoke } = captureOperation()
     if (config.itemsRef.value.length === 0) {
-      return { checked: false, updateCount: 0, failed: false }
-    }
-
-    await loadAddonUpdateOptions()
-    assertCurrent()
-
-    if (!config.forceRefresh) {
-      config.itemsRef.value = applyCachedUpdates(config.itemsRef.value)
-    }
-
-    // Only check items that have update URLs, no valid cache, and are not locked
-    const itemsToCheck = getItemsNeedingUpdateCheck(
-      config.itemsRef.value,
-      config.itemType,
-      config.forceRefresh,
-    )
-    if (itemsToCheck.length === 0) {
-      // All items have valid cache, count current updates
-      const updateCount = config.itemsRef.value.filter((item) => item.hasUpdate).length
-      return { checked: false, updateCount, failed: false }
+      return skippedUpdateCheck()
     }
 
     const token = Symbol()
     activeUpdateChecks.set(config.itemType, token)
-    const isLatestCheck = () => activeUpdateChecks.get(config.itemType) === token
+    const isLatestCheck = () => isCurrent() && activeUpdateChecks.get(config.itemType) === token
     isCheckingUpdates.value = true
 
     try {
+      await loadAddonUpdateOptions()
+      if (!isLatestCheck()) return skippedUpdateCheck()
+
+      if (!config.forceRefresh) config.itemsRef.value = applyCachedUpdates(config.itemsRef.value)
+      const itemsToCheck = getItemsNeedingUpdateCheck(
+        config.itemsRef.value,
+        config.itemType,
+        config.forceRefresh,
+      )
+      if (itemsToCheck.length === 0) {
+        const updateCount = config.itemsRef.value.filter((item) => item.hasUpdate).length
+        return { checked: false, updateCount, failed: false }
+      }
+
       // Send only items needing check to backend
       const updated = await invoke<T[]>(config.checkCommand, {
         ...(config.extraArgs || {}),
@@ -636,7 +643,7 @@ export const useManagementStore = defineStore('management', () => {
         ),
         [config.checkParamName]: itemsToCheck,
       })
-      if (!isLatestCheck()) return { checked: false, updateCount: 0, failed: false }
+      if (!isLatestCheck()) return skippedUpdateCheck()
 
       // Update cache with results (only store latestVersion, not hasUpdate)
       for (const item of updated) {
@@ -668,12 +675,12 @@ export const useManagementStore = defineStore('management', () => {
       const failed = itemsToCheck.some((item) => !updatedMap.get(item.folderName)?.latestVersion)
       return { checked: true, updateCount, failed }
     } catch (e) {
-      if (!isLatestCheck()) return { checked: false, updateCount: 0, failed: false }
+      if (!isLatestCheck()) return skippedUpdateCheck()
       logError(`Failed to check ${config.logName} updates: ${e}`, 'management')
       // Don't set error.value here as this is a background operation
       return { checked: false, updateCount: 0, failed: true }
     } finally {
-      if (isCurrent() && isLatestCheck()) {
+      if (isLatestCheck()) {
         activeUpdateChecks.delete(config.itemType)
         isCheckingUpdates.value = activeUpdateChecks.size > 0
       }
@@ -694,7 +701,7 @@ export const useManagementStore = defineStore('management', () => {
       applyCache: applyCachedUpdates,
       afterLoad: () => {
         syncCfgDisabledToLockStore('aircraft', aircraft.value)
-        checkAircraftUpdates()
+        void checkAircraftUpdates()
       },
       logName: 'aircraft',
     })
@@ -712,9 +719,7 @@ export const useManagementStore = defineStore('management', () => {
     forceRefresh: boolean = false,
     showUpToDateToast: boolean = false,
   ) {
-    const { operationRoot, invoke, assertCurrent } = captureOperation()
-    await loadAddonUpdateOptions()
-    assertCurrent()
+    const { operationRoot, invoke, isCurrent } = captureOperation()
 
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
@@ -731,17 +736,18 @@ export const useManagementStore = defineStore('management', () => {
           const result = await invoke<ManagementData<AircraftInfo>>('scan_aircraft', {
             xplanePath: operationRoot,
           })
+          if (!isCurrent()) return
           aircraft.value = applyCachedUpdates(result.entries)
           aircraftTotalCount.value = result.totalCount
           aircraftEnabledCount.value = result.enabledCount
           syncCfgDisabledToLockStore('aircraft', aircraft.value)
         } catch (e) {
-          logError(`Failed to rescan aircraft: ${e}`, 'management')
+          if (isCurrent()) logError(`Failed to rescan aircraft: ${e}`, 'management')
         }
       }
     }
 
-    assertCurrent()
+    if (!isCurrent()) return
     const result = await checkItemUpdates<AircraftInfo>({
       itemsRef: aircraft,
       checkCommand: 'check_aircraft_updates',
@@ -751,6 +757,7 @@ export const useManagementStore = defineStore('management', () => {
       extraArgs: { xplanePath: operationRoot },
       forceRefresh,
     })
+    if (!isCurrent()) return
     // Show toast when check was actually performed and no updates found
     if (showUpToDateToast && result.failed) {
       toast.error(t('management.checkFailed'))
@@ -768,7 +775,7 @@ export const useManagementStore = defineStore('management', () => {
       enabledCountRef: pluginsEnabledCount,
       afterLoad: () => {
         syncCfgDisabledToLockStore('plugin', plugins.value)
-        checkPluginsUpdates()
+        void checkPluginsUpdates()
       },
       logName: 'plugins',
     })
@@ -779,9 +786,7 @@ export const useManagementStore = defineStore('management', () => {
     forceRefresh: boolean = false,
     showUpToDateToast: boolean = false,
   ) {
-    const { operationRoot, invoke, assertCurrent } = captureOperation()
-    await loadAddonUpdateOptions()
-    assertCurrent()
+    const { operationRoot, invoke, isCurrent } = captureOperation()
 
     // If force refresh, rescan to get latest cfg state first
     if (forceRefresh) {
@@ -791,17 +796,18 @@ export const useManagementStore = defineStore('management', () => {
           const result = await invoke<ManagementData<PluginInfo>>('scan_plugins', {
             xplanePath: operationRoot,
           })
+          if (!isCurrent()) return
           plugins.value = result.entries
           pluginsTotalCount.value = result.totalCount
           pluginsEnabledCount.value = result.enabledCount
           syncCfgDisabledToLockStore('plugin', plugins.value)
         } catch (e) {
-          logError(`Failed to rescan plugins: ${e}`, 'management')
+          if (isCurrent()) logError(`Failed to rescan plugins: ${e}`, 'management')
         }
       }
     }
 
-    assertCurrent()
+    if (!isCurrent()) return
     const result = await checkItemUpdates<PluginInfo>({
       itemsRef: plugins,
       checkCommand: 'check_plugins_updates',
@@ -811,6 +817,7 @@ export const useManagementStore = defineStore('management', () => {
       extraArgs: { xplanePath: operationRoot },
       forceRefresh,
     })
+    if (!isCurrent()) return
     // Show toast when check was actually performed and no updates found
     if (showUpToDateToast && result.failed) {
       toast.error(t('management.checkFailed'))
@@ -878,6 +885,7 @@ export const useManagementStore = defineStore('management', () => {
         folderName,
         options,
       })
+      assertCurrent()
 
       if (itemType === 'aircraft') {
         await loadAircraft()
@@ -992,13 +1000,14 @@ export const useManagementStore = defineStore('management', () => {
 
   // Load navdata backups
   async function loadNavdataBackups() {
-    const { operationRoot, invoke } = captureOperation()
+    const { operationRoot, invoke, isCurrent } = captureOperation()
     if (!validateXPlanePath()) return
 
     try {
-      navdataBackups.value = await invoke<NavdataBackupInfo[]>('scan_navdata_backups', {
+      const backups = await invoke<NavdataBackupInfo[]>('scan_navdata_backups', {
         xplanePath: operationRoot,
       })
+      if (isCurrent()) navdataBackups.value = backups
     } catch (e) {
       logError(`Failed to load navdata backups: ${e}`, 'management')
     }
@@ -1006,7 +1015,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Restore navdata backup
   async function restoreNavdataBackup(backupFolderName: string) {
-    const { operationRoot, isCurrent, invoke } = captureOperation()
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -1017,6 +1026,7 @@ export const useManagementStore = defineStore('management', () => {
         xplanePath: operationRoot,
         backupFolderName,
       })
+      assertCurrent()
       toast.info(t('management.restoreBackupSuccess'))
       await loadNavdata()
     } catch (e) {
@@ -1056,11 +1066,14 @@ export const useManagementStore = defineStore('management', () => {
     newEnabled: boolean,
   ) {
     const { operationRoot, invoke } = captureOperation()
-    const key = `${type}:${folderName.toLowerCase()}`
+    const key = rootStorageKey(
+      `${type}:${folderName.trim().toLowerCase()}`,
+      xplanePathKey(operationRoot),
+    )
 
     if (!newEnabled) {
       // Disabling → auto-lock, but only track if not already manually locked
-      if (!lockStore.isLocked(type, folderName)) {
+      if (!lockStore.isLocked(type, folderName, operationRoot)) {
         autoLockedByDisable.add(key)
         await lockStore.setLocked(type, folderName, true, operationRoot)
       }
@@ -1089,7 +1102,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Toggle enabled state
   async function toggleEnabled(itemType: ManagementItemType, folderName: string) {
-    const { operationRoot, isCurrent, invoke } = captureOperation()
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       return
     }
@@ -1109,6 +1122,7 @@ export const useManagementStore = defineStore('management', () => {
           xplanePath: operationRoot,
           folderName,
         })
+        assertCurrent()
 
         const existing = findAircraftEntry(folderName)
         const merged: AircraftInfo = {
@@ -1127,6 +1141,7 @@ export const useManagementStore = defineStore('management', () => {
         itemType,
         folderName,
       })
+      assertCurrent()
 
       // Update local state
       switch (itemType) {
@@ -1162,7 +1177,7 @@ export const useManagementStore = defineStore('management', () => {
     folderName: string,
     fileName: string,
   ): Promise<AircraftInfo> {
-    const { operationRoot, isCurrent, invoke } = captureOperation()
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -1173,6 +1188,7 @@ export const useManagementStore = defineStore('management', () => {
         folderName,
         fileName,
       })
+      assertCurrent()
 
       const existing = findAircraftEntry(folderName)
       const merged: AircraftInfo = {
@@ -1192,7 +1208,7 @@ export const useManagementStore = defineStore('management', () => {
 
   // Delete item
   async function deleteItem(itemType: ManagementItemType, folderName: string) {
-    const { operationRoot, isCurrent, invoke } = captureOperation()
+    const { operationRoot, isCurrent, invoke, assertCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       throw new Error(error.value!)
     }
@@ -1203,6 +1219,7 @@ export const useManagementStore = defineStore('management', () => {
         itemType,
         folderName,
       })
+      assertCurrent()
 
       // Remove from local state
       switch (itemType) {
@@ -1285,7 +1302,7 @@ export const useManagementStore = defineStore('management', () => {
     folderNames: string[],
     enabled: boolean,
   ) {
-    const { operationRoot, invoke } = captureOperation()
+    const { operationRoot, invoke, isCurrent } = captureOperation()
     if (!validateXPlanePath(error)) {
       return
     }
@@ -1307,12 +1324,14 @@ export const useManagementStore = defineStore('management', () => {
     }
 
     for (const folderName of toChange) {
+      if (!isCurrent()) return
       try {
         await invoke<boolean>('toggle_management_item', {
           xplanePath: operationRoot,
           itemType,
           folderName,
         })
+        if (!isCurrent()) return
 
         // Update local state
         const item = itemsRef.value.find((i) => i.folderName === folderName)
@@ -1330,6 +1349,7 @@ export const useManagementStore = defineStore('management', () => {
       }
     }
 
+    if (!isCurrent()) return
     // Update enabled counts
     if (itemType === 'aircraft') {
       aircraftEnabledCount.value = aircraft.value.filter((a) => a.enabled).length
@@ -1372,7 +1392,7 @@ export const useManagementStore = defineStore('management', () => {
     rootGeneration++
     updateCache.clear()
     activeUpdateChecks.clear()
-    addonUpdateOptionsLoaded.value = false
+    addonUpdateOptionsLoad = undefined
     addonUpdateItemBetaPreferences.value = {}
     aircraftTotalCount.value = aircraftEnabledCount.value = 0
     pluginsTotalCount.value = pluginsEnabledCount.value = 0

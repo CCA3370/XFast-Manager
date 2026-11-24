@@ -115,14 +115,13 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
   const capture = createXplaneScope(reset)
 
   async function scan() {
-    const { invoke, isCurrent } = capture()
+    const { path, invoke, isCurrent } = capture()
+    if (!path) return
     isScanning.value = true
     error.value = null
     try {
-      const appStore = useAppStore()
-      report.value = await invoke<DiskUsageReport>('scan_disk_usage', {
-        xplanePath: appStore.xplanePath,
-      })
+      const result = await invoke<DiskUsageReport>('scan_disk_usage')
+      if (isCurrent()) report.value = result
     } catch (e) {
       if (isCurrent()) error.value = String(e)
     } finally {
@@ -131,14 +130,14 @@ export const useDiskUsageStore = defineStore('diskUsage', () => {
   }
 
   async function scanFolder(itemType: string, folderName: string) {
-    const { invoke, isCurrent } = capture()
+    const { path, invoke, isCurrent } = capture()
+    if (!path) return
     try {
-      const appStore = useAppStore()
-      selectedItem.value = await invoke<FolderDiskUsage>('scan_folder_disk_usage', {
-        xplanePath: appStore.xplanePath,
+      const result = await invoke<FolderDiskUsage>('scan_folder_disk_usage', {
         itemType,
         folderName,
       })
+      if (isCurrent()) selectedItem.value = result
     } catch (e) {
       if (isCurrent()) error.value = String(e)
     }
