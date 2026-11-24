@@ -452,6 +452,7 @@ import { AddonType } from '@/types'
 import { getErrorMessage } from '@/types'
 import { logOperation, logError, logDebug, logBasic } from '@/services/logger'
 import { setTrackedTimeout } from '@/utils/timeout'
+import { getXPlaneLaunchErrorPresentation } from '@/utils/xplaneLaunchError'
 
 const { t } = useI18n()
 
@@ -1352,40 +1353,8 @@ async function launchXPlane() {
   } catch (error) {
     if (!isCurrent()) return
     logError(`Failed to launch X-Plane: ${error}`, 'app')
-    if (error instanceof Error && error.message === 'timeout') {
-      modal.showError(t('home.launchTimeout'))
-    } else {
-      const errorMsg = getErrorMessage(error)
-      // Check if it's an elevation required error
-      if (errorMsg.startsWith('ELEVATION_REQUIRED:')) {
-        const exePath = errorMsg.substring('ELEVATION_REQUIRED:'.length)
-        modal.showError(
-          t('home.elevationRequired.title') +
-            '\n\n' +
-            t('home.elevationRequired.causes') +
-            '\n' +
-            t('home.elevationRequired.cause1') +
-            '\n' +
-            t('home.elevationRequired.cause2') +
-            '\n' +
-            t('home.elevationRequired.cause3') +
-            '\n\n' +
-            t('home.elevationRequired.solutions') +
-            '\n' +
-            t('home.elevationRequired.solution1') +
-            '\n' +
-            t('home.elevationRequired.solution2') +
-            '\n\n' +
-            t('home.elevationRequired.path') +
-            ' ' +
-            exePath,
-          '',
-          { hideReport: true },
-        )
-      } else {
-        modal.showError(t('home.launchFailed') + ': ' + errorMsg)
-      }
-    }
+    const presentation = getXPlaneLaunchErrorPresentation(error, t)
+    modal.showError(presentation.error, presentation.title, { hideReport: presentation.hideReport })
   } finally {
     isLaunchingXPlane.value = false
   }

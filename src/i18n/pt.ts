@@ -116,6 +116,22 @@ export default {
     launchFailed: 'Falha ao iniciar o X-Plane',
     launchTimeout:
       'O tempo de inicialização do X-Plane expirou. Verifique se o X-Plane está funcionando corretamente.',
+    applicationControlBlocked: {
+      title: 'O Windows bloqueou a inicialização do X-Plane (4551)',
+      description:
+        'Uma política de controle de aplicativos do Windows bloqueou esta inicialização. A causa pode ser o Smart App Control ou outra política.',
+      eventLog:
+        '1. Abra o Visualizador de Eventos → Logs de Aplicativos e Serviços → Microsoft → Windows → CodeIntegrity → Operational.',
+      eventDetails:
+        '2. Procure o evento 3077 no horário da falha. Verifique estes campos para identificar o arquivo bloqueado e a política:',
+      signatureDetails:
+        '3. Para detalhes da assinatura, consulte o evento 3089 com o mesmo Correlation ActivityID.',
+      resolution:
+        '4. Verifique a origem e a assinatura digital do arquivo bloqueado com o fornecedor ou o administrador do sistema. Mantenha as proteções de segurança do Windows ativadas.',
+      path: 'Destino da inicialização:',
+      systemError: 'Erro original do sistema:',
+      documentation: 'Guia de diagnóstico da Microsoft:',
+    },
     elevationRequired: {
       title: 'Falha ao iniciar o X-Plane: privilégios de administrador necessários (Erro 740)',
       causes: 'Possíveis causas:',

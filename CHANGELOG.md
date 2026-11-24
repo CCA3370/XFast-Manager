@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Windows Launch Guidance** - When a Windows application control policy prevents X-Plane from starting, the app now explains how to identify the blocked file and policy in Event Viewer while keeping security protections enabled.
+
 ## [1.3.1] - 2026-11-14
 
 <div class="changelog-figure" style="float:right;width:240px;margin:0 0 0.75rem 1rem;"><img src="/screenshots/update1.3.1.png" alt="XFast Manager 1.3.1" style="display:block;width:100%;margin:0;border-radius:0.5rem;" /><div class="changelog-caption" style="margin-top:0.4rem;font-size:0.7rem;line-height:1;color:#9ca3af;text-align:center;cursor:zoom-in;">Tap to view</div></div>

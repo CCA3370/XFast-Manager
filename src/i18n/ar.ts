@@ -113,6 +113,22 @@ export default {
     launchDirectly: 'تشغيل مباشرة',
     launchFailed: 'فشل تشغيل X-Plane',
     launchTimeout: 'انتهت مهلة تشغيل X-Plane. يرجى التحقق من أنه يعمل بشكل صحيح.',
+    applicationControlBlocked: {
+      title: 'حظر Windows تشغيل X-Plane ‏(4551)',
+      description:
+        'حظرت سياسة تحكم بالتطبيقات في Windows محاولة التشغيل هذه. قد يكون السبب Smart App Control أو سياسة أخرى.',
+      eventLog:
+        '1. افتح عارض الأحداث → سجلات التطبيقات والخدمات → Microsoft → Windows → CodeIntegrity → Operational.',
+      eventDetails:
+        '2. ابحث عن الحدث 3077 في وقت فشل التشغيل. راجع هذه الحقول لتحديد الملف المحظور والسياسة:',
+      signatureDetails:
+        '3. للاطلاع على تفاصيل التوقيع، راجع الحدث 3089 الذي يحمل قيمة Correlation ActivityID نفسها.',
+      resolution:
+        '4. تحقق من مصدر الملف المحظور وتوقيعه الرقمي مع ناشره أو مسؤول النظام. أبقِ ميزات الأمان في Windows مفعّلة.',
+      path: 'هدف التشغيل:',
+      systemError: 'خطأ النظام الأصلي:',
+      documentation: 'دليل التشخيص من Microsoft:',
+    },
     elevationRequired: {
       title: 'فشل تشغيل X-Plane: يلزم امتياز المسؤول (الخطأ 740)',
       causes: 'الأسباب المحتملة:',

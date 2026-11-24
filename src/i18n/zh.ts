@@ -113,6 +113,21 @@ export default {
     launchDirectly: '直接启动',
     launchFailed: '启动 X-Plane 失败',
     launchTimeout: '启动 X-Plane 超时，请检查 X-Plane 是否正常运行',
+    applicationControlBlocked: {
+      title: 'Windows 阻止了 X-Plane 启动（4551）',
+      description:
+        'Windows 应用控制策略阻止了此次启动，可能与智能应用控制（Smart App Control）或其他应用控制策略有关。',
+      eventLog:
+        '1. 打开“事件查看器” →“应用程序和服务日志” → Microsoft → Windows → CodeIntegrity → Operational。',
+      eventDetails:
+        '2. 查找与此次启动失败时间对应的事件 3077，检查以下字段，确认被阻止的文件及策略：',
+      signatureDetails: '3. 如需进一步检查签名，查看具有相同 Correlation ActivityID 的事件 3089。',
+      resolution:
+        '4. 联系被阻止文件的发布者或系统管理员，核实文件来源及数字签名。请保持 Windows 安全防护启用。',
+      path: '启动目标：',
+      systemError: '原始系统错误：',
+      documentation: 'Microsoft 诊断说明：',
+    },
     elevationRequired: {
       title: 'X-Plane 启动失败：需要管理员权限（错误 740）',
       causes: '可能的原因：',

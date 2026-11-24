@@ -116,6 +116,22 @@ export default {
     launchFailed: 'X-Plane 실행에 실패했습니다',
     launchTimeout:
       'X-Plane 실행 시간이 초과되었습니다. X-Plane이 정상적으로 실행 중인지 확인하세요.',
+    applicationControlBlocked: {
+      title: 'Windows가 X-Plane 실행을 차단했습니다(4551)',
+      description:
+        'Windows 애플리케이션 제어 정책이 이번 실행을 차단했습니다. Smart App Control 또는 다른 정책이 원인일 수 있습니다.',
+      eventLog:
+        '1. 이벤트 뷰어 → 응용 프로그램 및 서비스 로그 → Microsoft → Windows → CodeIntegrity → Operational을 여세요.',
+      eventDetails:
+        '2. 실행에 실패한 시각의 이벤트 3077을 찾으세요. 다음 필드를 확인하여 차단된 파일과 정책을 파악하세요:',
+      signatureDetails:
+        '3. 서명에 대한 자세한 내용은 Correlation ActivityID가 같은 이벤트 3089에서 확인하세요.',
+      resolution:
+        '4. 차단된 파일의 게시자 또는 시스템 관리자에게 파일 출처와 디지털 서명을 확인하세요. Windows 보안 보호는 활성화된 상태로 유지하세요.',
+      path: '실행 대상:',
+      systemError: '원래 시스템 오류:',
+      documentation: 'Microsoft 진단 안내:',
+    },
     elevationRequired: {
       title: 'X-Plane 실행 실패: 관리자 권한이 필요합니다 (오류 740)',
       causes: '가능한 원인:',

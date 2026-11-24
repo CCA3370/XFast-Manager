@@ -114,6 +114,22 @@ export default {
     launchFailed: 'X-Plane चालू नहीं हो सका',
     launchTimeout:
       'X-Plane चालू होने का समय समाप्त हो गया। कृपया जांचें कि X-Plane सही से चल रहा है।',
+    applicationControlBlocked: {
+      title: 'Windows ने X-Plane को शुरू होने से रोका (4551)',
+      description:
+        'Windows की एप्लिकेशन नियंत्रण नीति ने इस बार शुरू होने से रोका। इसका कारण Smart App Control या कोई अन्य नीति हो सकती है।',
+      eventLog:
+        '1. इवेंट व्यूअर → एप्लिकेशन और सेवा लॉग → Microsoft → Windows → CodeIntegrity → Operational खोलें।',
+      eventDetails:
+        '2. शुरू होने में विफलता के समय का इवेंट 3077 खोजें। रोकी गई फ़ाइल और नीति की पहचान के लिए ये फ़ील्ड देखें:',
+      signatureDetails:
+        '3. हस्ताक्षर के विवरण के लिए समान Correlation ActivityID वाला इवेंट 3089 देखें।',
+      resolution:
+        '4. रोकी गई फ़ाइल के प्रकाशक या सिस्टम व्यवस्थापक से उसके स्रोत और डिजिटल हस्ताक्षर की पुष्टि करें। Windows की सुरक्षा सुविधाएँ चालू रखें।',
+      path: 'शुरू की जाने वाली फ़ाइल:',
+      systemError: 'मूल सिस्टम त्रुटि:',
+      documentation: 'Microsoft निदान मार्गदर्शिका:',
+    },
     elevationRequired: {
       title: 'X-Plane चालू करना विफल: व्यवस्थापक अनुमति आवश्यक (त्रुटि 740)',
       causes: 'संभावित कारण:',

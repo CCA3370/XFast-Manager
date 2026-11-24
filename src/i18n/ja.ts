@@ -116,6 +116,22 @@ export default {
     launchFailed: 'X-Planeの起動に失敗しました',
     launchTimeout:
       'X-Plane の起動がタイムアウトしました。 X-Planeが正常に動作しているか確認してください。',
+    applicationControlBlocked: {
+      title: 'Windows が X-Plane の起動をブロックしました（4551）',
+      description:
+        'Windows のアプリケーション制御ポリシーにより起動がブロックされました。Smart App Control または別のポリシーが原因の可能性があります。',
+      eventLog:
+        '1. イベント ビューアー → アプリケーションとサービス ログ → Microsoft → Windows → CodeIntegrity → Operational を開いてください。',
+      eventDetails:
+        '2. 起動に失敗した時刻のイベント 3077 を探し、次のフィールドからブロックされたファイルとポリシーを確認してください：',
+      signatureDetails:
+        '3. 署名の詳細は、同じ Correlation ActivityID を持つイベント 3089 で確認できます。',
+      resolution:
+        '4. ブロックされたファイルの発行元またはシステム管理者に、入手元とデジタル署名の確認を依頼してください。Windows のセキュリティ保護は有効にしたままにしてください。',
+      path: '起動対象：',
+      systemError: '元のシステムエラー：',
+      documentation: 'Microsoft の診断ガイド：',
+    },
     elevationRequired: {
       title: 'X-Plane の起動に失敗しました: 管理者権限が必要です (エラー 740)',
       causes: '考えられる原因:',

@@ -114,6 +114,22 @@ export default {
     launchDirectly: 'Launch Directly',
     launchFailed: 'Failed to launch X-Plane',
     launchTimeout: 'X-Plane launch timed out. Please check if X-Plane is running properly.',
+    applicationControlBlocked: {
+      title: 'Windows blocked the X-Plane launch (4551)',
+      description:
+        'A Windows application control policy blocked this launch. Smart App Control or another policy may be responsible.',
+      eventLog:
+        '1. Open Event Viewer → Applications and Services Logs → Microsoft → Windows → CodeIntegrity → Operational.',
+      eventDetails:
+        '2. Find event 3077 at the time of this failed launch. Check these fields to identify the blocked file and policy:',
+      signatureDetails:
+        '3. For signature details, inspect event 3089 with the same Correlation ActivityID.',
+      resolution:
+        '4. Verify the blocked file’s source and digital signature with its publisher or your system administrator. Keep Windows security protections enabled.',
+      path: 'Launch target:',
+      systemError: 'Original system error:',
+      documentation: 'Microsoft diagnostic guide:',
+    },
     elevationRequired: {
       title: 'X-Plane launch failed: Administrator privileges required (Error 740)',
       causes: 'Possible causes:',

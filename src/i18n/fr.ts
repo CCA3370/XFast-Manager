@@ -118,6 +118,22 @@ export default {
     launchFailed: 'Échec du lancement de X-Plane',
     launchTimeout:
       'Le lancement de X-Plane a expiré. Veuillez vérifier si X-Plane fonctionne correctement.',
+    applicationControlBlocked: {
+      title: 'Windows a bloqué le lancement de X-Plane (4551)',
+      description:
+        'Une stratégie de contrôle des applications Windows a bloqué ce lancement. Smart App Control ou une autre stratégie peut en être la cause.',
+      eventLog:
+        '1. Ouvrez l’Observateur d’événements → Journaux des applications et des services → Microsoft → Windows → CodeIntegrity → Operational.',
+      eventDetails:
+        '2. Recherchez l’événement 3077 à l’heure de cet échec. Vérifiez ces champs pour identifier le fichier bloqué et la stratégie :',
+      signatureDetails:
+        '3. Pour les détails de signature, consultez l’événement 3089 ayant le même Correlation ActivityID.',
+      resolution:
+        '4. Vérifiez la provenance et la signature numérique du fichier bloqué auprès de son éditeur ou de votre administrateur système. Laissez les protections de sécurité Windows activées.',
+      path: 'Cible du lancement :',
+      systemError: 'Erreur système d’origine :',
+      documentation: 'Guide de diagnostic Microsoft :',
+    },
     elevationRequired: {
       title: "Échec du lancement de X-Plane : privilèges d'administrateur requis (Erreur 740)",
       causes: 'Causes possibles :',

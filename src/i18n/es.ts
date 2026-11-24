@@ -116,6 +116,22 @@ export default {
     launchFailed: 'No se pudo iniciar X-Plane',
     launchTimeout:
       'Se agotó el tiempo de lanzamiento del X-Plane. Verifique si X-Plane está funcionando correctamente.',
+    applicationControlBlocked: {
+      title: 'Windows bloqueó el inicio de X-Plane (4551)',
+      description:
+        'Una directiva de control de aplicaciones de Windows bloqueó este inicio. Puede deberse a Smart App Control o a otra directiva.',
+      eventLog:
+        '1. Abra el Visor de eventos → Registros de aplicaciones y servicios → Microsoft → Windows → CodeIntegrity → Operational.',
+      eventDetails:
+        '2. Busque el evento 3077 a la hora del inicio fallido. Revise estos campos para identificar el archivo bloqueado y la directiva:',
+      signatureDetails:
+        '3. Para obtener detalles de la firma, consulte el evento 3089 con el mismo Correlation ActivityID.',
+      resolution:
+        '4. Verifique el origen y la firma digital del archivo bloqueado con su editor o el administrador del sistema. Mantenga activadas las protecciones de seguridad de Windows.',
+      path: 'Destino de inicio:',
+      systemError: 'Error original del sistema:',
+      documentation: 'Guía de diagnóstico de Microsoft:',
+    },
     elevationRequired: {
       title: 'Error al iniciar X-Plane: se requieren privilegios de administrador (Error 740)',
       causes: 'Posibles causas:',
