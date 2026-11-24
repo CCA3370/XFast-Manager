@@ -800,7 +800,7 @@ fn build_plan_internal(
             continue;
         }
 
-        if is_protected_path(rel_path) || prepared.manifest.ignorelist.contains(rel_path) {
+        if is_protected_path(rel_path) || is_ignored_path(rel_path, &prepared.manifest.ignorelist) {
             skip_files.push(rel_path.clone());
             continue;
         }
@@ -959,7 +959,11 @@ fn expand_blacklist_delete_files(
         }
     }
 
-    let mut retained_ancestors = HashSet::new();
+    // An update can add whitelisted files after this local scan and before deletion.
+    let mut retained_ancestors: HashSet<String> = whitelist_paths
+        .iter()
+        .flat_map(|path| parent_paths(path).map(str::to_owned))
+        .collect();
     let mut delete_entries = Vec::new();
     for entry in local_entries {
         let path = &entry.rel_path;
@@ -973,14 +977,10 @@ fn expand_blacklist_delete_files(
         if !candidate
             || whitelisted
             || is_protected_path(path)
-            || ignored_paths.contains(path)
+            || is_ignored_path(path, ignored_paths)
             || (!include_liveries && is_livery_path(path))
         {
-            let mut parent = path.as_str();
-            while let Some((ancestor, _)) = parent.rsplit_once('/') {
-                retained_ancestors.insert(ancestor.to_owned());
-                parent = ancestor;
-            }
+            retained_ancestors.extend(parent_paths(path).map(str::to_owned));
         } else {
             delete_entries.push(entry);
         }
@@ -1000,6 +1000,17 @@ fn expand_blacklist_delete_files(
         .into_iter()
         .map(|entry| entry.rel_path)
         .collect())
+}
+
+fn parent_paths(path: &str) -> impl Iterator<Item = &str> {
+    std::iter::successors(Some(path), |path| {
+        path.rsplit_once('/').map(|(parent, _)| parent)
+    })
+    .skip(1)
+}
+
+fn is_ignored_path(path: &str, ignored_paths: &HashSet<String>) -> bool {
+    ignored_paths.contains(path) || parent_paths(path).any(|parent| ignored_paths.contains(parent))
 }
 
 pub(crate) fn update_client(timeout: Duration) -> Result<reqwest::Client> {
@@ -2892,26 +2903,25 @@ mod tests {
     #[tokio::test]
     async fn combined_manifest_keeps_updater_state_and_local_ignores_in_updates() {
         let content = b"new files";
-        let server =
-            TestHttpServer::start(Arc::new(move |request| {
-                let url = request.split_whitespace().nth(1).unwrap();
-                let (path, query) = url.split_once('?').unwrap_or((url, ""));
-                let response = match path {
+        let server = TestHttpServer::start(Arc::new(move |request| {
+            let url = request.split_whitespace().nth(1).unwrap();
+            let (path, query) = url.split_once('?').unwrap_or((url, ""));
+            let response = match path {
                 "/skunkcrafts_updater.cfg" => test_response(200, "version|2.0\nprotocol|2"),
                 "/skunkcrafts_updater_manifest.txt" => {
                     assert_eq!(query, "v=2.0");
                     test_response(200, format!(
-                        "files/data.bin|{}|{}\nprefs.ini|-1|100\nskunkcrafts/channel.cfg|0|0\n",
+                        "files/new/data.bin|{}|{}\nprefs.ini|-1|100\nskunkcrafts/channel.cfg|0|0\nuser/profile/whitelisted.ini|0|0\n",
                         crc32fast::hash(content), content.len()
                     ))
                 }
                 "/skunkcrafts_updater_blacklist.txt" => test_response(200,
-                    "skunkcrafts\nskunkcrafts_updater.cfg\nuser\nskunkcrafts_updater_ignore.txt\n"),
-                "/files/data.bin" => test_response(200, content.to_vec()),
+                    "files\nskunkcrafts\nskunkcrafts_updater.cfg\nuser\nskunkcrafts_updater_ignore.txt\n"),
+                "/files/new/data.bin" => test_response(200, content.to_vec()),
                 _ => test_response(404, ""),
             };
-                Some(response)
-            }));
+            Some(response)
+        }));
         let xp = tempfile::tempdir().unwrap();
         let path = xp.path().join("Custom Scenery/Package");
         write_fixture(
@@ -2919,9 +2929,12 @@ mod tests {
             LOCAL_CFG_FILE,
             &format!("module|{}\nversion|1.0", server.base_url),
         );
-        write_fixture(&path, LOCAL_IGNORE_FILE, "user/keep.ini\n");
+        write_fixture(&path, LOCAL_IGNORE_FILE, "user/keep.ini\nuser/profile/\n");
         write_fixture(&path, "user/keep.ini", "user file");
+        write_fixture(&path, "user/profile/whitelisted.ini", "modified profile");
+        write_fixture(&path, "user/profile/local.ini", "other profile");
         write_fixture(&path, "user/remove.ini", "retired");
+        write_fixture(&path, "files/retired/old.bin", "retired");
         write_fixture(&path, "prefs.ini", "modified preferences");
         write_fixture(&path, "skunkcrafts/channel.cfg", "channel|stable\n");
         let mut options = update_options();
@@ -2929,8 +2942,11 @@ mod tests {
         let plan = build_update_plan(xp.path(), "scenery", "Package", options.clone())
             .await
             .unwrap();
-        assert_eq!(plan.add_files, ["files/data.bin"]);
-        assert_eq!(plan.delete_files, ["user/remove.ini"]);
+        assert_eq!(plan.add_files, ["files/new/data.bin"]);
+        assert_eq!(
+            plan.delete_files,
+            ["files/retired/old.bin", "user/remove.ini", "files/retired"]
+        );
         assert_eq!(plan.estimated_download_bytes, content.len() as u64);
 
         options.expected_skunk_module = Some(format!("{}/other-channel", server.base_url));
@@ -2938,14 +2954,15 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(error.to_string(), CHANNEL_CHANGED);
-        assert!(!path.join("files/data.bin").exists());
+        assert!(!path.join("files/new/data.bin").exists());
         assert!(path.join("user/remove.ini").exists());
 
         options.expected_skunk_module = plan.remote_module;
         execute_update(xp.path(), "scenery", "Package", options, None, None)
             .await
             .unwrap();
-        assert_eq!(fs::read(path.join("files/data.bin")).unwrap(), content);
+        assert_eq!(fs::read(path.join("files/new/data.bin")).unwrap(), content);
+        assert!(!path.join("files/retired").exists());
         assert_eq!(
             fs::read_to_string(path.join("prefs.ini")).unwrap(),
             "modified preferences"
@@ -2953,6 +2970,14 @@ mod tests {
         assert_eq!(
             fs::read_to_string(path.join("user/keep.ini")).unwrap(),
             "user file"
+        );
+        assert_eq!(
+            fs::read_to_string(path.join("user/profile/whitelisted.ini")).unwrap(),
+            "modified profile"
+        );
+        assert_eq!(
+            fs::read_to_string(path.join("user/profile/local.ini")).unwrap(),
+            "other profile"
         );
         assert!(path.join("skunkcrafts/channel.cfg").exists());
         assert!(path.join(LOCAL_IGNORE_FILE).exists());
